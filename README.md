@@ -1,6 +1,6 @@
 # Neo-Wolf-v1
 
-Neo Wolf is a C++17 SDL2 project built with CMake.
+Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 
 ## Current Status
 
