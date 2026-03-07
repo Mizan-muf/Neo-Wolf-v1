@@ -6,7 +6,6 @@ Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 
 - Phase 1 (Project Bootstrap): complete
 - Current focus: Phase 2 (Engine Skeleton)
-- Development plan source: `docs/Checklist.md`
 
 ## Roadmap (High Level)
 
