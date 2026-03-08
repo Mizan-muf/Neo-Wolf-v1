@@ -1,25 +1,27 @@
-#include "engine/core/Engine.h"
+#include "engine/platform/PlatformSDL.h"
 
 #include <SDL.h>
 
 #include <iostream>
 
-Engine::~Engine() {
+#include "engine/core/InputState.h"
+
+PlatformSDL::~PlatformSDL() {
     Shutdown();
 }
 
-bool Engine::Init() {
+bool PlatformSDL::Init(const char* title, int width, int height) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << '\n';
         return false;
     }
 
     window_ = SDL_CreateWindow(
-        "Raycast Engine - Phase 2",
+        title,
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        1280,
-        720,
+        width,
+        height,
         SDL_WINDOW_SHOWN);
     if (window_ == nullptr) {
         std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << '\n';
@@ -36,24 +38,28 @@ bool Engine::Init() {
         return false;
     }
 
-    running_ = true;
     return true;
 }
 
-void Engine::Update(double /*deltaSeconds*/) {
+void PlatformSDL::PumpEvents(InputState& input) const {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
-        HandleEvent(event);
+        if (event.type == SDL_QUIT) {
+            input.quitRequested = true;
+        }
     }
 }
 
-void Engine::Render() {
-    SDL_SetRenderDrawColor(renderer_, 20, 20, 24, 255);
+void PlatformSDL::Clear(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a) const {
+    SDL_SetRenderDrawColor(renderer_, r, g, b, a);
     SDL_RenderClear(renderer_);
+}
+
+void PlatformSDL::Present() const {
     SDL_RenderPresent(renderer_);
 }
 
-void Engine::Shutdown() {
+void PlatformSDL::Shutdown() {
     if (renderer_ != nullptr) {
         SDL_DestroyRenderer(renderer_);
         renderer_ = nullptr;
@@ -66,17 +72,5 @@ void Engine::Shutdown() {
 
     if (SDL_WasInit(SDL_INIT_VIDEO) != 0) {
         SDL_Quit();
-    }
-
-    running_ = false;
-}
-
-bool Engine::IsRunning() const {
-    return running_;
-}
-
-void Engine::HandleEvent(const SDL_Event& event) {
-    if (event.type == SDL_QUIT) {
-        running_ = false;
     }
 }

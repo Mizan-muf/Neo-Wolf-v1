@@ -1,8 +1,9 @@
 #pragma once
 
-struct SDL_Window;
-struct SDL_Renderer;
-union SDL_Event;
+#include "engine/core/InputState.h"
+#include "engine/core/TimeState.h"
+
+class PlatformSDL;
 
 class Engine {
 public:
@@ -19,10 +20,8 @@ public:
 
     bool IsRunning() const;
 
-private:
-    void HandleEvent(const SDL_Event& event);
-
-    SDL_Window* window_ = nullptr;
-    SDL_Renderer* renderer_ = nullptr;
+    PlatformSDL* platform_ = nullptr;
+    InputState input_{};
+    TimeState time_{};
     bool running_ = false;
 };
