@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(neo_wolf src/main.cpp)
+target_sources(neo_wolf PRIVATE
+    engine/core/Engine.cpp
+)
+target_include_directories(neo_wolf PRIVATE ${CMAKE_SOURCE_DIR})
 
 # Prefer SDL2 config package; fall back to CMake's FindSDL2 module.
 find_package(SDL2 CONFIG QUIET)

@@ -1,37 +1,15 @@
-#include <SDL.h>
-
 #include <chrono>
 #include <iomanip>
 #include <iostream>
 
+#include "engine/core/Engine.h"
+
 int main(int /*argc*/, char* /*argv*/[]) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << '\n';
+    Engine engine;
+    if (!engine.Init()) {
         return 1;
     }
 
-    SDL_Window* window = SDL_CreateWindow(
-        "Raycast Engine - Phase 1",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        1280,
-        720,
-        SDL_WINDOW_SHOWN);
-    if (window == nullptr) {
-        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << '\n';
-        SDL_Quit();
-        return 1;
-    }
-
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (renderer == nullptr) {
-        std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << '\n';
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
-    bool running = true;
     using clock = std::chrono::steady_clock;
     auto previous = clock::now();
     auto fpsStart = previous;
@@ -39,21 +17,13 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     std::cout << "Main loop started.\n";
 
-    while (running) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event) != 0) {
-            if (event.type == SDL_QUIT) {
-                running = false;
-            }
-        }
-
+    while (engine.IsRunning()) {
         auto now = clock::now();
         const std::chrono::duration<double> frameTime = now - previous;
         previous = now;
 
-        SDL_SetRenderDrawColor(renderer, 20, 20, 24, 255);
-        SDL_RenderClear(renderer);
-        SDL_RenderPresent(renderer);
+        engine.Update(frameTime.count());
+        engine.Render();
 
         ++frameCount;
         const std::chrono::duration<double> fpsWindow = now - fpsStart;
@@ -66,8 +36,6 @@ int main(int /*argc*/, char* /*argv*/[]) {
         }
     }
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    engine.Shutdown();
     return 0;
 }
