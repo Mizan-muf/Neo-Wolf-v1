@@ -1,11 +1,14 @@
 #include "engine/core/Engine.h"
 
+#include "engine/core/Log.h"
 #include "engine/platform/PlatformSDL.h"
 
 void Engine::Shutdown() {
     if (!running_ && platform_ == nullptr) {
         return;
     }
+
+    LogInfo("Engine shutdown started.");
 
     if (platform_ != nullptr) {
         platform_->Shutdown();
@@ -15,5 +18,8 @@ void Engine::Shutdown() {
 
     input_ = {};
     time_ = {};
+    framebuffer_ = {};
     running_ = false;
+
+    LogInfo("Engine shutdown finished.");
 }

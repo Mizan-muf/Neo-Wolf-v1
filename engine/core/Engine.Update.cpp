@@ -15,6 +15,7 @@ void Engine::Update(double deltaSeconds) {
     time_.totalSeconds += deltaSeconds;
     ++time_.frameIndex;
 
+    input_.BeginFrame();
     platform_->PumpEvents(input_);
 
     if (input_.quitRequested) {

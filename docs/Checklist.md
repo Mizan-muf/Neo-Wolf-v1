@@ -20,6 +20,10 @@
 **Do not jump phases.**  
 Only move forward when the current phase is working.
 
+## Test Reference
+
+Use [test.md](./test.md) as the source for when to introduce tests and what to cover at each stage.
+
 ---
 
 ## Phase 1 — Project Bootstrap
@@ -88,23 +92,23 @@ Build the core engine structure before real rendering starts.
 Own your own pixels in memory and present them through SDL2.
 
 ### Checklist
-- [ ] Create framebuffer class
-- [ ] Store:
-  - [ ] width
-  - [ ] height
-  - [ ] pixel buffer
-- [ ] Add clear color function
-- [ ] Add `PutPixel(x, y, color)`
-- [ ] Add `DrawVerticalLine()`
-- [ ] Add `DrawRect()`
-- [ ] Create SDL texture for presenting framebuffer
-- [ ] Upload framebuffer to SDL texture every frame
-- [ ] Present texture to window
+- [x] Create framebuffer class
+- [x] Store:
+  - [x] width
+  - [x] height
+  - [x] pixel buffer
+- [x] Add clear color function
+- [x] Add `PutPixel(x, y, color)`
+- [x] Add `DrawVerticalLine()`
+- [x] Add `DrawRect()`
+- [x] Create SDL texture for presenting framebuffer
+- [x] Upload framebuffer to SDL texture every frame
+- [x] Present texture to window
 
 ### Done When
-- [ ] You can fill screen with solid color
-- [ ] You can draw lines and rectangles
-- [ ] The image shown is coming from your CPU pixel buffer
+- [x] You can fill screen with solid color
+- [x] You can draw lines and rectangles
+- [x] The image shown is coming from your CPU pixel buffer
 
 ---
 
@@ -114,23 +118,23 @@ Own your own pixels in memory and present them through SDL2.
 Add only the minimum math needed for raycasting and gameplay.
 
 ### Checklist
-- [ ] Create `Vec2`
-- [ ] Create `Vec2i`
-- [ ] Add functions:
-  - [ ] add
-  - [ ] subtract
-  - [ ] scale
-  - [ ] length
-  - [ ] normalize
-  - [ ] dot
-- [ ] Add angle helpers
-- [ ] Add clamp helpers
-- [ ] Add degree/radian conversion
-- [ ] Add color utility helpers
-- [ ] Add basic logging utility
+- [x] Create `Vec2`
+- [x] Create `Vec2i`
+- [x] Add functions:
+  - [x] add
+  - [x] subtract
+  - [x] scale
+  - [x] length
+  - [x] normalize
+  - [x] dot
+- [x] Add angle helpers
+- [x] Add clamp helpers
+- [x] Add degree/radian conversion
+- [x] Add color utility helpers
+- [x] Add basic logging utility
 
 ### Done When
-- [ ] Player movement math can be written without messy repeated code
+- [x] Player movement math can be written without messy repeated code
 
 ---
 
@@ -140,24 +144,25 @@ Add only the minimum math needed for raycasting and gameplay.
 Convert SDL input into your own engine input system.
 
 ### Checklist
-- [ ] Read keyboard input from SDL
-- [ ] Store current key states in engine-owned `InputState`
-- [ ] Add actions:
-  - [ ] move forward
-  - [ ] move backward
-  - [ ] strafe left
-  - [ ] strafe right
-  - [ ] turn left
-  - [ ] turn right
-  - [ ] interact
-  - [ ] pause
-- [ ] Add edge detection:
-  - [ ] key pressed this frame
-  - [ ] key released this frame
-- [ ] Do not expose raw SDL events to the rest of the engine
+- [x] Read keyboard input from SDL
+- [x] Store current key states in engine-owned `InputState`
+- [x] Add actions:
+  - [x] move forward
+  - [x] move backward
+  - [x] strafe left
+  - [x] strafe right
+  - [x] turn left
+  - [x] turn right
+  - [x] interact
+  - [x] pause
+- [x] Add edge detection:
+  - [x] key pressed this frame
+  - [x] key released this frame
+- [x] Do not expose raw SDL events to the rest of the engine
 
 ### Done When
-- [ ] Engine can query actions cleanly like `IsDown`, `WasPressed`
+- [x] Engine can query actions cleanly like `IsDown`, `WasPressed`
+- [x] Manual smoke validation is possible by running the app and pressing mapped keys (gameplay movement comes in later phases)
 
 ---
 
@@ -186,6 +191,14 @@ Create the world as a classic 2D grid.
 ### Done When
 - [ ] You can see a top-down debug version of the level
 - [ ] Map walls are correctly identified
+
+### Test Block (Phases 3-6)
+Reference: [test.md](./test.md)
+- [ ] Add unit test project and test runner to CMake
+- [ ] Add unit tests for `Vec2`, clamp, and angle helpers
+- [ ] Add unit tests for `InputState` transitions (`IsDown`, `WasPressed`, `WasReleased`)
+- [ ] Add unit tests for map queries (`GetCell`, `IsWall`, `IsInsideMap`)
+- [ ] Run tests without requiring an SDL window
 
 ---
 
@@ -329,6 +342,14 @@ Make the world interactive.
 - [ ] Player can interact with at least one usable object
 - [ ] Doors and pickups work
 
+### Test Block (Phases 7-12)
+Reference: [test.md](./test.md)
+- [ ] Add tests for player movement and wall collision rules
+- [ ] Add tests for ray-step/hit-distance math
+- [ ] Add tests for sprite distance sorting
+- [ ] Add tests for basic entity interactions (pickup, trigger, door state)
+- [ ] Keep renderer checks to smoke/integration tests (avoid strict pixel matching)
+
 ---
 
 ## Phase 13 — Asset Loading and File-Based Content
@@ -468,6 +489,13 @@ Make the engine solid before introducing C#.
 
 ### Done When
 - [ ] Native-only engine feels stable and reusable
+
+### Test Block (Phase 18+)
+Reference: [test.md](./test.md)
+- [ ] Make all existing tests run in CI/local gate before merge
+- [ ] Add integration tests for map reload and state transitions
+- [ ] Add regression tests for bugs fixed during stabilization
+- [ ] Track and maintain a minimum logic-test coverage target
 
 ---
 

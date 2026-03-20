@@ -5,6 +5,40 @@
 #include <iostream>
 
 #include "engine/core/InputState.h"
+#include "engine/render/Framebuffer.h"
+
+namespace {
+bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
+    switch (scancode) {
+    case SDL_SCANCODE_W:
+        action = InputAction::MoveForward;
+        return true;
+    case SDL_SCANCODE_S:
+        action = InputAction::MoveBackward;
+        return true;
+    case SDL_SCANCODE_A:
+        action = InputAction::StrafeLeft;
+        return true;
+    case SDL_SCANCODE_D:
+        action = InputAction::StrafeRight;
+        return true;
+    case SDL_SCANCODE_LEFT:
+        action = InputAction::TurnLeft;
+        return true;
+    case SDL_SCANCODE_RIGHT:
+        action = InputAction::TurnRight;
+        return true;
+    case SDL_SCANCODE_E:
+        action = InputAction::Interact;
+        return true;
+    case SDL_SCANCODE_ESCAPE:
+        action = InputAction::Pause;
+        return true;
+    default:
+        return false;
+    }
+}
+} // namespace
 
 PlatformSDL::~PlatformSDL() {
     Shutdown();
@@ -46,6 +80,14 @@ void PlatformSDL::PumpEvents(InputState& input) const {
     while (SDL_PollEvent(&event) != 0) {
         if (event.type == SDL_QUIT) {
             input.quitRequested = true;
+            continue;
+        }
+
+        if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+            InputAction action = InputAction::MoveForward;
+            if (TryMapScancodeToAction(event.key.keysym.scancode, action)) {
+                input.SetActionState(action, event.type == SDL_KEYDOWN);
+            }
         }
     }
 }
@@ -59,7 +101,79 @@ void PlatformSDL::Present() const {
     SDL_RenderPresent(renderer_);
 }
 
+void PlatformSDL::PresentFramebuffer(const Framebuffer& framebuffer) {
+    if (renderer_ == nullptr) {
+        return;
+    }
+
+    if (framebuffer.Data() == nullptr || framebuffer.Width() <= 0 || framebuffer.Height() <= 0) {
+        return;
+    }
+
+    if (!EnsureFramebufferTexture(framebuffer.Width(), framebuffer.Height())) {
+        return;
+    }
+
+    if (SDL_UpdateTexture(
+            framebufferTexture_,
+            nullptr,
+            framebuffer.Data(),
+            framebuffer.PitchBytes()) != 0) {
+        std::cerr << "SDL_UpdateTexture failed: " << SDL_GetError() << '\n';
+        return;
+    }
+
+    SDL_RenderClear(renderer_);
+    if (SDL_RenderCopy(renderer_, framebufferTexture_, nullptr, nullptr) != 0) {
+        std::cerr << "SDL_RenderCopy failed: " << SDL_GetError() << '\n';
+        return;
+    }
+
+    SDL_RenderPresent(renderer_);
+}
+
+bool PlatformSDL::EnsureFramebufferTexture(int width, int height) {
+    if (renderer_ == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
+
+    if (framebufferTexture_ != nullptr &&
+        framebufferTextureWidth_ == width &&
+        framebufferTextureHeight_ == height) {
+        return true;
+    }
+
+    if (framebufferTexture_ != nullptr) {
+        SDL_DestroyTexture(framebufferTexture_);
+        framebufferTexture_ = nullptr;
+    }
+
+    framebufferTexture_ = SDL_CreateTexture(
+        renderer_,
+        SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_STREAMING,
+        width,
+        height);
+    if (framebufferTexture_ == nullptr) {
+        std::cerr << "SDL_CreateTexture failed: " << SDL_GetError() << '\n';
+        framebufferTextureWidth_ = 0;
+        framebufferTextureHeight_ = 0;
+        return false;
+    }
+
+    framebufferTextureWidth_ = width;
+    framebufferTextureHeight_ = height;
+    return true;
+}
+
 void PlatformSDL::Shutdown() {
+    if (framebufferTexture_ != nullptr) {
+        SDL_DestroyTexture(framebufferTexture_);
+        framebufferTexture_ = nullptr;
+        framebufferTextureWidth_ = 0;
+        framebufferTextureHeight_ = 0;
+    }
+
     if (renderer_ != nullptr) {
         SDL_DestroyRenderer(renderer_);
         renderer_ = nullptr;

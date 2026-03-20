@@ -2,6 +2,7 @@
 
 #include "engine/core/InputState.h"
 #include "engine/core/TimeState.h"
+#include "engine/render/Framebuffer.h"
 
 class PlatformSDL;
 
@@ -23,5 +24,6 @@ public:
     PlatformSDL* platform_ = nullptr;
     InputState input_{};
     TimeState time_{};
+    Framebuffer framebuffer_{};
     bool running_ = false;
 };

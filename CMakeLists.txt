@@ -7,12 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(neo_wolf src/main.cpp)
 target_sources(neo_wolf PRIVATE
     engine/core/App.cpp
+    engine/core/Log.cpp
     engine/core/Engine.Core.cpp
     engine/core/Engine.Init.cpp
     engine/core/Engine.Update.cpp
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
     engine/platform/PlatformSDL.cpp
+    engine/render/Framebuffer.cpp
 )
 target_include_directories(neo_wolf PRIVATE ${CMAKE_SOURCE_DIR})
 
