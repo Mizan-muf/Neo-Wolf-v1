@@ -4,6 +4,8 @@ project(NeoWolf LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+enable_testing()
+
 add_executable(neo_wolf src/main.cpp)
 target_sources(neo_wolf PRIVATE
     engine/core/App.cpp
@@ -15,6 +17,7 @@ target_sources(neo_wolf PRIVATE
     engine/core/Engine.Shutdown.cpp
     engine/platform/PlatformSDL.cpp
     engine/render/Framebuffer.cpp
+    engine/world/Map.cpp
 )
 target_include_directories(neo_wolf PRIVATE ${CMAKE_SOURCE_DIR})
 
@@ -27,6 +30,13 @@ else()
     target_include_directories(neo_wolf PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(neo_wolf PRIVATE ${SDL2_LIBRARIES})
 endif()
+
+add_executable(neo_wolf_tests
+    tests/LogicTests.cpp
+    engine/world/Map.cpp
+)
+target_include_directories(neo_wolf_tests PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME neo_wolf_tests COMMAND neo_wolf_tests)
 
 # Copy runtime DLLs (e.g., SDL2.dll from vcpkg dynamic builds) next to the exe.
 if(MSVC)

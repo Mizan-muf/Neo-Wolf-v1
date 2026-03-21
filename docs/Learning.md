@@ -4,7 +4,7 @@
 Layman knowledge of the process done so far, clearly split by phase, with diagrams and tables.
 
 ## Project Snapshot
-This note documents what is implemented up to Phase 5.
+This note documents what is implemented through Phase 7.
 
 | Phase | Name | Status | Core Outcome |
 |---|---|---|---|
@@ -13,6 +13,8 @@ This note documents what is implemented up to Phase 5.
 | 3 | Software Framebuffer | Complete | Engine draws into CPU memory, then SDL presents it |
 | 4 | Basic Math and Utility Layer | Complete | Reusable math, color, and logging helpers are available |
 | 5 | Input System | Complete | Keyboard input is mapped to engine actions with edge detection |
+| 6 | Grid Map System | Complete | Engine owns a tile map and renders a top-down debug view |
+| 7 | Player Controller and Collision | Complete | Player movement/rotation/strafe and wall collision are validated in runtime |
 
 ---
 
@@ -23,6 +25,8 @@ Imagine building a game like building a shop:
 - Phase 3: You install your own drawing board and paint there first, then hang it in the window.
 - Phase 4: You create a basic toolkit (ruler, calculator, labels) so future work is cleaner.
 - Phase 5: You create a control panel so key presses become game-ready actions.
+- Phase 6: You place a floor plan on the board so the world has real tiles and walls.
+- Phase 7: You add a controllable player that moves inside that floor plan without walking through walls.
 
 ```mermaid
 flowchart LR
@@ -30,7 +34,10 @@ flowchart LR
     B --> C[Phase 3: CPU Framebuffer]
     C --> D[Phase 4: Math and Utilities]
     D --> E[Phase 5: Input System]
-    E --> F[Ready for Phase 6 Grid Map]
+    E --> F[Phase 6: Grid Map + Top-Down Debug Render]
+    F --> G[Phase 3-6 Logic Tests Added]
+    G --> H[Phase 7: Player Movement + Collision]
+    H --> I[Ready for Phase 8 Raycasting Core]
 ```
 
 ---
@@ -216,6 +223,52 @@ flowchart LR
 
 ---
 
+## Phase 6: Grid Map System
+
+### In layman terms
+The project now has a real tile-based world layout instead of only generic render primitives.
+You can see that layout directly as a top-down debug map.
+
+### What was built
+
+| Feature | Layman explanation | Technical role |
+|---|---|---|
+| `Map` class | A 2D board of tiles | Stores world width, height, and cell data |
+| Tile types | Different kinds of map cells | `Empty`, `Wall`, `Door`, `Trigger` |
+| Map queries | Ask what exists in a tile | `GetCell`, `IsInsideMap`, `IsWall` |
+| Hardcoded test level | A starter sample map | Allows deterministic debugging before file loading |
+| Top-down debug render | Draw each tile as a rectangle | Visual confirmation that map logic and render path match |
+
+### Phase 6 data flow
+```mermaid
+flowchart LR
+    A[Engine Init] --> B[Create hardcoded Map]
+    B --> C[Engine Render loops map cells]
+    C --> D[Choose color per tile type]
+    D --> E[Draw tile rectangles into Framebuffer]
+    E --> F[SDL presents the framebuffer]
+```
+
+---
+
+## Phase 7: Player Controller and Collision
+
+### In layman terms
+The map is no longer static. A player marker can now move, rotate, strafe, and collide against wall tiles.
+
+### What was built
+
+| Feature | Layman explanation | Technical role |
+|---|---|---|
+| `Player` state | A character record with movement properties | Stores position, facing angle, move speed, turn speed, collision radius |
+| Forward/back movement | Move in facing direction | Uses current angle to compute direction vector |
+| Strafe movement | Move sideways relative to facing | Uses perpendicular vector to direction |
+| Rotation | Turn left/right | Updates facing angle continuously from input |
+| Wall collision | Stop walking through walls | Checks attempted movement against map wall cells |
+| Top-down player debug view | See player behavior clearly | Draws player marker and facing line over map |
+
+---
+
 ## Why this progression is correct
 
 | Order | Reason |
@@ -225,6 +278,8 @@ flowchart LR
 | Phase 3 third | Need engine-owned pixels before raycasting features |
 | Phase 4 fourth | Need reusable math/utilities before heavy gameplay and ray logic |
 | Phase 5 fifth | Need clean engine input API before player/controller and gameplay logic |
+| Phase 6 sixth | Need map data + queries before adding player collision and ray hits |
+| Phase 7 seventh | Need validated movement/collision before first-person ray rendering |
 
 ---
 
@@ -232,6 +287,61 @@ flowchart LR
 Use this one-liner:
 
 `Input comes from SDL -> Engine updates state -> Engine draws into its framebuffer -> SDL presents that framebuffer`
+
+---
+
+## What `neo_wolf.exe` Is Right Now
+
+When you run `neo_wolf.exe`, you are running a single native app that includes both:
+
+- the engine runtime (window loop, input system, map/render systems), and
+- the current game-side logic/content stub (hardcoded map and debug draw behavior).
+
+So this stage is not split into separate binaries yet. It is one executable with engine and current gameplay logic compiled together.
+
+---
+
+## Is This Engine Code-Based?
+
+Yes, at this stage it is code-driven:
+
+- systems are implemented in C++ source,
+- content is still mostly hardcoded,
+- there is no visual editor or external gameplay scripting pipeline in active use yet.
+
+Later phases introduce external files and C# gameplay interop, but the current setup is code-first.
+
+---
+
+## How To Run Phase 3-6 Logic Tests
+
+Use this exact flow from the project root:
+
+1. Build Debug (includes `neo_wolf_tests.exe`):
+```powershell
+.\build.cmd Debug
+```
+
+2. Run all registered CMake/CTest tests:
+```powershell
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+3. (Optional) Run the test binary directly to see per-test pass lines:
+```powershell
+.\build\neo_wolf_tests.exe
+```
+
+Expected result:
+- `ctest` should report `100% tests passed`.
+- Direct run should print `[PASS]` lines for:
+  - Vec2 and math helpers
+  - InputState transitions
+  - Map queries
+
+If `ctest` says `No tests were found`:
+- run `.\build.cmd Debug` again to regenerate CMake files with the test target,
+- then rerun `ctest --test-dir build -C Debug --output-on-failure`.
 
 ---
 
@@ -249,16 +359,17 @@ Use this one-liner:
 ---
 
 ## Next learning target
-Phase 6 (Grid Map System): add map storage, tile queries, and a hardcoded debug map rendered in top-down form.
+1. Phase 8: raycasting core (column rays, wall hit distance, projected wall slices).
+2. Keep Phase 3-6 tests green while adding new ray-step and distance tests.
 
 ---
 
 ## Quick test now (without debugger)
 You can still validate the current build without setting breakpoints:
 
-1. Build and run the app.
-2. Confirm the window title shows `Raycast Engine - Phase 5`.
-3. Press mapped keys (`W`, `A`, `S`, `D`, arrows, `E`, `Escape`) while the window is focused.
-4. Confirm the app remains responsive and closes cleanly from window `X`.
+1. Build and run logic tests (`ctest --test-dir build -C Debug --output-on-failure`).
+2. Run the app and confirm the window title shows `Raycast Engine - Phase 7`.
+3. Confirm movement with `W/A/S/D`, rotation with arrow keys, and collision against wall tiles.
+4. Confirm the app closes cleanly from window `X`.
 
-Note: actual player movement will appear in later phases when controller/map systems are connected.
+Note: next implementation focus is Phase 8 raycasting.

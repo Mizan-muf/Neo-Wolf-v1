@@ -19,6 +19,8 @@ void Engine::Shutdown() {
     input_ = {};
     time_ = {};
     framebuffer_ = {};
+    map_ = {};
+    player_ = {};
     running_ = false;
 
     LogInfo("Engine shutdown finished.");

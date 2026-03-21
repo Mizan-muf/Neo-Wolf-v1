@@ -9,7 +9,10 @@ Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 - Phase 3 (Software Framebuffer): complete
 - Phase 4 (Basic Math and Utility Layer): complete
 - Phase 5 (Input System): complete
-- Current focus: Phase 6 (Grid Map System) and Phase 3-6 test setup
+- Phase 6 (Grid Map System): complete
+- Phase 3-6 test block: complete
+- Phase 7 (Player Controller and Collision): complete
+- Current focus: Phase 8 (Raycasting Core)
 
 ## Current Architecture
 
@@ -30,7 +33,8 @@ Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 - `engine/core/Log.*`: minimal logging utility
 
 Rendering path right now:
-- Engine clears and draws primitives into a CPU framebuffer
+- Engine clears and draws a top-down grid map into a CPU framebuffer
+- Engine updates player movement/rotation with wall collision against map walls
 - Platform uploads framebuffer pixels to an SDL texture every frame
 - SDL presents that texture to the window
 
@@ -62,23 +66,26 @@ Rendering path right now:
 .\build\neo_wolf.exe
 ```
 
-Current window title should show: `Raycast Engine - Phase 5`
+Current window title should show: `Raycast Engine - Phase 7`
 
 ## Test / Validation
 
 ```powershell
 .\build.cmd Debug
-.\build.cmd Release
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Smoke test:
-
+Smoke test (Phase 7):
 ```powershell
 .\build\neo_wolf.exe
 ```
 
-Input smoke test (no debugger required):
-- Focus the game window and press `W`, `A`, `S`, `D`, arrow keys, `E`, `Esc`
-- The app should remain responsive and process events
+- Launch the app and confirm the top-down map is visible with a player marker + facing line
+- Move with `W`, `A`, `S`, `D` and rotate with arrow keys
+- Confirm collision blocks movement into wall tiles
 - Window close (`X`) should exit cleanly
-- Visible movement is expected in later phases, not Phase 5
+
+Logic test scope (Phase 3-6):
+- `Vec2` operations + clamp/angle helpers
+- `InputState` transitions (`IsDown`, `WasPressed`, `WasReleased`)
+- `Map` queries (`GetCell`, `IsWall`, `IsInsideMap`)

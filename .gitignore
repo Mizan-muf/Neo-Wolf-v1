@@ -5,6 +5,8 @@ build-*/
 *.obj
 *.obj.d
 *.bin
+.wiki-tmp/
+wiki-home.md
 
 # CMake
 CMakeCache.txt
@@ -17,3 +19,4 @@ Makefile
 .DS_Store
 Thumbs.db
 vcpkg/
+ 

@@ -172,33 +172,34 @@ Convert SDL input into your own engine input system.
 Create the world as a classic 2D grid.
 
 ### Checklist
-- [ ] Create `Map` class
-- [ ] Store:
-  - [ ] width
-  - [ ] height
-  - [ ] cell data
-- [ ] Define tile types:
-  - [ ] empty
-  - [ ] wall
-  - [ ] door
-  - [ ] trigger
-- [ ] Add function `GetCell(x, y)`
-- [ ] Add function `IsWall(x, y)`
-- [ ] Add function `IsInsideMap(x, y)`
-- [ ] Create hardcoded test map first
-- [ ] Render top-down debug map using rectangles
+- [x] Create `Map` class
+- [x] Store:
+  - [x] width
+  - [x] height
+  - [x] cell data
+- [x] Define tile types:
+  - [x] empty
+  - [x] wall
+  - [x] door
+  - [x] trigger
+- [x] Add function `GetCell(x, y)`
+- [x] Add function `IsWall(x, y)`
+- [x] Add function `IsInsideMap(x, y)`
+- [x] Create hardcoded test map first
+- [x] Render top-down debug map using rectangles
 
 ### Done When
-- [ ] You can see a top-down debug version of the level
-- [ ] Map walls are correctly identified
+- [x] You can see a top-down debug version of the level
+- [x] Map walls are correctly identified
+- [x] Manual runtime validation completed (`neo_wolf.exe` shows the Phase 6 map)
 
 ### Test Block (Phases 3-6)
 Reference: [test.md](./test.md)
-- [ ] Add unit test project and test runner to CMake
-- [ ] Add unit tests for `Vec2`, clamp, and angle helpers
-- [ ] Add unit tests for `InputState` transitions (`IsDown`, `WasPressed`, `WasReleased`)
-- [ ] Add unit tests for map queries (`GetCell`, `IsWall`, `IsInsideMap`)
-- [ ] Run tests without requiring an SDL window
+- [x] Add unit test project and test runner to CMake
+- [x] Add unit tests for `Vec2`, clamp, and angle helpers
+- [x] Add unit tests for `InputState` transitions (`IsDown`, `WasPressed`, `WasReleased`)
+- [x] Add unit tests for map queries (`GetCell`, `IsWall`, `IsInsideMap`)
+- [x] Run tests without requiring an SDL window
 
 ---
 
@@ -208,24 +209,25 @@ Reference: [test.md](./test.md)
 Move the player inside the map correctly.
 
 ### Checklist
-- [ ] Create `Player` struct/class
-- [ ] Store:
-  - [ ] position
-  - [ ] direction angle
-  - [ ] move speed
-  - [ ] turn speed
-  - [ ] collision radius
-- [ ] Implement forward/back movement
-- [ ] Implement left/right rotation
-- [ ] Implement strafe movement
-- [ ] Add collision against wall cells
-- [ ] Prevent player from passing through walls
-- [ ] Add top-down debug visualization for player
+- [x] Create `Player` struct/class
+- [x] Store:
+  - [x] position
+  - [x] direction angle
+  - [x] move speed
+  - [x] turn speed
+  - [x] collision radius
+- [x] Implement forward/back movement
+- [x] Implement left/right rotation
+- [x] Implement strafe movement
+- [x] Add collision against wall cells
+- [x] Prevent player from passing through walls
+- [x] Add top-down debug visualization for player
 
 ### Done When
-- [ ] Player moves smoothly
-- [ ] Player rotates
-- [ ] Player cannot walk through walls
+- [x] Player moves smoothly
+- [x] Player rotates
+- [x] Player cannot walk through walls
+- [x] Manual runtime validation completed (`neo_wolf.exe` shows movement, rotation, and wall collision in top-down view)
 
 ---
 

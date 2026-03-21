@@ -3,6 +3,8 @@
 #include "engine/core/InputState.h"
 #include "engine/core/TimeState.h"
 #include "engine/render/Framebuffer.h"
+#include "engine/world/Map.h"
+#include "engine/world/Player.h"
 
 class PlatformSDL;
 
@@ -25,5 +27,7 @@ public:
     InputState input_{};
     TimeState time_{};
     Framebuffer framebuffer_{};
+    Map map_{};
+    Player player_{};
     bool running_ = false;
 };
