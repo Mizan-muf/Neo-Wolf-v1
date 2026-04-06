@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/assets/AudioConfig.h"
 #include "engine/assets/ContentConfig.h"
 #include "engine/assets/TextureLoader.h"
 #include "engine/core/Log.h"
@@ -41,7 +42,7 @@ bool Engine::Init() {
         platform_ = new PlatformSDL();
     }
 
-    if (!platform_->Init("Raycast Engine - Phase 15", kWindowWidth, kWindowHeight)) {
+    if (!platform_->Init("Raycast Engine - Phase 17", kWindowWidth, kWindowHeight)) {
         LogError("PlatformSDL initialization failed.");
         return false;
     }
@@ -70,6 +71,14 @@ bool Engine::Init() {
 
     SpriteTextureDefinitions spriteDefinitions{};
     if (!LoadSpriteTextureDefinitions(ResolveContentPath("game/defs/sprites.cfg"), spriteDefinitions, errors)) {
+        for (const std::string& error : errors) {
+            LogError(error.c_str());
+        }
+        return false;
+    }
+
+    AudioEffectDefinitions audioDefinitions{};
+    if (!LoadAudioEffectDefinitions(ResolveContentPath("game/defs/audio.cfg"), audioDefinitions, errors)) {
         for (const std::string& error : errors) {
             LogError(error.c_str());
         }
@@ -128,6 +137,32 @@ bool Engine::Init() {
     if (pickupSpriteTexture_ == nullptr) pickupSpriteTexture_ = &missingTexture_;
     if (decorationSpriteTexture_ == nullptr) decorationSpriteTexture_ = &missingTexture_;
 
+    audio_.Shutdown();
+    if (!audio_.Init()) {
+        LogWarning("Audio device failed to initialize. Continuing without sound.");
+    } else {
+        audio_.SetMasterVolume(audioDefinitions.masterVolume);
+        std::vector<std::string> audioErrors;
+        const auto loadEffect = [&](const char* id, const std::string& relativePath) {
+            const std::string resolvedPath = ResolveContentPath(relativePath);
+            if (!audio_.LoadEffectFromWav(id, resolvedPath, audioErrors)) {
+                LogWarning(std::string("Audio effect unavailable: ") + id + " -> " + resolvedPath);
+            }
+        };
+
+        loadEffect("door_open", audioDefinitions.doorOpen);
+        loadEffect("pickup", audioDefinitions.pickup);
+        loadEffect("enemy_alert", audioDefinitions.enemyAlert);
+
+        if (!audioDefinitions.weaponFire.empty()) {
+            loadEffect("weapon_fire", audioDefinitions.weaponFire);
+        }
+
+        for (const std::string& error : audioErrors) {
+            LogWarning(error.c_str());
+        }
+    }
+
     player_ = {};
     player_.position = {2.5f, 2.5f};
     player_.directionAngleRadians = DegreesToRadians(15.0f);
@@ -145,6 +180,9 @@ bool Engine::Init() {
     latestWallDepthBuffer_.clear();
     entityManager_.Clear();
     sprites_.clear();
+    particleManager_.Clear();
+    ambientDustSpawnTimer_ = 0.0f;
+    enemyAlertCooldown_ = 0.0f;
 
     bool playerSpawnFound = false;
     for (const EntityPlacement& placement : placements) {
@@ -227,3 +265,8 @@ bool Engine::Init() {
     LogInfo("Engine initialized successfully.");
     return true;
 }
+
+
+
+
+

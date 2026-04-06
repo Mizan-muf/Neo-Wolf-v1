@@ -20,7 +20,9 @@ Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 - Phase 13 (Asset Loading and File-Based Content): complete
 - Phase 14 (Basic UI Layer): complete
 - Phase 15 (Basic Lighting): complete
-- Current focus: Phase 16 (Basic Particle System)
+- Phase 16 (Basic Particle System): complete
+- Phase 17 (Sound Layer): complete
+- Current focus: Phase 18 (Native Game Loop Stabilization)
 
 ## Current Architecture
 
@@ -38,8 +40,11 @@ Neo Wolf is a C++17 SDL2-based 2.5D raycast game engine built with CMake.
 - `engine/world/Entity.*`: entity manager with IDs and gameplay entity state
 - `engine/assets/AssetManager.*`: texture asset registry and lookup
 - `engine/assets/ContentConfig.*`: file-based wall/sprite config parsing
+- `engine/assets/AudioConfig.*`: file-based sound effect config parsing
+- `engine/audio/AudioSystem.*`: SDL audio device, WAV loading, and queued playback
 - `engine/world/MapLoader.*`, `EntityPlacementLoader.*`: map and entity placement file loading
 - `engine/ui/UiRenderer.*`: HUD, debug text, crosshair, and pause placeholder drawing
+- `engine/particles/Particle.*`, `engine/render/ParticleRenderer.*`: lightweight world-space particles
 - `engine/core/InputState.h`: engine-owned action states with edge detection (`IsDown`, `WasPressed`, `WasReleased`)
 - `engine/core/TimeState.h`: per-frame timing state
 - `engine/core/Vec2.h`, `Vec2i.h`, `MathUtils.h`: basic math layer
@@ -52,6 +57,7 @@ Rendering path right now:
 - Engine renders sorted billboard sprites with wall-depth occlusion
 - Engine updates world entities (pickup, trigger, door state) each frame
 - Engine draws HUD/debug UI overlays and a pause placeholder
+- Engine spawns and renders gameplay/ambient particles
 - Optional top-down debug overlay can be toggled with `Tab`
 - Engine updates player movement/rotation with wall collision against map walls
 - Platform uploads framebuffer pixels to an SDL texture every frame
@@ -85,7 +91,7 @@ Rendering path right now:
 .\build\neo_wolf.exe
 ```
 
-Current window title should show: `Raycast Engine - Phase 15`
+Current window title should show: `Raycast Engine - Phase 17`
 
 ## Test / Validation
 
@@ -94,7 +100,7 @@ Current window title should show: `Raycast Engine - Phase 15`
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Smoke test (Phase 15):
+Smoke test (Phase 17):
 ```powershell
 .\build\neo_wolf.exe
 ```
@@ -111,9 +117,13 @@ Smoke test (Phase 15):
 - Confirm HUD shows health/ammo, crosshair is centered, and debug overlay shows FPS/POS/ANG/CELL
 - Press `Esc` and confirm pause placeholder appears and gameplay motion stops
 - Confirm distant walls/sprites are darker and map zones show slight per-cell brightness variation
+- Walk into walls, collect pickup, and interact with door to confirm particle effects trigger
+- Confirm ambient dust particles are visible while moving around
 - Press `Tab` to toggle top-down debug overlay with ray hits
 - Confirm collision still blocks movement into wall tiles
 - Confirm different wall sections use different textures
+- Confirm door interaction, pickup collection, and nearby enemy presence trigger audible effects
+- Adjust `master_volume` in `game/defs/audio.cfg`, rerun, and confirm sound loudness changes
 - Window close (`X`) should exit cleanly
 
 Logic test scope (Phase 3-6):
@@ -124,3 +134,6 @@ Logic test scope (Phase 3-6):
 - Ray-step hit-distance math
 - Sprite distance sorting order
 - Entity interactions (pickup, trigger, door open/close state)
+- Audio config parsing (`game/defs/audio.cfg`)
+
+

@@ -11,6 +11,7 @@
 
 #include "engine/assets/TextureLoader.h"
 #include "engine/assets/AssetManager.h"
+#include "engine/assets/AudioConfig.h"
 #include "engine/assets/ContentConfig.h"
 #include "engine/core/InputState.h"
 #include "engine/core/MathUtils.h"
@@ -407,6 +408,16 @@ void TestContentFileLoaders() {
     TEST_ASSERT(foundDoor);
 }
 
+void TestAudioConfigLoader() {
+    std::vector<std::string> errors;
+    AudioEffectDefinitions audio{};
+    TEST_ASSERT(LoadAudioEffectDefinitions(ResolveRepoPath("game/defs/audio.cfg"), audio, errors));
+    TEST_ASSERT(!audio.doorOpen.empty());
+    TEST_ASSERT(!audio.pickup.empty());
+    TEST_ASSERT(!audio.enemyAlert.empty());
+    TEST_ASSERT(audio.masterVolume >= 0.0f);
+    TEST_ASSERT(audio.masterVolume <= 1.0f);
+}
 void TestAssetManagerFallbackLoad() {
     AssetManager assets{};
     Texture fallback{};
@@ -441,6 +452,7 @@ int main() {
         {"Sprite distance sorting", &TestSpriteDistanceSorting},
         {"Entity interaction rules", &TestEntityInteractionRules},
         {"Content file loaders", &TestContentFileLoaders},
+        {"Audio config loader", &TestAudioConfigLoader},
         {"Asset manager fallback load", &TestAssetManagerFallbackLoad},
     };
 
@@ -466,3 +478,8 @@ int main() {
     std::cout << "All test cases passed.\n";
     return 0;
 }
+
+
+
+
+

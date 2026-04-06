@@ -7,6 +7,7 @@
 #include "engine/core/Color.h"
 #include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
+#include "engine/render/ParticleRenderer.h"
 #include "engine/render/Raycaster.h"
 #include "engine/render/SpriteRenderer.h"
 #include "engine/ui/UiRenderer.h"
@@ -214,6 +215,14 @@ void Engine::Render() {
             latestWallDepthBuffer_,
             sprites_,
             spriteTextures,
+            params.fieldOfViewRadians);
+
+        ParticleRenderer::Render(
+            map_,
+            player_,
+            framebuffer_,
+            latestWallDepthBuffer_,
+            particleManager_.Particles(),
             params.fieldOfViewRadians);
 
         if (debugTopDownEnabled_) {

@@ -22,6 +22,7 @@ void Engine::Shutdown() {
     map_ = {};
     player_ = {};
     assets_.Clear();
+    audio_.Shutdown();
     wallTexture_ = nullptr;
     wallAltATexture_ = nullptr;
     wallAltBTexture_ = nullptr;
@@ -37,6 +38,9 @@ void Engine::Shutdown() {
     latestWallDepthBuffer_.clear();
     sprites_.clear();
     entityManager_.Clear();
+    particleManager_.Clear();
+    ambientDustSpawnTimer_ = 0.0f;
+    enemyAlertCooldown_ = 0.0f;
     playerHealth_ = 100;
     playerAmmo_ = 24;
     paused_ = false;
@@ -44,3 +48,5 @@ void Engine::Shutdown() {
 
     LogInfo("Engine shutdown finished.");
 }
+
+

@@ -48,7 +48,7 @@ PlatformSDL::~PlatformSDL() {
 }
 
 bool PlatformSDL::Init(const char* title, int width, int height) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << '\n';
         return false;
     }
@@ -187,7 +187,8 @@ void PlatformSDL::Shutdown() {
         window_ = nullptr;
     }
 
-    if (SDL_WasInit(SDL_INIT_VIDEO) != 0) {
+    if (SDL_WasInit(0) != 0) {
         SDL_Quit();
     }
 }
+

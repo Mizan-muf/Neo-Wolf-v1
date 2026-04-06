@@ -428,24 +428,24 @@ Add simple retro-style lighting without making renderer too complex.
 Add lightweight particles for impact and atmosphere.
 
 ### Checklist
-- [ ] Create particle struct
-- [ ] Store:
-  - [ ] position
-  - [ ] velocity
-  - [ ] lifetime
-  - [ ] sprite/frame
-  - [ ] size
-- [ ] Create particle manager
-- [ ] Add spawn function
-- [ ] Update particles every frame
-- [ ] Render particles as simple sprites
-- [ ] Add at least:
-  - [ ] hit spark
-  - [ ] pickup sparkle
-  - [ ] ambient dust
+- [x] Create particle struct
+- [x] Store:
+  - [x] position
+  - [x] velocity
+  - [x] lifetime
+  - [x] sprite/frame
+  - [x] size
+- [x] Create particle manager
+- [x] Add spawn function
+- [x] Update particles every frame
+- [x] Render particles as simple sprites
+- [x] Add at least:
+  - [x] hit spark
+  - [x] pickup sparkle
+  - [x] ambient dust
 
 ### Done When
-- [ ] At least one gameplay event spawns visible particles
+- [x] At least one gameplay event spawns visible particles
 
 ---
 
@@ -455,19 +455,19 @@ Add lightweight particles for impact and atmosphere.
 Add enough sound to make the engine feel alive.
 
 ### Checklist
-- [ ] Initialize SDL audio or your chosen simple audio path
-- [ ] Load WAV/OGG for effects
-- [ ] Add play sound function
-- [ ] Add sounds for:
-  - [ ] door open
-  - [ ] pickup
-  - [ ] enemy alert
-  - [ ] weapon fire later
-- [ ] Add volume config
-- [ ] Keep music optional for now
+- [x] Initialize SDL audio or your chosen simple audio path
+- [x] Load WAV/OGG for effects
+- [x] Add play sound function
+- [x] Add sounds for:
+  - [x] door open
+  - [x] pickup
+  - [x] enemy alert
+  - [x] weapon fire later
+- [x] Add volume config
+- [x] Keep music optional for now
 
 ### Done When
-- [ ] Gameplay events trigger sound successfully
+- [x] Gameplay events trigger sound successfully
 
 ---
 
@@ -703,4 +703,6 @@ Make it runnable outside your dev machine.
   /docs
   CMakeLists.txt
 ```
+
+
 

@@ -16,11 +16,15 @@ target_sources(neo_wolf PRIVATE
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
     engine/assets/AssetManager.cpp
+    engine/assets/AudioConfig.cpp
     engine/assets/ContentConfig.cpp
     engine/assets/Texture.cpp
     engine/assets/TextureLoader.cpp
+    engine/audio/AudioSystem.cpp
     engine/platform/PlatformSDL.cpp
+    engine/particles/Particle.cpp
     engine/render/Framebuffer.cpp
+    engine/render/ParticleRenderer.cpp
     engine/render/Raycaster.cpp
     engine/render/SpriteRenderer.cpp
     engine/ui/UiRenderer.cpp
@@ -46,10 +50,13 @@ endif()
 add_executable(neo_wolf_tests
     tests/LogicTests.cpp
     engine/assets/AssetManager.cpp
+    engine/assets/AudioConfig.cpp
     engine/assets/ContentConfig.cpp
     engine/assets/Texture.cpp
     engine/assets/TextureLoader.cpp
+    engine/particles/Particle.cpp
     engine/render/Framebuffer.cpp
+    engine/render/ParticleRenderer.cpp
     engine/render/Raycaster.cpp
     engine/render/SpriteRenderer.cpp
     engine/ui/UiRenderer.cpp
@@ -72,3 +79,4 @@ if(MSVC)
         COMMAND_EXPAND_LISTS
     )
 endif()
+
