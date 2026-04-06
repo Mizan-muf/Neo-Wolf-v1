@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "levels": [
+    {
+      "id": "level01",
+      "map": "game/maps/level01.map",
+      "entities": "game/defs/level01.entities.json",
+      "player_spawn": {
+        "x": 2.5,
+        "y": 2.5
+      }
+    }
+  ]
+}

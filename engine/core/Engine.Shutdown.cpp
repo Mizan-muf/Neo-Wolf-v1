@@ -21,6 +21,25 @@ void Engine::Shutdown() {
     framebuffer_ = {};
     map_ = {};
     player_ = {};
+    assets_.Clear();
+    wallTexture_ = nullptr;
+    wallAltATexture_ = nullptr;
+    wallAltBTexture_ = nullptr;
+    doorTexture_ = nullptr;
+    floorTexture_ = nullptr;
+    ceilingTexture_ = nullptr;
+    enemySpriteTexture_ = nullptr;
+    pickupSpriteTexture_ = nullptr;
+    decorationSpriteTexture_ = nullptr;
+    missingTexture_ = {};
+    debugTopDownEnabled_ = true;
+    latestRayHits_.clear();
+    latestWallDepthBuffer_.clear();
+    sprites_.clear();
+    entityManager_.Clear();
+    playerHealth_ = 100;
+    playerAmmo_ = 24;
+    paused_ = false;
     running_ = false;
 
     LogInfo("Engine shutdown finished.");

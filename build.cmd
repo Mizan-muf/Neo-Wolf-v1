@@ -19,7 +19,16 @@ if not exist "%TOOLCHAIN%" (
 
 call "%VS_VARS%" || exit /b 1
 
-cmake -S . -B build -G "NMake Makefiles" -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN%" -DCMAKE_BUILD_TYPE=%CONFIG% || exit /b 1
+cmake -S . -B build -G "NMake Makefiles" -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN%" -DCMAKE_BUILD_TYPE=%CONFIG%
+if errorlevel 1 (
+  if exist build\CMakeCache.txt (
+    echo Detected incompatible CMake cache in build\. Removing and retrying configure...
+    rmdir /s /q build
+    cmake -S . -B build -G "NMake Makefiles" -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN%" -DCMAKE_BUILD_TYPE=%CONFIG% || exit /b 1
+  ) else (
+    exit /b 1
+  )
+)
 cmake --build build || exit /b 1
 
 echo Build completed: %CONFIG%

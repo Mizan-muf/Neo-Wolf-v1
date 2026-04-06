@@ -237,21 +237,21 @@ Move the player inside the map correctly.
 Render walls from first-person view.
 
 ### Checklist
-- [ ] Create raycaster module
-- [ ] For each screen column:
-  - [ ] compute ray direction
-  - [ ] step through map grid
-  - [ ] detect wall hit
-  - [ ] calculate hit distance
-- [ ] Correct fish-eye distortion
-- [ ] Compute projected wall height
-- [ ] Draw vertical wall slice
-- [ ] Differentiate horizontal/vertical hits for basic shading
-- [ ] Add debug toggle to show ray hits in top-down map
+- [x] Create raycaster module
+- [x] For each screen column:
+  - [x] compute ray direction
+  - [x] step through map grid
+  - [x] detect wall hit
+  - [x] calculate hit distance
+- [x] Correct fish-eye distortion
+- [x] Compute projected wall height
+- [x] Draw vertical wall slice
+- [x] Differentiate horizontal/vertical hits for basic shading
+- [x] Add debug toggle to show ray hits in top-down map
 
 ### Done When
-- [ ] First-person wall rendering works
-- [ ] Turning and moving updates the scene correctly
+- [x] First-person wall rendering works
+- [x] Turning and moving updates the scene correctly
 
 ---
 
@@ -261,17 +261,17 @@ Render walls from first-person view.
 Replace flat wall colors with textures.
 
 ### Checklist
-- [ ] Create texture loader
-- [ ] Load image files into CPU-readable pixel arrays
-- [ ] Assign wall textures by map cell type
-- [ ] Calculate texture X coordinate from wall hit
-- [ ] Sample texture vertically while drawing wall columns
-- [ ] Handle different wall types
-- [ ] Add missing-texture fallback
+- [x] Create texture loader
+- [x] Load image files into CPU-readable pixel arrays
+- [x] Assign wall textures by map cell type
+- [x] Calculate texture X coordinate from wall hit
+- [x] Sample texture vertically while drawing wall columns
+- [x] Handle different wall types
+- [x] Add missing-texture fallback
 
 ### Done When
-- [ ] Walls are textured correctly
-- [ ] Texture alignment looks stable while moving
+- [x] Walls are textured correctly
+- [x] Texture alignment looks stable while moving
 
 ---
 
@@ -281,14 +281,14 @@ Replace flat wall colors with textures.
 Make the scene feel complete.
 
 ### Checklist
-- [ ] Add simple flat-color ceiling
-- [ ] Add simple flat-color floor
-- [ ] Then upgrade to textured floor/ceiling if desired
-- [ ] Add basic depth-based darkening
-- [ ] Keep it simple and stable before optimizing
+- [x] Add simple flat-color ceiling
+- [x] Add simple flat-color floor
+- [x] Then upgrade to textured floor/ceiling if desired
+- [x] Add basic depth-based darkening
+- [x] Keep it simple and stable before optimizing
 
 ### Done When
-- [ ] Screen is no longer just floating walls on empty background
+- [x] Screen is no longer just floating walls on empty background
 
 ---
 
@@ -298,24 +298,24 @@ Make the scene feel complete.
 Render enemies, pickups, props as billboard sprites.
 
 ### Checklist
-- [ ] Create sprite entity type
-- [ ] Store:
-  - [ ] world position
-  - [ ] sprite texture id
-  - [ ] type
-  - [ ] active/visible state
-- [ ] Project sprite into screen space
-- [ ] Sort sprites by distance
-- [ ] Use wall depth buffer so hidden sprites do not draw through walls
-- [ ] Render centered billboard sprite
-- [ ] Add at least:
-  - [ ] one enemy sprite
-  - [ ] one pickup sprite
-  - [ ] one decoration sprite
+- [x] Create sprite entity type
+- [x] Store:
+  - [x] world position
+  - [x] sprite texture id
+  - [x] type
+  - [x] active/visible state
+- [x] Project sprite into screen space
+- [x] Sort sprites by distance
+- [x] Use wall depth buffer so hidden sprites do not draw through walls
+- [x] Render centered billboard sprite
+- [x] Add at least:
+  - [x] one enemy sprite
+  - [x] one pickup sprite
+  - [x] one decoration sprite
 
 ### Done When
-- [ ] Sprites appear in correct positions
-- [ ] Sprites hide behind walls correctly
+- [x] Sprites appear in correct positions
+- [x] Sprites hide behind walls correctly
 
 ---
 
@@ -325,32 +325,32 @@ Render enemies, pickups, props as billboard sprites.
 Make the world interactive.
 
 ### Checklist
-- [ ] Create entity manager
-- [ ] Add entity IDs
-- [ ] Add entity types:
-  - [ ] player
-  - [ ] enemy
-  - [ ] pickup
-  - [ ] door
-  - [ ] trigger
-- [ ] Add simple update loop for entities
-- [ ] Add proximity checks
-- [ ] Add item pickup logic
-- [ ] Add trigger activation logic
-- [ ] Add door open/close state
-- [ ] Add door interaction key
+- [x] Create entity manager
+- [x] Add entity IDs
+- [x] Add entity types:
+  - [x] player
+  - [x] enemy
+  - [x] pickup
+  - [x] door
+  - [x] trigger
+- [x] Add simple update loop for entities
+- [x] Add proximity checks
+- [x] Add item pickup logic
+- [x] Add trigger activation logic
+- [x] Add door open/close state
+- [x] Add door interaction key
 
 ### Done When
-- [ ] Player can interact with at least one usable object
-- [ ] Doors and pickups work
+- [x] Player can interact with at least one usable object
+- [x] Doors and pickups work
 
 ### Test Block (Phases 7-12)
 Reference: [test.md](./test.md)
-- [ ] Add tests for player movement and wall collision rules
-- [ ] Add tests for ray-step/hit-distance math
-- [ ] Add tests for sprite distance sorting
-- [ ] Add tests for basic entity interactions (pickup, trigger, door state)
-- [ ] Keep renderer checks to smoke/integration tests (avoid strict pixel matching)
+- [x] Add tests for player movement and wall collision rules
+- [x] Add tests for ray-step/hit-distance math
+- [x] Add tests for sprite distance sorting
+- [x] Add tests for basic entity interactions (pickup, trigger, door state)
+- [x] Keep renderer checks to smoke/integration tests (avoid strict pixel matching)
 
 ---
 
@@ -360,24 +360,24 @@ Reference: [test.md](./test.md)
 Move from hardcoded data to external files.
 
 ### Checklist
-- [ ] Create asset manager
-- [ ] Load textures from `/game/assets`
-- [ ] Load sprite definitions from config files
-- [ ] Load wall texture assignments from config files
-- [ ] Load map from text/config file instead of hardcoding
-- [ ] Load entity placements from file
-- [ ] Validate files on startup
-- [ ] Print useful file-loading errors
+- [x] Create asset manager
+- [x] Load textures from `/game/assets`
+- [x] Load sprite definitions from config files
+- [x] Load wall texture assignments from config files
+- [x] Load map from text/config file instead of hardcoding
+- [x] Load entity placements from file
+- [x] Validate files on startup
+- [x] Print useful file-loading errors
 
 ### Suggested Content Types
-- [ ] `textures.json`
-- [ ] `sprites.json`
-- [ ] `entities.json`
-- [ ] `level01.map`
-- [ ] `level01.entities.json`
+- [x] `textures.json`
+- [x] `sprites.json`
+- [x] `entities.json`
+- [x] `level01.map`
+- [x] `level01.entities.json`
 
 ### Done When
-- [ ] You can change map/content without recompiling engine
+- [x] You can change map/content without recompiling engine
 
 ---
 
@@ -387,19 +387,19 @@ Move from hardcoded data to external files.
 Render HUD and debug UI.
 
 ### Checklist
-- [ ] Add bitmap font or very simple text renderer
-- [ ] Add health display
-- [ ] Add ammo display
-- [ ] Add crosshair
-- [ ] Add debug overlay:
-  - [ ] FPS
-  - [ ] player position
-  - [ ] player angle
-  - [ ] current map cell
-- [ ] Add pause screen placeholder
+- [x] Add bitmap font or very simple text renderer
+- [x] Add health display
+- [x] Add ammo display
+- [x] Add crosshair
+- [x] Add debug overlay:
+  - [x] FPS
+  - [x] player position
+  - [x] player angle
+  - [x] current map cell
+- [x] Add pause screen placeholder
 
 ### Done When
-- [ ] Game has visible HUD and debug info
+- [x] Game has visible HUD and debug info
 
 ---
 
@@ -409,16 +409,16 @@ Render HUD and debug UI.
 Add simple retro-style lighting without making renderer too complex.
 
 ### Checklist
-- [ ] Add distance-based shading on walls
-- [ ] Add distance-based shading on sprites
-- [ ] Add per-cell light level support in map
-- [ ] Multiply final sampled color by light factor
-- [ ] Clamp light values safely
-- [ ] Keep only grayscale or scalar darkening for v1
+- [x] Add distance-based shading on walls
+- [x] Add distance-based shading on sprites
+- [x] Add per-cell light level support in map
+- [x] Multiply final sampled color by light factor
+- [x] Clamp light values safely
+- [x] Keep only grayscale or scalar darkening for v1
 
 ### Done When
-- [ ] Distant surfaces are darker
-- [ ] Scene has more depth and atmosphere
+- [x] Distant surfaces are darker
+- [x] Scene has more depth and atmosphere
 
 ---
 

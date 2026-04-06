@@ -34,6 +34,9 @@ bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
     case SDL_SCANCODE_ESCAPE:
         action = InputAction::Pause;
         return true;
+    case SDL_SCANCODE_TAB:
+        action = InputAction::ToggleDebugView;
+        return true;
     default:
         return false;
     }

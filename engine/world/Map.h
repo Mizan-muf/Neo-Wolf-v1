@@ -7,7 +7,9 @@ enum class TileType : std::uint8_t {
     Empty = 0,
     Wall,
     Door,
-    Trigger
+    Trigger,
+    WallAltA,
+    WallAltB
 };
 
 class Map {
@@ -24,9 +26,12 @@ public:
     TileType GetCell(int x, int y) const;
     bool SetCell(int x, int y, TileType type);
     bool IsWall(int x, int y) const;
+    float GetLightLevel(int x, int y) const;
+    bool SetLightLevel(int x, int y, float lightLevel);
 
 private:
     int width_ = 0;
     int height_ = 0;
     std::vector<TileType> cells_{};
+    std::vector<float> lightLevels_{};
 };

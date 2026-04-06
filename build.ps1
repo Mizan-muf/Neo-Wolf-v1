@@ -16,10 +16,29 @@ if (-not (Test-Path $toolchain)) {
     throw "Missing vcpkg toolchain file at: $toolchain"
 }
 
-$cmd = @(
+$configureCmd = @(
     "`"$vsVars`"",
-    "&& cmake -S . -B build -G `"NMake Makefiles`" -DCMAKE_TOOLCHAIN_FILE=`"$toolchain`" -DCMAKE_BUILD_TYPE=$Config",
+    "&& cmake -S . -B build -G `"NMake Makefiles`" -DCMAKE_TOOLCHAIN_FILE=`"$toolchain`" -DCMAKE_BUILD_TYPE=$Config"
+) -join " "
+
+cmd /c $configureCmd
+if ($LASTEXITCODE -ne 0) {
+    if (Test-Path (Join-Path $PSScriptRoot "build\CMakeCache.txt")) {
+        Write-Host "Detected incompatible CMake cache in build\. Removing and retrying configure..."
+        Remove-Item -LiteralPath (Join-Path $PSScriptRoot "build") -Recurse -Force
+        cmd /c $configureCmd
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    } else {
+        exit $LASTEXITCODE
+    }
+}
+
+$buildCmd = @(
+    "`"$vsVars`"",
     "&& cmake --build build"
 ) -join " "
 
-cmd /c $cmd
+cmd /c $buildCmd
+exit $LASTEXITCODE

@@ -1,62 +1,11 @@
 #include "engine/core/Engine.h"
 
-#include <algorithm>
 #include <cmath>
 
 #include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
-
-namespace {
-bool IsBlockedByWall(const Map& map, const Vec2& position, float radius) {
-    const int minX = static_cast<int>(std::floor(position.x - radius));
-    const int maxX = static_cast<int>(std::floor(position.x + radius));
-    const int minY = static_cast<int>(std::floor(position.y - radius));
-    const int maxY = static_cast<int>(std::floor(position.y + radius));
-
-    for (int y = minY; y <= maxY; ++y) {
-        for (int x = minX; x <= maxX; ++x) {
-            if (!map.IsWall(x, y)) {
-                continue;
-            }
-
-            const float cellMinX = static_cast<float>(x);
-            const float cellMaxX = cellMinX + 1.0f;
-            const float cellMinY = static_cast<float>(y);
-            const float cellMaxY = cellMinY + 1.0f;
-
-            const float closestX = std::max(cellMinX, std::min(position.x, cellMaxX));
-            const float closestY = std::max(cellMinY, std::min(position.y, cellMaxY));
-            const float dx = position.x - closestX;
-            const float dy = position.y - closestY;
-            if ((dx * dx + dy * dy) < radius * radius) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-void ResolveCollisionAgainstWalls(const Map& map, Player& player, Vec2 displacement) {
-    Vec2 nextPosition = player.position;
-
-    if (displacement.x != 0.0f) {
-        const Vec2 candidate{nextPosition.x + displacement.x, nextPosition.y};
-        if (!IsBlockedByWall(map, candidate, player.collisionRadius)) {
-            nextPosition.x = candidate.x;
-        }
-    }
-
-    if (displacement.y != 0.0f) {
-        const Vec2 candidate{nextPosition.x, nextPosition.y + displacement.y};
-        if (!IsBlockedByWall(map, candidate, player.collisionRadius)) {
-            nextPosition.y = candidate.y;
-        }
-    }
-
-    player.position = nextPosition;
-}
-} // namespace
+#include "engine/world/InteractionRules.h"
+#include "engine/world/MovementRules.h"
 
 void Engine::Update(double deltaSeconds) {
     if (!running_ || platform_ == nullptr) {
@@ -79,12 +28,23 @@ void Engine::Update(double deltaSeconds) {
         return;
     }
 
+    if (input_.WasPressed(InputAction::ToggleDebugView)) {
+        debugTopDownEnabled_ = !debugTopDownEnabled_;
+    }
+    if (input_.WasPressed(InputAction::Pause)) {
+        paused_ = !paused_;
+    }
+
     if (map_.Width() <= 0 || map_.Height() <= 0) {
         return;
     }
 
     const float dt = static_cast<float>(time_.deltaSeconds);
     if (dt <= 0.0f) {
+        return;
+    }
+
+    if (paused_) {
         return;
     }
 
@@ -121,5 +81,25 @@ void Engine::Update(double deltaSeconds) {
         desiredMove = Normalize(desiredMove);
         const Vec2 displacement = Scale(desiredMove, player_.moveSpeed * dt);
         ResolveCollisionAgainstWalls(map_, player_, displacement);
+    }
+
+    SyncPlayerEntity(entityManager_, player_);
+    UpdateEntityInteractions(entityManager_, map_, player_, input_.WasPressed(InputAction::Interact));
+
+    for (SpriteEntity& sprite : sprites_) {
+        if (sprite.entityId < 0) {
+            continue;
+        }
+
+        const Entity* owner = entityManager_.GetEntityById(sprite.entityId);
+        if (owner == nullptr) {
+            sprite.active = false;
+            sprite.visible = false;
+            continue;
+        }
+
+        sprite.position = owner->position;
+        sprite.active = owner->active;
+        sprite.visible = owner->visible;
     }
 }

@@ -13,6 +13,7 @@ enum class InputAction : std::uint8_t {
     TurnRight,
     Interact,
     Pause,
+    ToggleDebugView,
     Count
 };
 

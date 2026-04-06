@@ -1,0 +1,5 @@
+{
+  "enemy": "game/assets/sprite_enemy.ppm",
+  "pickup": "game/assets/sprite_pickup.ppm",
+  "decoration": "game/assets/sprite_decor.ppm"
+}

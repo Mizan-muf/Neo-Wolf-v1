@@ -1,0 +1,8 @@
+{
+  "wall": "game/assets/wall_main.ppm",
+  "wall_alt_a": "game/assets/wall_alt_a.ppm",
+  "wall_alt_b": "game/assets/wall_alt_b.ppm",
+  "door": "game/assets/wall_alt_b.ppm",
+  "floor": "game/assets/floor.ppm",
+  "ceiling": "game/assets/ceiling.ppm"
+}

@@ -1,0 +1,7 @@
+# type,x,y,mapX,mapY
+player,2.5,2.5
+enemy,6.5,2.8
+pickup,11.8,6.6
+door,8.5,7.5,8,7
+trigger,13.5,8.5,13,8
+decoration,4.2,8.8

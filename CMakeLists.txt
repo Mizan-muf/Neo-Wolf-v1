@@ -15,9 +15,21 @@ target_sources(neo_wolf PRIVATE
     engine/core/Engine.Update.cpp
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
+    engine/assets/AssetManager.cpp
+    engine/assets/ContentConfig.cpp
+    engine/assets/Texture.cpp
+    engine/assets/TextureLoader.cpp
     engine/platform/PlatformSDL.cpp
     engine/render/Framebuffer.cpp
+    engine/render/Raycaster.cpp
+    engine/render/SpriteRenderer.cpp
+    engine/ui/UiRenderer.cpp
+    engine/world/Entity.cpp
+    engine/world/EntityPlacementLoader.cpp
+    engine/world/InteractionRules.cpp
+    engine/world/MapLoader.cpp
     engine/world/Map.cpp
+    engine/world/MovementRules.cpp
 )
 target_include_directories(neo_wolf PRIVATE ${CMAKE_SOURCE_DIR})
 
@@ -33,7 +45,20 @@ endif()
 
 add_executable(neo_wolf_tests
     tests/LogicTests.cpp
+    engine/assets/AssetManager.cpp
+    engine/assets/ContentConfig.cpp
+    engine/assets/Texture.cpp
+    engine/assets/TextureLoader.cpp
+    engine/render/Framebuffer.cpp
+    engine/render/Raycaster.cpp
+    engine/render/SpriteRenderer.cpp
+    engine/ui/UiRenderer.cpp
+    engine/world/Entity.cpp
+    engine/world/EntityPlacementLoader.cpp
+    engine/world/InteractionRules.cpp
+    engine/world/MapLoader.cpp
     engine/world/Map.cpp
+    engine/world/MovementRules.cpp
 )
 target_include_directories(neo_wolf_tests PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME neo_wolf_tests COMMAND neo_wolf_tests)
