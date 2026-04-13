@@ -4,7 +4,14 @@ setlocal
 set "CONFIG=%~1"
 if "%CONFIG%"=="" set "CONFIG=Release"
 
-set "VS_VARS=C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+set "VS_VARS="
+for %%E in (Professional Community Enterprise BuildTools) do (
+  if not defined VS_VARS (
+    if exist "C:\Program Files\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat" (
+      set "VS_VARS=C:\Program Files\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat"
+    )
+  )
+)
 set "TOOLCHAIN=%~dp0vcpkg\scripts\buildsystems\vcpkg.cmake"
 
 if not exist "%VS_VARS%" (
