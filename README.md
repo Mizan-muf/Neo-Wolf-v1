@@ -75,13 +75,28 @@ Rendering path right now:
 
 ## Requirements
 
+- Windows 10/11
+- Visual Studio 2022 (Community/Professional/Enterprise/BuildTools) with C++ workload
 - CMake 3.21+
-- A C++17 compiler
-- SDL2 development libraries
+- A C++17 compiler toolchain (MSVC)
+
+## First-Time Setup (Windows)
+
+Run from the `Neo-Wolf-v1` folder:
+
+```powershell
+git clone https://github.com/microsoft/vcpkg.git
+.\vcpkg\bootstrap-vcpkg.bat
+.\vcpkg\vcpkg.exe install sdl2:x64-windows
+```
+
+This repo's `build.cmd` uses the local vcpkg toolchain at:
+`.\vcpkg\scripts\buildsystems\vcpkg.cmake`
 
 ## Build (Windows, example)
 
 ```powershell
+cd .\Neo-Wolf-v1
 .\build.cmd Release
 ```
 
