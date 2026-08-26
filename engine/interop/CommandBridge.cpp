@@ -55,15 +55,45 @@ void CommandBridge::ProcessCommands(Engine& engine) {
 
     for (const InteropCommand& cmd : localCommands) {
         switch (cmd.type) {
-        case InteropCommandType::SetGameState:
-            engine.SetState(static_cast<GameState>(cmd.intArg1));
+        case InteropCommandType::SetGameState: {
+            int stateVal = cmd.intArg1;
+            if (stateVal >= static_cast<int>(GameState::Menu) &&
+                stateVal <= static_cast<int>(GameState::Victory)) {
+                engine.SetState(static_cast<GameState>(stateVal));
+            }
             break;
+        }
         case InteropCommandType::ResetLevel:
             engine.ResetLevel();
             break;
-        case InteropCommandType::LoadLevel:
-            engine.LoadLevel(cmd.strArg, cmd.strArg);
+        case InteropCommandType::LoadLevel: {
+            std::string str = cmd.strArg;
+            std::string mapPath = str;
+            std::string entitiesPath = "";
+            auto sep = str.find(';');
+            if (sep == std::string::npos) {
+                sep = str.find(',');
+            }
+            if (sep != std::string::npos) {
+                mapPath = str.substr(0, sep);
+                entitiesPath = str.substr(sep + 1);
+            } else {
+                std::string base = mapPath;
+                auto dot = base.rfind('.');
+                if (dot != std::string::npos) {
+                    base = base.substr(0, dot);
+                }
+                auto slash = base.rfind('/');
+                if (slash != std::string::npos) {
+                    std::string levelName = base.substr(slash + 1);
+                    entitiesPath = "game/defs/" + levelName + ".entities.json";
+                } else {
+                    entitiesPath = base + ".entities.json";
+                }
+            }
+            engine.LoadLevel(mapPath, entitiesPath);
             break;
+        }
         case InteropCommandType::SpawnEntity:
             engine.entityManager_.CreateEntity(static_cast<EntityType>(cmd.intArg1), {cmd.floatArg1, cmd.floatArg2});
             break;

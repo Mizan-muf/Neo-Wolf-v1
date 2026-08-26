@@ -1,11 +1,13 @@
 #pragma once
 
-#include <cstdint>
-
-#include "engine/interop/CommandBridge.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
+#include "engine/interop/CommandBridge.h"
 extern "C" {
+#else
+typedef struct InteropCommand InteropCommand;
+typedef struct InteropEvent InteropEvent;
 #endif
 
 // Engine lifecycle
@@ -52,7 +54,7 @@ void nw_engine_spawn_particle(
     float vx,
     float vy,
     float life,
-    std::uint32_t color);
+    uint32_t color);
 void nw_engine_show_message(void* handle, const char* message, float duration);
 
 // Interop Command Bridge

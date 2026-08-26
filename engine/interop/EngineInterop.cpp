@@ -175,10 +175,18 @@ void nw_engine_spawn_particle(
     float vx,
     float vy,
     float life,
-    std::uint32_t color) {
+    uint32_t color) {
     Engine* engine = ToEngine(handle);
     if (engine != nullptr) {
-        engine->particleManager_.SpawnHitSpark({x, y});
+        Particle p{};
+        p.position = {x, y};
+        p.velocity = {vx, vy};
+        p.lifetimeRemaining = (life > 0.0f) ? life : 0.5f;
+        p.lifetimeTotal = p.lifetimeRemaining;
+        p.color = (color != 0) ? color : 0xFFFFC266u;
+        p.size = 0.06f;
+        p.active = true;
+        engine->particleManager_.Spawn(p);
     }
 }
 

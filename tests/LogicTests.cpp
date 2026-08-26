@@ -699,7 +699,7 @@ void TestPlayableVerticalSliceSimulation() {
     TEST_ASSERT(map.GetCell(6, 2) == TileType::Empty);
 
     // Step into victory trigger
-    Entity& exitTrigger = manager.CreateEntity(EntityType::Trigger, Vec2{10.0f, 2.0f});
+    manager.CreateEntity(EntityType::Trigger, Vec2{10.0f, 2.0f});
     player.position = {10.0f, 2.0f};
     GameplayEvents trigEvents{};
     UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, 100, 99, false, trigEvents);

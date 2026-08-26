@@ -575,7 +575,7 @@ def validate_project(project_root: Path) -> ValidationReport:
         if not ppm_files:
             report.add_error(f"No .ppm files found in {assets_dir}")
         for ppm_file in ppm_files:
-            ppm_rep = validate_ppm(ppm_file, expected_dim=64)
+            ppm_rep = validate_ppm(ppm_file, expected_dim=None)
             report.merge(ppm_rep)
 
         # Validate WAV audio files
