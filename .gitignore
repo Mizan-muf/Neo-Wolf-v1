@@ -5,18 +5,27 @@ build-*/
 *.obj
 *.obj.d
 *.bin
+*.o
+*.a
+*.so
+*.dylib
+neo_wolf
+neo_wolf_tests
+release/
+*.zip
+*.tar.gz
+__pycache__/
+*.py[cod]
 .wiki-tmp/
 wiki-home.md
 
-# CMake
+# CMake temporary files
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-Makefile
 
 # IDE/system
 .vscode/
 .DS_Store
 Thumbs.db
 vcpkg/
- 

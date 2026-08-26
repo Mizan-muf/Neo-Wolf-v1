@@ -12,3 +12,6 @@ void LogMessage(LogLevel level, std::string_view message);
 void LogInfo(std::string_view message);
 void LogWarning(std::string_view message);
 void LogError(std::string_view message);
+
+void SetLogFilePath(std::string_view path);
+std::string GetLogFilePath();

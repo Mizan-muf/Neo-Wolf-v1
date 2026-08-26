@@ -19,9 +19,30 @@ inline Vec2 Scale(const Vec2& value, float scalar) {
     return {value.x * scalar, value.y * scalar};
 }
 
+inline Vec2 operator+(const Vec2& a, const Vec2& b) {
+    return {a.x + b.x, a.y + b.y};
+}
+
+inline Vec2 operator-(const Vec2& a, const Vec2& b) {
+    return {a.x - b.x, a.y - b.y};
+}
+
+inline Vec2 operator*(const Vec2& a, float scalar) {
+    return {a.x * scalar, a.y * scalar};
+}
+
+inline Vec2 operator*(float scalar, const Vec2& a) {
+    return {a.x * scalar, a.y * scalar};
+}
+
 inline float Length(const Vec2& value) {
     return std::sqrt(value.x * value.x + value.y * value.y);
 }
+
+inline float LengthSquared(const Vec2& value) {
+    return value.x * value.x + value.y * value.y;
+}
+
 
 inline Vec2 Normalize(const Vec2& value) {
     const float len = Length(value);

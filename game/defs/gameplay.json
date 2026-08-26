@@ -1,0 +1,32 @@
+{
+  "enemy": {
+    "health": 50,
+    "damage": 12,
+    "moveSpeed": 1.6,
+    "alertRadius": 6.5,
+    "attackRadius": 1.1,
+    "attackRate": 1.0
+  },
+  "pickups": {
+    "health": {
+      "value": 25,
+      "maxPlayerHealth": 100
+    },
+    "ammo": {
+      "value": 12,
+      "maxPlayerAmmo": 99
+    }
+  },
+  "weapon": {
+    "damage": 35,
+    "fireRate": 0.25,
+    "range": 12.0,
+    "initialAmmo": 24
+  },
+  "player": {
+    "initialHealth": 100,
+    "moveSpeed": 3.0,
+    "turnSpeed": 1.8,
+    "collisionRadius": 0.22
+  }
+}

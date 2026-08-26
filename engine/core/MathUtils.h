@@ -28,6 +28,11 @@ inline float NormalizeAngleRadians(float radians) {
     return result;
 }
 
+inline float NormalizeAngle(float radians) {
+    return NormalizeAngleRadians(radians);
+}
+
+
 inline float NormalizeAngleDegrees(float degrees) {
     float result = std::fmod(degrees, 360.0f);
     if (result < 0.0f) {

@@ -21,6 +21,8 @@ target_sources(neo_wolf PRIVATE
     engine/assets/Texture.cpp
     engine/assets/TextureLoader.cpp
     engine/audio/AudioSystem.cpp
+    engine/interop/CommandBridge.cpp
+    engine/interop/EngineInterop.cpp
     engine/platform/PlatformSDL.cpp
     engine/particles/Particle.cpp
     engine/render/Framebuffer.cpp
@@ -37,10 +39,11 @@ target_sources(neo_wolf PRIVATE
 )
 target_include_directories(neo_wolf PRIVATE ${CMAKE_SOURCE_DIR})
 
-# Prefer SDL2 config package; fall back to CMake's FindSDL2 module.
-find_package(SDL2 CONFIG QUIET)
-if(SDL2_FOUND)
-    target_link_libraries(neo_wolf PRIVATE SDL2::SDL2 SDL2::SDL2main)
+find_library(SDL2_LIB NAMES SDL2 SDL2-2.0 libSDL2 PATHS /home/mizan/deps/usr/lib /usr/lib/x86_64-linux-gnu)
+find_path(SDL2_INCLUDE_DIR NAMES SDL.h PATH_SUFFIXES SDL2 PATHS /home/mizan/deps/usr/include /home/mizan/deps/usr/include/SDL2)
+if(SDL2_LIB AND SDL2_INCLUDE_DIR)
+    target_include_directories(neo_wolf PRIVATE ${SDL2_INCLUDE_DIR})
+    target_link_libraries(neo_wolf PRIVATE ${SDL2_LIB} -lpthread -ldl -lm)
 else()
     find_package(SDL2 REQUIRED)
     target_include_directories(neo_wolf PRIVATE ${SDL2_INCLUDE_DIRS})
@@ -49,11 +52,22 @@ endif()
 
 add_executable(neo_wolf_tests
     tests/LogicTests.cpp
+    engine/core/Log.cpp
+    engine/core/Engine.Core.cpp
+    engine/core/Engine.Init.cpp
+    engine/core/Engine.Update.cpp
+    engine/core/Engine.Render.cpp
+    engine/core/Engine.Shutdown.cpp
+    engine/interop/CommandBridge.cpp
+    engine/interop/EngineInterop.cpp
+    engine/platform/PlatformSDL.cpp
     engine/assets/AssetManager.cpp
     engine/assets/AudioConfig.cpp
     engine/assets/ContentConfig.cpp
     engine/assets/Texture.cpp
     engine/assets/TextureLoader.cpp
+    engine/audio/AudioSystem.cpp
+    engine/interop/CommandBridge.cpp
     engine/particles/Particle.cpp
     engine/render/Framebuffer.cpp
     engine/render/ParticleRenderer.cpp
@@ -68,6 +82,13 @@ add_executable(neo_wolf_tests
     engine/world/MovementRules.cpp
 )
 target_include_directories(neo_wolf_tests PRIVATE ${CMAKE_SOURCE_DIR})
+if(SDL2_INCLUDE_DIR)
+    target_include_directories(neo_wolf_tests PRIVATE ${SDL2_INCLUDE_DIR})
+endif()
+if(SDL2_LIB)
+    target_link_libraries(neo_wolf_tests PRIVATE ${SDL2_LIB} -lpthread -ldl -lm)
+endif()
+
 add_test(NAME neo_wolf_tests COMMAND neo_wolf_tests)
 
 # Copy runtime DLLs (e.g., SDL2.dll from vcpkg dynamic builds) next to the exe.
@@ -79,4 +100,3 @@ if(MSVC)
         COMMAND_EXPAND_LISTS
     )
 endif()
-

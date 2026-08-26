@@ -41,8 +41,12 @@ void Engine::Shutdown() {
     particleManager_.Clear();
     ambientDustSpawnTimer_ = 0.0f;
     enemyAlertCooldown_ = 0.0f;
+    playerAttackCooldown_ = 0.0f;
     playerHealth_ = 100;
     playerAmmo_ = 24;
+    hudMessage_.clear();
+    hudMessageTimer_ = 0.0f;
+    state_ = GameState::Menu;
     paused_ = false;
     running_ = false;
 

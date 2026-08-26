@@ -6,5 +6,7 @@
 
 bool IsBlockedByWall(const Map& map, const Vec2& position, float radius);
 void ResolveCollisionAgainstWalls(const Map& map, Player& player, Vec2 displacement);
+Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacement, float radius);
 float DistanceSquared(const Vec2& a, const Vec2& b);
 bool IsCircleOverlappingCell(const Vec2& center, float radius, int cellX, int cellY);
+

@@ -1,177 +1,94 @@
 #include "engine/core/Engine.h"
 
-#include <algorithm>
 #include <cmath>
-#include <cstddef>
+#include <vector>
 
 #include "engine/core/Color.h"
-#include "engine/core/MathUtils.h"
+#include "engine/core/Log.h"
 #include "engine/platform/PlatformSDL.h"
+#include "engine/render/Framebuffer.h"
 #include "engine/render/ParticleRenderer.h"
 #include "engine/render/Raycaster.h"
 #include "engine/render/SpriteRenderer.h"
 #include "engine/ui/UiRenderer.h"
 
 namespace {
-void DrawLine(
+constexpr float kFieldOfViewRadians = 1.04719755f; // 60 degrees
+
+void RenderCeilingAndFloor(
     Framebuffer& framebuffer,
-    int x0,
-    int y0,
-    int x1,
-    int y1,
-    std::uint32_t color) {
-    int dx = std::abs(x1 - x0);
-    const int sx = x0 < x1 ? 1 : -1;
-    int dy = -std::abs(y1 - y0);
-    const int sy = y0 < y1 ? 1 : -1;
-    int error = dx + dy;
+    const Texture* ceilingTexture,
+    const Texture* floorTexture) {
+    const int halfHeight = framebuffer.Height() / 2;
+    const int width = framebuffer.Width();
 
-    while (true) {
-        framebuffer.PutPixel(x0, y0, color);
-        if (x0 == x1 && y0 == y1) {
-            break;
+    for (int y = 0; y < halfHeight; ++y) {
+        for (int x = 0; x < width; ++x) {
+            std::uint32_t pixel = 0xFF2A2A2Au;
+            if (ceilingTexture != nullptr && ceilingTexture->Width() > 0 && ceilingTexture->Height() > 0) {
+                const int tx = x % ceilingTexture->Width();
+                const int ty = y % ceilingTexture->Height();
+                pixel = ceilingTexture->GetPixel(tx, ty);
+            }
+            framebuffer.PutPixel(x, y, pixel);
         }
+    }
 
-        const int doubledError = 2 * error;
-        if (doubledError >= dy) {
-            error += dy;
-            x0 += sx;
-        }
-        if (doubledError <= dx) {
-            error += dx;
-            y0 += sy;
+    for (int y = halfHeight; y < framebuffer.Height(); ++y) {
+        for (int x = 0; x < width; ++x) {
+            std::uint32_t pixel = 0xFF3F3F3Fu;
+            if (floorTexture != nullptr && floorTexture->Width() > 0 && floorTexture->Height() > 0) {
+                const int tx = x % floorTexture->Width();
+                const int ty = y % floorTexture->Height();
+                pixel = floorTexture->GetPixel(tx, ty);
+            }
+            framebuffer.PutPixel(x, y, pixel);
         }
     }
 }
 
-void DrawDebugTopDownMap(
+void RenderTopDownMap(
     Framebuffer& framebuffer,
     const Map& map,
     const Player& player,
-    const std::vector<RaycastHit>& hits,
+    const std::vector<RaycastHit>& /*hits*/,
     const std::vector<SpriteEntity>& sprites) {
-    if (map.Width() <= 0 || map.Height() <= 0) {
-        return;
-    }
-
-    const int targetOverlayWidth = framebuffer.Width() / 3;
-    const int targetOverlayHeight = framebuffer.Height() / 3;
-    const int horizontalCellSize = targetOverlayWidth / (map.Width() + 1);
-    const int verticalCellSize = targetOverlayHeight / (map.Height() + 1);
-    const int cellSize = std::max(4, std::min(horizontalCellSize, verticalCellSize));
-    const int mapPixelWidth = map.Width() * cellSize;
-    const int mapPixelHeight = map.Height() * cellSize;
-    const int mapOriginX = 16;
-    const int mapOriginY = 16;
-
-    const std::uint32_t panelColor = PackARGB32(MakeColor(10, 12, 18, 220));
-    framebuffer.DrawRect(
-        mapOriginX - 6,
-        mapOriginY - 6,
-        mapPixelWidth + 12,
-        mapPixelHeight + 12,
-        panelColor);
-
-    const std::uint32_t emptyColor = PackARGB32(MakeColor(34, 39, 48));
-    const std::uint32_t wallColor = PackARGB32(MakeColor(205, 220, 240));
-    const std::uint32_t wallAltAColor = PackARGB32(MakeColor(148, 192, 225));
-    const std::uint32_t wallAltBColor = PackARGB32(MakeColor(228, 186, 121));
-    const std::uint32_t doorColor = PackARGB32(MakeColor(201, 135, 45));
-    const std::uint32_t triggerColor = PackARGB32(MakeColor(86, 191, 107));
-    const std::uint32_t gridColor = PackARGB32(MakeColor(20, 23, 30));
-    const std::uint32_t playerColor = PackARGB32(MakeColor(255, 64, 64));
-    const std::uint32_t facingColor = PackARGB32(MakeColor(255, 209, 102));
-    const std::uint32_t rayColor = PackARGB32(MakeColor(255, 246, 196, 180));
-    const std::uint32_t enemySpriteColor = PackARGB32(MakeColor(231, 92, 92));
-    const std::uint32_t pickupSpriteColor = PackARGB32(MakeColor(248, 210, 94));
-    const std::uint32_t decorSpriteColor = PackARGB32(MakeColor(120, 180, 230));
+    constexpr int kCellSize = 4;
+    constexpr int kOffsetX = 8;
+    constexpr int kOffsetY = 8;
 
     for (int y = 0; y < map.Height(); ++y) {
         for (int x = 0; x < map.Width(); ++x) {
-            std::uint32_t tileColor = emptyColor;
             const TileType tile = map.GetCell(x, y);
+            std::uint32_t color = 0x88202020u;
             if (tile == TileType::Wall) {
-                tileColor = wallColor;
+                color = 0xDD888888u;
             } else if (tile == TileType::WallAltA) {
-                tileColor = wallAltAColor;
+                color = 0xDDAA6666u;
             } else if (tile == TileType::WallAltB) {
-                tileColor = wallAltBColor;
+                color = 0xDD6666AAu;
             } else if (tile == TileType::Door) {
-                tileColor = doorColor;
+                color = 0xDDCC8833u;
             } else if (tile == TileType::Trigger) {
-                tileColor = triggerColor;
+                color = 0xDD44CC44u;
             }
-
-            const int px = mapOriginX + x * cellSize;
-            const int py = mapOriginY + y * cellSize;
-            framebuffer.DrawRect(px, py, cellSize, cellSize, tileColor);
-
-            if (cellSize > 4) {
-                framebuffer.DrawRect(px, py, cellSize, 1, gridColor);
-                framebuffer.DrawRect(px, py, 1, cellSize, gridColor);
-            }
+            framebuffer.DrawRect(kOffsetX + x * kCellSize, kOffsetY + y * kCellSize, kCellSize - 1, kCellSize - 1, color);
         }
     }
 
-    const float playerScreenX = static_cast<float>(mapOriginX) + player.position.x * static_cast<float>(cellSize);
-    const float playerScreenY = static_cast<float>(mapOriginY) + player.position.y * static_cast<float>(cellSize);
-
-    for (std::size_t i = 0; i < hits.size(); i += 8) {
-        const RaycastHit& hit = hits[i];
-        if (!hit.hit) {
-            continue;
-        }
-
-        const int rayEndX =
-            static_cast<int>(std::round(static_cast<float>(mapOriginX) + hit.hitPosition.x * cellSize));
-        const int rayEndY =
-            static_cast<int>(std::round(static_cast<float>(mapOriginY) + hit.hitPosition.y * cellSize));
-        DrawLine(
-            framebuffer,
-            static_cast<int>(std::round(playerScreenX)),
-            static_cast<int>(std::round(playerScreenY)),
-            rayEndX,
-            rayEndY,
-            rayColor);
+    // Sprites on minimap
+    for (const SpriteEntity& spr : sprites) {
+        if (!spr.active) continue;
+        const int sx = kOffsetX + static_cast<int>(spr.position.x * kCellSize);
+        const int sy = kOffsetY + static_cast<int>(spr.position.y * kCellSize);
+        const std::uint32_t col = (spr.type == SpriteType::Enemy) ? 0xFFFF3333u : 0xFF33FF33u;
+        framebuffer.DrawRect(sx - 1, sy - 1, 3, 3, col);
     }
 
-    const int playerRadiusPixels = std::max(2, static_cast<int>(std::round(player.collisionRadius * cellSize)));
-    framebuffer.DrawRect(
-        static_cast<int>(std::round(playerScreenX)) - playerRadiusPixels,
-        static_cast<int>(std::round(playerScreenY)) - playerRadiusPixels,
-        playerRadiusPixels * 2 + 1,
-        playerRadiusPixels * 2 + 1,
-        playerColor);
-
-    const float facingLineLength = static_cast<float>(cellSize) * 0.7f;
-    const int facingEndX = static_cast<int>(std::round(
-        playerScreenX + std::cos(player.directionAngleRadians) * facingLineLength));
-    const int facingEndY = static_cast<int>(std::round(
-        playerScreenY + std::sin(player.directionAngleRadians) * facingLineLength));
-    DrawLine(
-        framebuffer,
-        static_cast<int>(std::round(playerScreenX)),
-        static_cast<int>(std::round(playerScreenY)),
-        facingEndX,
-        facingEndY,
-        facingColor);
-
-    for (const SpriteEntity& sprite : sprites) {
-        if (!sprite.active || !sprite.visible) {
-            continue;
-        }
-
-        const int sx = static_cast<int>(std::round(static_cast<float>(mapOriginX) + sprite.position.x * static_cast<float>(cellSize)));
-        const int sy = static_cast<int>(std::round(static_cast<float>(mapOriginY) + sprite.position.y * static_cast<float>(cellSize)));
-        std::uint32_t color = decorSpriteColor;
-        if (sprite.type == SpriteType::Enemy) {
-            color = enemySpriteColor;
-        } else if (sprite.type == SpriteType::Pickup) {
-            color = pickupSpriteColor;
-        }
-
-        framebuffer.DrawRect(sx - 2, sy - 2, 5, 5, color);
-    }
+    // Player position
+    const int px = kOffsetX + static_cast<int>(player.position.x * kCellSize);
+    const int py = kOffsetY + static_cast<int>(player.position.y * kCellSize);
+    framebuffer.DrawRect(px - 1, py - 1, 3, 3, 0xFFFFFF00u);
 }
 } // namespace
 
@@ -180,75 +97,85 @@ void Engine::Render() {
         return;
     }
 
-    framebuffer_.Clear(PackARGB32(MakeColor(14, 16, 22)));
-    latestRayHits_.clear();
-    latestWallDepthBuffer_.clear();
-
-    if (map_.Width() > 0 && map_.Height() > 0) {
-        RaycasterRenderParams params{};
-        params.fieldOfViewRadians = DegreesToRadians(60.0f);
-        params.wallTexture = wallTexture_;
-        params.wallAltATexture = wallAltATexture_;
-        params.wallAltBTexture = wallAltBTexture_;
-        params.doorTexture = doorTexture_;
-        params.floorTexture = floorTexture_;
-        params.ceilingTexture = ceilingTexture_;
-        params.missingTexture = &missingTexture_;
-        Raycaster::RenderWalls(map_, player_, framebuffer_, params, latestRayHits_);
-
-        latestWallDepthBuffer_.resize(latestRayHits_.size());
-        for (std::size_t i = 0; i < latestRayHits_.size(); ++i) {
-            latestWallDepthBuffer_[i] = latestRayHits_[i].hit
-                ? latestRayHits_[i].distanceCorrected
-                : 1000000.0f;
-        }
-
-        SpriteTextureSet spriteTextures{};
-        spriteTextures.enemy = enemySpriteTexture_;
-        spriteTextures.pickup = pickupSpriteTexture_;
-        spriteTextures.decoration = decorationSpriteTexture_;
-        spriteTextures.missing = &missingTexture_;
-        SpriteRenderer::Render(
-            map_,
-            player_,
-            framebuffer_,
-            latestWallDepthBuffer_,
-            sprites_,
-            spriteTextures,
-            params.fieldOfViewRadians);
-
-        ParticleRenderer::Render(
-            map_,
-            player_,
-            framebuffer_,
-            latestWallDepthBuffer_,
-            particleManager_.Particles(),
-            params.fieldOfViewRadians);
-
-        if (debugTopDownEnabled_) {
-            DrawDebugTopDownMap(framebuffer_, map_, player_, latestRayHits_, sprites_);
-        }
+    if (state_ == GameState::Menu) {
+        UiRenderer::DrawMenuScreen(framebuffer_);
+        platform_->PresentFramebuffer(framebuffer_);
+        platform_->Present();
+        return;
     }
 
-    const float fps = (time_.deltaSeconds > 0.00001) ? static_cast<float>(1.0 / time_.deltaSeconds) : 0.0f;
-    const float angleDegrees = RadiansToDegrees(player_.directionAngleRadians);
-    const int cellX = static_cast<int>(std::floor(player_.position.x));
-    const int cellY = static_cast<int>(std::floor(player_.position.y));
+    // Gameplay, Paused, GameOver, Victory screens share world backdrop
+    RenderCeilingAndFloor(framebuffer_, ceilingTexture_, floorTexture_);
 
-    UiRenderer::DrawHud(framebuffer_, playerHealth_, playerAmmo_);
-    UiRenderer::DrawCrosshair(framebuffer_);
-    UiRenderer::DrawDebugOverlay(
+    RaycasterRenderParams rayParams{};
+    rayParams.fieldOfViewRadians = kFieldOfViewRadians;
+    rayParams.wallTexture = wallTexture_;
+    rayParams.wallAltATexture = wallAltATexture_;
+    rayParams.wallAltBTexture = wallAltBTexture_;
+    rayParams.doorTexture = doorTexture_;
+    rayParams.floorTexture = floorTexture_;
+    rayParams.ceilingTexture = ceilingTexture_;
+    rayParams.missingTexture = &missingTexture_;
+
+    Raycaster::RenderWalls(map_, player_, framebuffer_, rayParams, latestRayHits_);
+
+    latestWallDepthBuffer_.resize(latestRayHits_.size());
+    for (std::size_t i = 0; i < latestRayHits_.size(); ++i) {
+        latestWallDepthBuffer_[i] = latestRayHits_[i].distanceCorrected;
+    }
+
+    SpriteTextureSet spriteTextures{};
+    spriteTextures.enemy = enemySpriteTexture_;
+    spriteTextures.pickup = pickupSpriteTexture_;
+    spriteTextures.decoration = decorationSpriteTexture_;
+    spriteTextures.missing = &missingTexture_;
+
+    SpriteRenderer::Render(
+        map_,
+        player_,
         framebuffer_,
-        fps,
-        player_.position.x,
-        player_.position.y,
-        angleDegrees,
-        cellX,
-        cellY);
+        latestWallDepthBuffer_,
+        sprites_,
+        spriteTextures,
+        kFieldOfViewRadians);
 
-    if (paused_) {
+    ParticleRenderer::Render(
+        map_,
+        player_,
+        framebuffer_,
+        latestWallDepthBuffer_,
+        particleManager_.Particles(),
+        kFieldOfViewRadians);
+
+    if (debugTopDownEnabled_) {
+        RenderTopDownMap(framebuffer_, map_, player_, latestRayHits_, sprites_);
+    }
+
+    UiRenderer::DrawCrosshair(framebuffer_);
+    UiRenderer::DrawHud(framebuffer_, playerHealth_, playerAmmo_, hudMessage_);
+
+    if (state_ == GameState::Paused) {
         UiRenderer::DrawPauseOverlay(framebuffer_);
+    } else if (state_ == GameState::GameOver) {
+        UiRenderer::DrawGameOverScreen(framebuffer_);
+    } else if (state_ == GameState::Victory) {
+        UiRenderer::DrawVictoryScreen(framebuffer_);
+    }
+
+    if (debugTopDownEnabled_) {
+        const float fps = time_.deltaSeconds > 0.0 ? static_cast<float>(1.0 / time_.deltaSeconds) : 0.0f;
+        const int cellX = static_cast<int>(std::floor(player_.position.x));
+        const int cellY = static_cast<int>(std::floor(player_.position.y));
+        UiRenderer::DrawDebugOverlay(
+            framebuffer_,
+            fps,
+            player_.position.x,
+            player_.position.y,
+            player_.directionAngleRadians * 57.2957795f,
+            cellX,
+            cellY);
     }
 
     platform_->PresentFramebuffer(framebuffer_);
+    platform_->Present();
 }

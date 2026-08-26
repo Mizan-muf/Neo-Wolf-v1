@@ -13,6 +13,19 @@ enum class EntityType : std::uint8_t {
     Trigger
 };
 
+enum class EnemyState : std::uint8_t {
+    Idle = 0,
+    Alert,
+    Chase,
+    Attack,
+    Dead
+};
+
+enum class PickupType : std::uint8_t {
+    Health = 0,
+    Ammo
+};
+
 struct Entity {
     int id = -1;
     EntityType type = EntityType::Enemy;
@@ -25,6 +38,21 @@ struct Entity {
     bool doorOpen = false;
     bool triggerActivated = false;
     bool collected = false;
+
+    // Enemy AI & Combat stats
+    int health = 50;
+    int maxHealth = 50;
+    int damage = 10;
+    float alertRadius = 6.0f;
+    float attackRadius = 1.1f;
+    float attackCooldown = 0.0f;
+    float attackRate = 1.0f;
+    float moveSpeed = 1.6f;
+    EnemyState enemyState = EnemyState::Idle;
+
+    // Pickup stats
+    PickupType pickupType = PickupType::Health;
+    int pickupValue = 25;
 };
 
 class EntityManager {

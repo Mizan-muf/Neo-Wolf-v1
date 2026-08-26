@@ -34,23 +34,45 @@ bool IsBlockedByWall(const Map& map, const Vec2& position, float radius) {
 }
 
 void ResolveCollisionAgainstWalls(const Map& map, Player& player, Vec2 displacement) {
-    Vec2 nextPosition = player.position;
+    player.position = MoveWithSliding(map, player.position, displacement, player.collisionRadius);
+}
+
+Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacement, float radius) {
+    Vec2 nextPosition = position;
+
+    constexpr float kStepSize = 0.05f;
 
     if (displacement.x != 0.0f) {
-        const Vec2 candidate{nextPosition.x + displacement.x, nextPosition.y};
-        if (!IsBlockedByWall(map, candidate, player.collisionRadius)) {
+        const float totalDist = std::abs(displacement.x);
+        const float sign = displacement.x > 0.0f ? 1.0f : -1.0f;
+        float remaining = totalDist;
+        while (remaining > 0.0f) {
+            const float step = std::min(remaining, kStepSize);
+            const Vec2 candidate{nextPosition.x + sign * step, nextPosition.y};
+            if (IsBlockedByWall(map, candidate, radius)) {
+                break;
+            }
             nextPosition.x = candidate.x;
+            remaining -= step;
         }
     }
 
     if (displacement.y != 0.0f) {
-        const Vec2 candidate{nextPosition.x, nextPosition.y + displacement.y};
-        if (!IsBlockedByWall(map, candidate, player.collisionRadius)) {
+        const float totalDist = std::abs(displacement.y);
+        const float sign = displacement.y > 0.0f ? 1.0f : -1.0f;
+        float remaining = totalDist;
+        while (remaining > 0.0f) {
+            const float step = std::min(remaining, kStepSize);
+            const Vec2 candidate{nextPosition.x, nextPosition.y + sign * step};
+            if (IsBlockedByWall(map, candidate, radius)) {
+                break;
+            }
             nextPosition.y = candidate.y;
+            remaining -= step;
         }
     }
 
-    player.position = nextPosition;
+    return nextPosition;
 }
 
 float DistanceSquared(const Vec2& a, const Vec2& b) {

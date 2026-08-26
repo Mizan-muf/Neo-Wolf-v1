@@ -37,7 +37,7 @@ bool Map::IsInsideMap(int x, int y) const {
 
 TileType Map::GetCell(int x, int y) const {
     if (!IsInsideMap(x, y)) {
-        return TileType::Empty;
+        return TileType::Wall;
     }
 
     return cells_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)];
@@ -53,6 +53,9 @@ bool Map::SetCell(int x, int y, TileType type) {
 }
 
 bool Map::IsWall(int x, int y) const {
+    if (!IsInsideMap(x, y)) {
+        return true;
+    }
     const TileType tile = GetCell(x, y);
     return tile == TileType::Wall || tile == TileType::WallAltA || tile == TileType::WallAltB ||
            tile == TileType::Door;

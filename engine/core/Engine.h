@@ -5,8 +5,10 @@
 
 #include "engine/assets/AssetManager.h"
 #include "engine/audio/AudioSystem.h"
+#include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
 #include "engine/core/TimeState.h"
+#include "engine/interop/CommandBridge.h"
 #include "engine/particles/Particle.h"
 #include "engine/render/Framebuffer.h"
 #include "engine/render/Raycaster.h"
@@ -31,6 +33,13 @@ public:
     void Shutdown();
 
     bool IsRunning() const;
+
+    GameState GetState() const;
+    void SetState(GameState state);
+    void ResetLevel();
+    bool LoadLevel(const std::string& mapPath, const std::string& entitiesPath);
+    void ShowMessage(const std::string& message, float duration = 2.0f);
+    void PlayerAttack();
 
     PlatformSDL* platform_ = nullptr;
     InputState input_{};
@@ -58,8 +67,17 @@ public:
     ParticleManager particleManager_{};
     float ambientDustSpawnTimer_ = 0.0f;
     float enemyAlertCooldown_ = 0.0f;
+    float playerAttackCooldown_ = 0.0f;
     int playerHealth_ = 100;
     int playerAmmo_ = 24;
+    int playerMaxHealth_ = 100;
+    int playerMaxAmmo_ = 99;
+    std::string hudMessage_{};
+    float hudMessageTimer_ = 0.0f;
+    std::string currentMapPath_{"game/maps/level01.map"};
+    std::string currentEntitiesPath_{"game/defs/level01.entities.json"};
+    CommandBridge bridge_{};
+    GameState state_ = GameState::Menu;
     bool paused_ = false;
     bool running_ = false;
 };

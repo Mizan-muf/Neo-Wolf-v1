@@ -11,9 +11,11 @@ namespace {
 bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
     switch (scancode) {
     case SDL_SCANCODE_W:
+    case SDL_SCANCODE_UP:
         action = InputAction::MoveForward;
         return true;
     case SDL_SCANCODE_S:
+    case SDL_SCANCODE_DOWN:
         action = InputAction::MoveBackward;
         return true;
     case SDL_SCANCODE_A:
@@ -23,6 +25,7 @@ bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
         action = InputAction::StrafeRight;
         return true;
     case SDL_SCANCODE_LEFT:
+    case SDL_SCANCODE_Q:
         action = InputAction::TurnLeft;
         return true;
     case SDL_SCANCODE_RIGHT:
@@ -31,8 +34,22 @@ bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
     case SDL_SCANCODE_E:
         action = InputAction::Interact;
         return true;
+    case SDL_SCANCODE_SPACE:
+    case SDL_SCANCODE_LCTRL:
+    case SDL_SCANCODE_RCTRL:
+    case SDL_SCANCODE_F:
+        action = InputAction::Attack;
+        return true;
     case SDL_SCANCODE_ESCAPE:
+    case SDL_SCANCODE_P:
         action = InputAction::Pause;
+        return true;
+    case SDL_SCANCODE_R:
+        action = InputAction::Restart;
+        return true;
+    case SDL_SCANCODE_RETURN:
+    case SDL_SCANCODE_KP_ENTER:
+        action = InputAction::Confirm;
         return true;
     case SDL_SCANCODE_TAB:
         action = InputAction::ToggleDebugView;

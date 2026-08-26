@@ -14,22 +14,31 @@ using Glyph = std::array<std::uint8_t, 7>;
 Glyph GetGlyph(char c) {
     switch (c) {
     case 'A': return {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11};
+    case 'B': return {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E};
     case 'C': return {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E};
     case 'D': return {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E};
     case 'E': return {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F};
     case 'F': return {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10};
     case 'G': return {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E};
     case 'H': return {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11};
+    case 'I': return {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F};
+    case 'J': return {0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E};
+    case 'K': return {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11};
     case 'L': return {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F};
     case 'M': return {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11};
     case 'N': return {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11};
     case 'O': return {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E};
     case 'P': return {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10};
+    case 'Q': return {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D};
     case 'R': return {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11};
     case 'S': return {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E};
+    case 'T': return {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04};
     case 'U': return {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E};
+    case 'V': return {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04};
+    case 'W': return {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11};
     case 'X': return {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11};
     case 'Y': return {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04};
+    case 'Z': return {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F};
     case '0': return {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E};
     case '1': return {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E};
     case '2': return {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F};
@@ -44,6 +53,12 @@ Glyph GetGlyph(char c) {
     case '.': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00};
     case ',': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x08};
     case '-': return {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00};
+    case '!': return {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04};
+    case '?': return {0x0E, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04};
+    case '+': return {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00};
+    case '(': return {0x02, 0x04, 0x08, 0x08, 0x08, 0x04, 0x02};
+    case ')': return {0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08};
+    case '/': return {0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00};
     case ' ': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     default: return {0x1F, 0x01, 0x02, 0x04, 0x08, 0x00, 0x08};
     }
@@ -89,10 +104,12 @@ void UiRenderer::DrawText(
 void UiRenderer::DrawHud(
     Framebuffer& framebuffer,
     int health,
-    int ammo) {
+    int ammo,
+    const std::string& message) {
     const std::uint32_t panel = PackARGB32(MakeColor(8, 12, 20, 235));
     const std::uint32_t label = PackARGB32(MakeColor(173, 202, 236));
     const std::uint32_t value = PackARGB32(MakeColor(246, 247, 250));
+    const std::uint32_t msgColor = PackARGB32(MakeColor(255, 235, 120));
 
     framebuffer.DrawRect(14, framebuffer.Height() - 54, 230, 40, panel);
 
@@ -101,6 +118,13 @@ void UiRenderer::DrawHud(
     DrawText(framebuffer, 22, framebuffer.Height() - 46, buffer, label, 2);
     std::snprintf(buffer, sizeof(buffer), "AMMO: %d", ammo);
     DrawText(framebuffer, 22, framebuffer.Height() - 28, buffer, value, 2);
+
+    if (!message.empty()) {
+        const int msgW = static_cast<int>(message.size()) * 12 + 20;
+        const int msgX = (framebuffer.Width() - msgW) / 2;
+        framebuffer.DrawRect(msgX, framebuffer.Height() - 54, msgW, 30, panel);
+        DrawText(framebuffer, msgX + 10, framebuffer.Height() - 46, message, msgColor, 2);
+    }
 }
 
 void UiRenderer::DrawCrosshair(Framebuffer& framebuffer) {
@@ -138,12 +162,73 @@ void UiRenderer::DrawDebugOverlay(
 }
 
 void UiRenderer::DrawPauseOverlay(Framebuffer& framebuffer) {
-    const int boxW = 260;
-    const int boxH = 56;
+    const int boxW = 340;
+    const int boxH = 90;
     const int x = (framebuffer.Width() - boxW) / 2;
     const int y = (framebuffer.Height() - boxH) / 2;
-    const std::uint32_t panel = PackARGB32(MakeColor(18, 20, 26, 230));
-    const std::uint32_t text = PackARGB32(MakeColor(255, 231, 161));
+    const std::uint32_t panel = PackARGB32(MakeColor(18, 20, 26, 235));
+    const std::uint32_t gold = PackARGB32(MakeColor(255, 231, 161));
+    const std::uint32_t sub = PackARGB32(MakeColor(200, 215, 230));
+
     framebuffer.DrawRect(x, y, boxW, boxH, panel);
-    DrawText(framebuffer, x + 32, y + 18, "PAUSED  PRESS ESC", text, 2);
+    DrawText(framebuffer, x + 105, y + 16, "PAUSED", gold, 3);
+    DrawText(framebuffer, x + 24, y + 50, "ESC: RESUME  R: RESTART", sub, 2);
+    DrawText(framebuffer, x + 50, y + 68, "ENTER: MAIN MENU", sub, 2);
+}
+
+void UiRenderer::DrawMenuScreen(Framebuffer& framebuffer) {
+    framebuffer.Clear(PackARGB32(MakeColor(12, 14, 22, 255)));
+
+    const int cx = framebuffer.Width() / 2;
+    const std::uint32_t titleColor = PackARGB32(MakeColor(255, 60, 60));
+    const std::uint32_t subColor = PackARGB32(MakeColor(255, 215, 0));
+    const std::uint32_t textColor = PackARGB32(MakeColor(200, 220, 240));
+    const std::uint32_t panel = PackARGB32(MakeColor(20, 25, 38, 230));
+
+    const int panelW = 440;
+    const int panelH = 260;
+    const int px = (framebuffer.Width() - panelW) / 2;
+    const int py = (framebuffer.Height() - panelH) / 2;
+    framebuffer.DrawRect(px, py, panelW, panelH, panel);
+
+    DrawText(framebuffer, cx - 120, py + 20, "NEO-WOLF", titleColor, 4);
+    DrawText(framebuffer, cx - 145, py + 65, "PRESS ENTER OR SPACE TO START", subColor, 2);
+
+    DrawText(framebuffer, px + 30, py + 105, "CONTROLS:", titleColor, 2);
+    DrawText(framebuffer, px + 30, py + 130, "W/S: MOVE FORWARD / BACK", textColor, 2);
+    DrawText(framebuffer, px + 30, py + 150, "A/D: STRAFE LEFT / RIGHT", textColor, 2);
+    DrawText(framebuffer, px + 30, py + 170, "LEFT/RIGHT OR Q: TURN", textColor, 2);
+    DrawText(framebuffer, px + 30, py + 190, "SPACE / CTRL / F: FIRE WEAPON", textColor, 2);
+    DrawText(framebuffer, px + 30, py + 210, "E: INTERACT (DOORS / SWITCHES)", textColor, 2);
+    DrawText(framebuffer, px + 30, py + 230, "P / ESC: PAUSE | R: RESTART", textColor, 2);
+}
+
+void UiRenderer::DrawGameOverScreen(Framebuffer& framebuffer) {
+    const int boxW = 380;
+    const int boxH = 120;
+    const int x = (framebuffer.Width() - boxW) / 2;
+    const int y = (framebuffer.Height() - boxH) / 2;
+    const std::uint32_t panel = PackARGB32(MakeColor(30, 8, 8, 240));
+    const std::uint32_t red = PackARGB32(MakeColor(255, 50, 50));
+    const std::uint32_t text = PackARGB32(MakeColor(230, 200, 200));
+
+    framebuffer.DrawRect(x, y, boxW, boxH, panel);
+    DrawText(framebuffer, x + 85, y + 20, "GAME OVER", red, 3);
+    DrawText(framebuffer, x + 50, y + 60, "YOU SUCCUMBED TO THE DUNGEON.", text, 2);
+    DrawText(framebuffer, x + 35, y + 85, "PRESS R TO RESTART OR ENTER FOR MENU", text, 2);
+}
+
+void UiRenderer::DrawVictoryScreen(Framebuffer& framebuffer) {
+    const int boxW = 400;
+    const int boxH = 120;
+    const int x = (framebuffer.Width() - boxW) / 2;
+    const int y = (framebuffer.Height() - boxH) / 2;
+    const std::uint32_t panel = PackARGB32(MakeColor(10, 30, 15, 240));
+    const std::uint32_t gold = PackARGB32(MakeColor(255, 220, 60));
+    const std::uint32_t text = PackARGB32(MakeColor(200, 245, 210));
+
+    framebuffer.DrawRect(x, y, boxW, boxH, panel);
+    DrawText(framebuffer, x + 115, y + 20, "VICTORY!", gold, 3);
+    DrawText(framebuffer, x + 65, y + 60, "LEVEL OBJECTIVE CLEARED!", text, 2);
+    DrawText(framebuffer, x + 45, y + 85, "PRESS R TO REPLAY OR ENTER FOR MENU", text, 2);
 }

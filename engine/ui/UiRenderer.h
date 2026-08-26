@@ -17,7 +17,8 @@ void DrawText(
 void DrawHud(
     Framebuffer& framebuffer,
     int health,
-    int ammo);
+    int ammo,
+    const std::string& message = "");
 
 void DrawCrosshair(Framebuffer& framebuffer);
 
@@ -31,4 +32,7 @@ void DrawDebugOverlay(
     int cellY);
 
 void DrawPauseOverlay(Framebuffer& framebuffer);
+void DrawMenuScreen(Framebuffer& framebuffer);
+void DrawGameOverScreen(Framebuffer& framebuffer);
+void DrawVictoryScreen(Framebuffer& framebuffer);
 } // namespace UiRenderer
