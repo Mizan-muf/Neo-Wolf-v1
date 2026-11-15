@@ -1,0 +1,15 @@
+# Normalise line endings so content behaves the same on macOS, Linux and Windows.
+* text=auto eol=lf
+
+# Windows batch files must keep CRLF (cmd.exe label/goto parsing is unreliable with LF).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Game content is parsed by hand-written loaders: always LF.
+game/** text eol=lf
+
+# Binary assets.
+*.wav binary
+*.png binary
+*.ico binary
+*.icns binary
