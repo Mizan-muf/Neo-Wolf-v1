@@ -24,4 +24,3 @@ Vec2 MoveWithSlidingAndBodies(const Map& map, const Vec2& position, const Vec2& 
                               const std::vector<BodyObstacle>& bodies);
 float DistanceSquared(const Vec2& a, const Vec2& b);
 bool IsCircleOverlappingCell(const Vec2& center, float radius, int cellX, int cellY);
-

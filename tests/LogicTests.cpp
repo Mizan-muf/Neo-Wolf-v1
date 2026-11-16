@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
-#include <functional>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
@@ -77,25 +77,24 @@ struct TestFailure {
     out << file << ":" << line << ": " << what;
     throw TestFailure{out.str()};
 }
-} // namespace
+}  // namespace
 
-#define TEST_ASSERT(expr)                                                \
-    do {                                                                 \
-        if (!(expr)) {                                                   \
+#define TEST_ASSERT(expr)                                                  \
+    do {                                                                   \
+        if (!(expr)) {                                                     \
             FailTest(__FILE__, __LINE__, "TEST_ASSERT(" #expr ") failed"); \
-        }                                                                \
+        }                                                                  \
     } while (false)
 
-#define TEST_ASSERT_NEAR(a, b, eps)                                                        \
-    do {                                                                                   \
-        const auto nwActualA = (a);                                                        \
-        const auto nwActualB = (b);                                                        \
-        if (!(std::fabs(nwActualA - nwActualB) <= (eps))) {                                \
-            std::ostringstream nwDetail;                                                   \
-            nwDetail << "TEST_ASSERT_NEAR(" #a ", " #b ", " #eps ") failed: " << nwActualA \
-                     << " vs " << nwActualB;                                               \
-            FailTest(__FILE__, __LINE__, nwDetail.str());                                  \
-        }                                                                                  \
+#define TEST_ASSERT_NEAR(a, b, eps)                                                                                \
+    do {                                                                                                           \
+        const auto nwActualA = (a);                                                                                \
+        const auto nwActualB = (b);                                                                                \
+        if (!(std::fabs(nwActualA - nwActualB) <= (eps))) {                                                        \
+            std::ostringstream nwDetail;                                                                           \
+            nwDetail << "TEST_ASSERT_NEAR(" #a ", " #b ", " #eps ") failed: " << nwActualA << " vs " << nwActualB; \
+            FailTest(__FILE__, __LINE__, nwDetail.str());                                                          \
+        }                                                                                                          \
     } while (false)
 
 namespace {
@@ -438,7 +437,8 @@ void TestContentFileLoaders() {
     TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
 
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(
+        LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
     TEST_ASSERT(!placements.empty());
     TEST_ASSERT(errors.empty() && warnings.empty());
 
@@ -518,7 +518,7 @@ void TestPlayerCombatAndShooting() {
     EntityManager manager{};
     Player player{};
     player.position = {2.0f, 2.0f};
-    player.directionAngleRadians = 0.0f; // Facing east (+X)
+    player.directionAngleRadians = 0.0f;  // Facing east (+X)
 
     Entity& enemy = manager.CreateEntity(EntityType::Enemy, Vec2{5.0f, 2.0f});
     enemy.health = 50;
@@ -559,7 +559,7 @@ void TestPlayerCombatAndShooting() {
     ammo = 5;
     Entity& behindWallEnemy = manager.CreateEntity(EntityType::Enemy, Vec2{8.0f, 2.0f});
     behindWallEnemy.health = 50;
-    map.SetCell(4, 2, TileType::Wall); // Wall in between at x=4
+    map.SetCell(4, 2, TileType::Wall);  // Wall in between at x=4
 
     GameplayEvents wallEvents{};
     shot = PerformPlayerAttack(manager, map, player, ammo, 35, 12.0f, wallEvents);
@@ -793,7 +793,8 @@ void TestLevelResetAndDynamicLoad() {
         Map levelMap = map;
         std::vector<EntityPlacement> placements;
         errors.clear();
-        TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors,
+                                                 warnings));
         LevelContents level{};
         TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, GameplayDefinitions{}, level, errors));
         TEST_ASSERT(level.entities.Entities().size() == 7);
@@ -923,12 +924,9 @@ void TestMapPerimeterAndReachabilityValidation() {
 
 void TestAssetInventoryAndErrorResilience() {
     const std::vector<std::string> textures = {
-        "game/assets/themes/classic/wall.ppm",
-        "game/assets/themes/classic/wall_alt_a.ppm",
-        "game/assets/themes/classic/wall_alt_b.ppm",
-        "game/assets/themes/classic/floor.ppm",
-        "game/assets/themes/classic/ceiling.ppm",
-        "game/assets/sprites/decoration.ppm",
+        "game/assets/themes/classic/wall.ppm",       "game/assets/themes/classic/wall_alt_a.ppm",
+        "game/assets/themes/classic/wall_alt_b.ppm", "game/assets/themes/classic/floor.ppm",
+        "game/assets/themes/classic/ceiling.ppm",    "game/assets/sprites/decoration.ppm",
     };
 
     for (const auto& relPath : textures) {
@@ -945,12 +943,12 @@ void TestEngineInteropC_API() {
     void* handle = nw_engine_create();
     TEST_ASSERT(handle != nullptr);
 
-    TEST_ASSERT(nw_engine_get_state(handle) == 0); // Menu
-    nw_engine_set_state(handle, 4); // Victory (deprecated) selects LevelComplete
+    TEST_ASSERT(nw_engine_get_state(handle) == 0);  // Menu
+    nw_engine_set_state(handle, 4);                 // Victory (deprecated) selects LevelComplete
     TEST_ASSERT(nw_engine_get_state(handle) == static_cast<int>(GameState::LevelComplete));
-    nw_engine_set_state(handle, 99); // out of range: ignored
+    nw_engine_set_state(handle, 99);  // out of range: ignored
     TEST_ASSERT(nw_engine_get_state(handle) == static_cast<int>(GameState::LevelComplete));
-    nw_engine_set_state(handle, 1); // Gameplay
+    nw_engine_set_state(handle, 1);  // Gameplay
     TEST_ASSERT(nw_engine_get_state(handle) == 1);
 
     nw_engine_set_player_pos(handle, 4.5f, 3.5f, 1.57f);
@@ -1195,8 +1193,8 @@ void TestCommandLineParsing() {
     TEST_ASSERT(r.options.preview == PreviewScreen::None);
 
     // Phase 5: --pref-dir, and the developer tools --preview / --screenshot.
-    r = ParseCommandLine({"--pref-dir", "/tmp/nw prefs", "--preview", "levelselect", "--screenshot=shot.bmp",
-                          "--frames", "5"});
+    r = ParseCommandLine(
+        {"--pref-dir", "/tmp/nw prefs", "--preview", "levelselect", "--screenshot=shot.bmp", "--frames", "5"});
     TEST_ASSERT(r.action == CommandLineAction::Run);
     TEST_ASSERT(r.options.prefDir == "/tmp/nw prefs");
     TEST_ASSERT(r.options.preview == PreviewScreen::LevelSelect);
@@ -1542,9 +1540,11 @@ void TestGameplayDefinitionsInvalid() {
         {"{\"weapon\": {\"range\": 0}}", "weapon.range must be a number > 0 and <= 1000, got 0"},
         {"{\"enemy\": {\"moveSpeed\": -1}}", "enemy.moveSpeed must be a number >= 0 and <= 20, got -1"},
         {"{\"enemy\": {\"attackRate\": 0}}", "enemy.attackRate must be a number > 0"},
-        {"{\"enemies\": {\"brute\": {\"moveSpeed\": 21}}}", "enemies.brute.moveSpeed must be a number >= 0 and <= 20, got 21"},
+        {"{\"enemies\": {\"brute\": {\"moveSpeed\": 21}}}",
+         "enemies.brute.moveSpeed must be a number >= 0 and <= 20, got 21"},
         {"{\"enemies\": {\"runner\": {\"reactionTime\": -1}}}", "enemies.runner.reactionTime must be a number >= 0"},
-        {"{\"enemies\": {\"guard\": {\"score\": -5}}}", "enemies.guard.score must be an integer from 0 to 10000, got -5"},
+        {"{\"enemies\": {\"guard\": {\"score\": -5}}}",
+         "enemies.guard.score must be an integer from 0 to 10000, got -5"},
         {"{\"enemies\": {\"guard\": {\"health\": 0}}}", "enemies.guard.health must be an integer from 1"},
         {"{\"enemies\": 5}", "enemies must be an object, got 5"},
         {"{\"enemies\": {\"brute\": []}}", "enemies.brute must be an object, got an array"},
@@ -1570,8 +1570,8 @@ void TestGameplayDefinitionsInvalid() {
             for (const std::string& e : errors) {
                 all += "\n         " + e;
             }
-            FailTest(__FILE__, __LINE__, std::string("case ") + c.json + ": expected an error containing '" +
-                                             c.expected + "', got:" + all);
+            FailTest(__FILE__, __LINE__,
+                     std::string("case ") + c.json + ": expected an error containing '" + c.expected + "', got:" + all);
         }
         TEST_ASSERT(g.weapon.damage == 777);
     }
@@ -1586,7 +1586,8 @@ void TestGameplayDefinitionsInvalid() {
     // Unknown keys are warnings only; the pre-Phase 4 keys say where they moved.
     errors.clear();
     const std::string withUnknown =
-        "{\"player\": {\"speed\": 9}, \"pickups\": {\"health\": {\"value\": 30, \"maxPlayerHealth\": 100}}, \"music\": 1, "
+        "{\"player\": {\"speed\": 9}, \"pickups\": {\"health\": {\"value\": 30, \"maxPlayerHealth\": 100}}, \"music\": "
+        "1, "
         "\"enemies\": {\"ninja\": {}, \"guard\": {\"armour\": 3}}}";
     TEST_ASSERT(ParseGameplayDefinitions(withUnknown, "old.json", g, errors, warnings));
     TEST_ASSERT(errors.empty());
@@ -1604,8 +1605,10 @@ void TestEntityPlacementsJsonAndCsv() {
     std::vector<std::string> warnings;
     std::vector<EntityPlacement> fromJson;
     std::vector<EntityPlacement> fromCsv;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), fromJson, errors, warnings));
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.csv"), fromCsv, errors, warnings));
+    TEST_ASSERT(
+        LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), fromJson, errors, warnings));
+    TEST_ASSERT(
+        LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.csv"), fromCsv, errors, warnings));
     TEST_ASSERT(errors.empty());
     TEST_ASSERT(warnings.empty());
 
@@ -1628,7 +1631,8 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(fromJson[6].pickupKind == PickupType::Ammo);
 
     // The CSV export is equivalent, field by field.
-    const auto expectEquivalent = [](const std::vector<EntityPlacement>& json, const std::vector<EntityPlacement>& csv) {
+    const auto expectEquivalent = [](const std::vector<EntityPlacement>& json,
+                                     const std::vector<EntityPlacement>& csv) {
         TEST_ASSERT(csv.size() == json.size());
         for (std::size_t i = 0; i < json.size(); ++i) {
             TEST_ASSERT(csv[i].type == json[i].type);
@@ -1651,7 +1655,8 @@ void TestEntityPlacementsJsonAndCsv() {
     for (const CampaignLevel& level : campaign.levels) {
         const std::string jsonExtension = ".json";
         if (level.entities.size() <= jsonExtension.size() ||
-            level.entities.compare(level.entities.size() - jsonExtension.size(), jsonExtension.size(), jsonExtension) != 0) {
+            level.entities.compare(level.entities.size() - jsonExtension.size(), jsonExtension.size(), jsonExtension) !=
+                0) {
             continue;
         }
         const std::string jsonPath = ResolveRepoPath(level.entities);
@@ -1710,7 +1715,8 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(!ParseEntityPlacementsJson(badJson, "bad.entities.json", placements, errors, warnings));
     TEST_ASSERT(placements.size() == 2);
     TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.json: entities[1] (pickup): field \"kind\" is required"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"entities[2] (pickup): field \"kind\" must be \"health\", \"ammo\" or \"key\", got \"armor\""}));
+    TEST_ASSERT(AnyMessageContains(
+        errors, {"entities[2] (pickup): field \"kind\" must be \"health\", \"ammo\" or \"key\", got \"armor\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[3] (door): fields \"mapX\" and \"mapY\" are required"}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[4]: field \"type\" must be one of", "\"ghost\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[5] (enemy): field \"x\" must be a number, got \"1\""}));
@@ -1731,14 +1737,16 @@ void TestEntityPlacementsJsonAndCsv() {
     const std::string badCsv = "# header\npickup,2,2\ndoor,3,3,x,1\nplayer,1\n";
     TEST_ASSERT(!ParseEntityPlacementsCsv(badCsv, "bad.entities.csv", placements, errors, warnings));
     TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:2 (entity 0) (pickup): field \"kind\" is required"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:3 (entity 1): column \"mapX\" must be an integer, got 'x'"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"bad.entities.csv:3 (entity 1): column \"mapX\" must be an integer, got 'x'"}));
     TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:4 (entity 2): expected at least 3 columns"}));
 
     errors.clear();
     TEST_ASSERT(!LoadEntityPlacementsFromFile("level01.entities.txt", placements, errors, warnings));
     TEST_ASSERT(AnyMessageContains(errors, {"level01.entities.txt: unsupported entity file type"}));
     errors.clear();
-    TEST_ASSERT(!LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs") + "/missing.entities.json", placements, errors, warnings));
+    TEST_ASSERT(!LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs") + "/missing.entities.json", placements,
+                                              errors, warnings));
     TEST_ASSERT(AnyMessageContains(errors, {"Unable to open entity placement file", "missing.entities.json"}));
 }
 
@@ -1751,7 +1759,8 @@ void TestDecorationsAndSpriteSync() {
     Map map{};
     TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), map, errors));
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(
+        LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
     LevelContents level{};
     TEST_ASSERT(BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
 
@@ -1869,9 +1878,11 @@ void TestPickupKindFromData() {
 }
 
 // A content root with level01.map and the given gameplay.json and level01.entities.json.
-void WriteContentRoot(const std::filesystem::path& root, const std::string& gameplayJson, const std::string& entitiesJson) {
+void WriteContentRoot(const std::filesystem::path& root, const std::string& gameplayJson,
+                      const std::string& entitiesJson) {
     MakeContentRoot(root);
-    std::filesystem::copy_file(PathFromUtf8(ReferencePath("game/maps/level01.map")), root / "game" / "maps" / "level01.map",
+    std::filesystem::copy_file(PathFromUtf8(ReferencePath("game/maps/level01.map")),
+                               root / "game" / "maps" / "level01.map",
                                std::filesystem::copy_options::overwrite_existing);
     WriteTextFile(root / "game" / "defs" / "gameplay.json", gameplayJson);
     WriteTextFile(root / "game" / "defs" / "level01.entities.json", entitiesJson);
@@ -1996,7 +2007,8 @@ void TestLevelLoadFailures() {
         writeEntities("outside.entities.json",
                       "{\"entities\": [" + player + ", {\"type\": \"enemy\", \"x\": 30.5, \"y\": 2.5}]}"),
         writeEntities("badcell.entities.json",
-                      "{\"entities\": [" + player + ", {\"type\": \"door\", \"x\": 8.5, \"y\": 7.5, \"mapX\": 16, \"mapY\": 7}]}"),
+                      "{\"entities\": [" + player +
+                          ", {\"type\": \"door\", \"x\": 8.5, \"y\": 7.5, \"mapX\": 16, \"mapY\": 7}]}"),
     };
     for (const std::string& entitiesPath : failing) {
         TEST_ASSERT(!engine.LoadLevel(mapPath, entitiesPath));
@@ -2013,14 +2025,17 @@ void TestLevelLoadFailures() {
     Map map{};
     TEST_ASSERT(LoadMapFromFile(PathToUtf8(root / "game" / "maps" / "level01.map"), map, errors));
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "badcell.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "badcell.entities.json"), placements,
+                                             errors, warnings));
     LevelContents level{};
     const Map before = map;
     TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
-    TEST_ASSERT(AnyMessageContains(errors, {"badcell.entities.json: entities[1] (door): map cell (16, 7) is outside the 16x12 map"}));
+    TEST_ASSERT(AnyMessageContains(
+        errors, {"badcell.entities.json: entities[1] (door): map cell (16, 7) is outside the 16x12 map"}));
     TEST_ASSERT(map.GetCell(8, 7) == before.GetCell(8, 7));
     errors.clear();
-    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "noplayer.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "noplayer.entities.json"), placements,
+                                             errors, warnings));
     TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
     TEST_ASSERT(AnyMessageContains(errors, {"no player placement"}));
 }
@@ -2241,7 +2256,8 @@ void TestGameFlowDeathAndPause() {
     flow.Update(Press({InputAction::MoveBackward}), {});  // Continue
     std::vector<FlowRequest> requests = flow.Update(Press({InputAction::Select}), {});
     const FlowRequest* load = FindRequest(requests, FlowRequestType::LoadLevel);
-    TEST_ASSERT(load != nullptr && load->levelIndex == 1 && load->stats.health == 100);  // highest unlocked, fresh stats
+    TEST_ASSERT(load != nullptr && load->levelIndex == 1 &&
+                load->stats.health == 100);  // highest unlocked, fresh stats
 
     // Pause: P/Esc (Pause action) or focus loss; resume with Esc/P/Enter.
     flow.Update(Press({InputAction::Pause, InputAction::Back}), {});
@@ -2335,7 +2351,8 @@ void TestCampaignManifestValidation() {
         ScratchDir scratch("campaign-reference");
         const std::filesystem::path root = MakeReferenceContentRoot(scratch.Path() / "content");
         CampaignDefinition reference{};
-        TEST_ASSERT(LoadCampaign(PathToUtf8(root / "game" / "defs" / "campaign.json"), root, reference, errors, warnings));
+        TEST_ASSERT(
+            LoadCampaign(PathToUtf8(root / "game" / "defs" / "campaign.json"), root, reference, errors, warnings));
         TEST_ASSERT(errors.empty() && warnings.empty());
         TEST_ASSERT(reference.levels.size() == 3);
         TEST_ASSERT(reference.levels[0].id == "level01" && reference.levels[0].theme == "bunker");
@@ -2362,19 +2379,26 @@ void TestCampaignManifestValidation() {
         {R"({"title": "T", "title": "U", "levels": [)" + level01 + "]}", "duplicate key \"title\""},
         {R"({"title": "T", "levels": [)" + level01 + ", " + level01 + "]}", "ids must be unique"},
         {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/missing.map",
-            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "map file not found"},
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})",
+         "map file not found"},
         {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
-            "entities": "game/defs/nope.entities.json", "theme": "bunker"}]})", "entities file not found"},
+            "entities": "game/defs/nope.entities.json", "theme": "bunker"}]})",
+         "entities file not found"},
         {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
-            "entities": "game/defs/level01.entities.json", "theme": "marble"}]})", "theme \"marble\" not found"},
+            "entities": "game/defs/level01.entities.json", "theme": "marble"}]})",
+         "theme \"marble\" not found"},
         {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
-            "entities": "game/defs/level01.entities.json", "theme": "../bunker"}]})", "theme must use only"},
+            "entities": "game/defs/level01.entities.json", "theme": "../bunker"}]})",
+         "theme must use only"},
         {R"({"title": "T", "levels": [{"id": "Level 1", "name": "A", "map": "game/maps/level01.map",
-            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "id must use only"},
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})",
+         "id must use only"},
         {R"({"title": "T", "levels": [{"id": "x", "name": 5, "map": "game/maps/level01.map",
-            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "\"name\" must be a non-empty string"},
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})",
+         "\"name\" must be a non-empty string"},
         {R"({"title": "T", "levels": [{"id": "x", "name": "A", "entities": "game/defs/level01.entities.json",
-            "theme": "bunker"}]})", "field \"map\" is required"},
+            "theme": "bunker"}]})",
+         "field \"map\" is required"},
         {R"({"title": "T", "levels": [3]})", "must be an object"},
     };
     for (const Case& c : cases) {
@@ -2392,9 +2416,10 @@ void TestCampaignManifestValidation() {
     errors.clear();
     warnings.clear();
     CampaignDefinition loose{};
-    TEST_ASSERT(ParseCampaign(R"({"title": "T", "extra": 1, "levels": [{"id": "x", "name": "A very long level name that will not fit",
+    TEST_ASSERT(ParseCampaign(
+        R"({"title": "T", "extra": 1, "levels": [{"id": "x", "name": "A very long level name that will not fit",
         "map": "game/maps/level01.map", "entities": "game/defs/level01.entities.json", "theme": "bunker", "music": "x"}]})",
-                              "campaign.json", RepoRoot(), loose, errors, warnings));
+        "campaign.json", RepoRoot(), loose, errors, warnings));
     TEST_ASSERT(AnyMessageContains(warnings, {"unknown key \"extra\""}));
     TEST_ASSERT(AnyMessageContains(warnings, {"unknown key \"music\""}));
     TEST_ASSERT(AnyMessageContains(warnings, {"shortened on screen"}));
@@ -2402,7 +2427,8 @@ void TestCampaignManifestValidation() {
 
     // A missing manifest.
     errors.clear();
-    TEST_ASSERT(!LoadCampaign(ResolveRepoPath("game/defs") + "/missing-campaign.json", RepoRoot(), loose, errors, warnings));
+    TEST_ASSERT(
+        !LoadCampaign(ResolveRepoPath("game/defs") + "/missing-campaign.json", RepoRoot(), loose, errors, warnings));
     TEST_ASSERT(AnyMessageContains(errors, {"Unable to open campaign manifest"}));
 }
 
@@ -2615,15 +2641,17 @@ void TestThemeLoadingAndSwap() {
         std::vector<std::string> errors;
         ThemeTextureAssignments assignments{};
         TEST_ASSERT(LoadThemeTextureAssignments(ResolveRepoPath(ThemeConfigPath(theme)), assignments, errors));
-        for (const std::string* path : {&assignments.wall, &assignments.wallAltA, &assignments.wallAltB, &assignments.door,
-                                        &assignments.floor, &assignments.ceiling, &assignments.exit}) {
+        for (const std::string* path :
+             {&assignments.wall, &assignments.wallAltA, &assignments.wallAltB, &assignments.door, &assignments.floor,
+              &assignments.ceiling, &assignments.exit}) {
             Texture texture{};
             TEST_ASSERT(TextureLoader::LoadPPM(ResolveRepoPath(*path), texture));
         }
     }
     // A theme without "exit" is reported.
     ScratchDir scratch("themes");
-    WriteTextFile(scratch.Path() / "partial.cfg", "wall=a.ppm\nwall_alt_a=a.ppm\nwall_alt_b=a.ppm\ndoor=a.ppm\nfloor=a.ppm\nceiling=a.ppm\n");
+    WriteTextFile(scratch.Path() / "partial.cfg",
+                  "wall=a.ppm\nwall_alt_a=a.ppm\nwall_alt_b=a.ppm\ndoor=a.ppm\nfloor=a.ppm\nceiling=a.ppm\n");
     std::vector<std::string> errors;
     ThemeTextureAssignments partial{};
     TEST_ASSERT(!LoadThemeTextureAssignments(PathToUtf8(scratch.Path() / "partial.cfg"), partial, errors));
@@ -2675,7 +2703,8 @@ void TestThemeLoadingAndSwap() {
         TEST_ASSERT(campaignEngine.LoadCampaignLevel(index, PlayerStats{50, 5}));
         TEST_ASSERT(campaignEngine.currentThemeId_ == level.theme);
         TEST_ASSERT(campaignEngine.playerHealth_ == 50 && campaignEngine.playerAmmo_ == 5);
-        TEST_ASSERT(campaignEngine.CurrentCampaignLevel() != nullptr && campaignEngine.CurrentCampaignLevel()->id == level.id);
+        TEST_ASSERT(campaignEngine.CurrentCampaignLevel() != nullptr &&
+                    campaignEngine.CurrentCampaignLevel()->id == level.id);
     }
 }
 
@@ -2684,8 +2713,8 @@ void TestThemeLoadingAndSwap() {
 void AssertInsideMargin(const Framebuffer& framebuffer, const std::string& what) {
     const DrawBounds& b = framebuffer.GetDrawBounds();
     const int m = UiLayout::kMargin;
-    const bool ok = b.any && b.clippedRects == 0 && b.minX >= m && b.minY >= m && b.maxX <= framebuffer.Width() - 1 - m &&
-                    b.maxY <= framebuffer.Height() - 1 - m;
+    const bool ok = b.any && b.clippedRects == 0 && b.minX >= m && b.minY >= m &&
+                    b.maxX <= framebuffer.Width() - 1 - m && b.maxY <= framebuffer.Height() - 1 - m;
     if (!ok) {
         std::ostringstream out;
         out << what << ": draw bounds (" << b.minX << "," << b.minY << ")-(" << b.maxX << "," << b.maxY << "), "
@@ -2823,8 +2852,10 @@ void TestCampaignPlaythrough() {
     TEST_ASSERT(report.levels[0].healthStart == engine.gameplay_.player.initialHealth);
     TEST_ASSERT(report.levels[0].ammoStart == engine.gameplay_.weapon.initialAmmo);
     for (std::size_t i = 1; i < report.levels.size(); ++i) {
-        TEST_ASSERT(report.levels[i].healthStart == std::min(report.levels[i - 1].healthEnd, engine.gameplay_.player.maxHealth));
-        TEST_ASSERT(report.levels[i].ammoStart == std::min(report.levels[i - 1].ammoEnd, engine.gameplay_.weapon.maxAmmo));
+        TEST_ASSERT(report.levels[i].healthStart ==
+                    std::min(report.levels[i - 1].healthEnd, engine.gameplay_.player.maxHealth));
+        TEST_ASSERT(report.levels[i].ammoStart ==
+                    std::min(report.levels[i - 1].ammoEnd, engine.gameplay_.weapon.maxAmmo));
     }
     // Per level, against its own files: the report names the level, counts its enemies, and
     // every locked door the bot opened has a lock of that colour in the level and was opened
@@ -2835,7 +2866,8 @@ void TestCampaignPlaythrough() {
         std::vector<std::string> errors;
         std::vector<std::string> warnings;
         std::vector<EntityPlacement> placements;
-        TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath(campaign.levels[i].entities), placements, errors, warnings));
+        TEST_ASSERT(
+            LoadEntityPlacementsFromFile(ResolveRepoPath(campaign.levels[i].entities), placements, errors, warnings));
         int enemies = 0;
         std::vector<std::string> locks;
         for (const EntityPlacement& placement : placements) {
@@ -2847,7 +2879,8 @@ void TestCampaignPlaythrough() {
         TEST_ASSERT(level.totalEnemies == enemies);
         for (const std::string& used : level.keysUsed) {
             TEST_ASSERT(std::find(locks.begin(), locks.end(), used) != locks.end());
-            TEST_ASSERT(std::find(level.keysCollected.begin(), level.keysCollected.end(), used) != level.keysCollected.end());
+            TEST_ASSERT(std::find(level.keysCollected.begin(), level.keysCollected.end(), used) !=
+                        level.keysCollected.end());
         }
     }
     TEST_ASSERT(engine.flow_.LastResults().totalEnemies == report.levels.back().totalEnemies);
@@ -2856,7 +2889,8 @@ void TestCampaignPlaythrough() {
     // Progress was saved: every level unlocked.
     ProgressData saved{};
     std::string message;
-    TEST_ASSERT(LoadProgressFile(PathToUtf8(prefs.Path() / kProgressFileName), saved, message) == ProgressLoadResult::Loaded);
+    TEST_ASSERT(LoadProgressFile(PathToUtf8(prefs.Path() / kProgressFileName), saved, message) ==
+                ProgressLoadResult::Loaded);
     TEST_ASSERT(saved.highestUnlocked == static_cast<int>(levelCount));
 
     // Credits -> Enter -> menu, where Continue is offered and starts the last level with fresh stats.
@@ -2879,7 +2913,8 @@ void TestCampaignPlaythrough() {
     tap(InputAction::MoveBackward);  // NEW GAME -> CONTINUE
     TEST_ASSERT(engine.flow_.MenuCursor() == 1);
     tap(InputAction::Select);
-    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ == static_cast<int>(levelCount) - 1);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay &&
+                engine.currentLevelIndex_ == static_cast<int>(levelCount) - 1);
     TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
 }
 
@@ -3054,7 +3089,7 @@ void TestEnemyHearing() {
     UpdateEnemyAi(manager, map, player, health, 0.05f, events, &shot);
     TEST_ASSERT(manager.GetEntityById(id)->enemyState == EnemyState::Idle);  // the closed door blocks the sound
 
-    map.SetCell(7, 3, TileType::Empty);  // door open
+    map.SetCell(7, 3, TileType::Empty);                          // door open
     UpdateEnemyAi(manager, map, player, health, 0.05f, events);  // no shot: nothing heard
     TEST_ASSERT(manager.GetEntityById(id)->enemyState == EnemyState::Idle);
     UpdateEnemyAi(manager, map, player, health, 0.05f, events, &shot);
@@ -3145,7 +3180,7 @@ void TestEnemyPathfinding() {
 
     TEST_ASSERT(FindPath(map, {3, 3}, {3, 3}, path) && path.empty());
     TEST_ASSERT(!FindPath(map, {2, 2}, {5, 2}, path) && path.empty());  // the goal is a wall
-    map.SetCell(5, 6, TileType::Door);  // a closed door: no way round
+    map.SetCell(5, 6, TileType::Door);                                  // a closed door: no way round
     TEST_ASSERT(!FindPath(map, {2, 2}, {8, 2}, path));
     map.SetCell(5, 6, TileType::Empty);  // opened
     TEST_ASSERT(FindPath(map, {2, 2}, {8, 2}, path));
@@ -3216,7 +3251,8 @@ void TestEnemyArchetypesFromData() {
     std::vector<EntityPlacement> placements(5);
     placements[0].type = PlacementType::Player;
     placements[0].position = {1.5f, 1.5f};
-    const EnemyVariant variants[] = {EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner, EnemyVariant::Guard};
+    const EnemyVariant variants[] = {EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner,
+                                     EnemyVariant::Guard};
     for (int i = 0; i < 4; ++i) {
         placements[static_cast<std::size_t>(i + 1)].type = PlacementType::Enemy;
         placements[static_cast<std::size_t>(i + 1)].position = {2.5f + static_cast<float>(i), 4.5f};
@@ -3249,8 +3285,8 @@ void TestEnemyArchetypesFromData() {
 
     // Edited data changes an archetype (no recompiling).
     GameplayDefinitions edited{};
-    TEST_ASSERT(ParseGameplayDefinitions("{\"enemies\": {\"brute\": {\"health\": 400, \"moveSpeed\": 0.5}}}", "edit.json",
-                                         edited, errors, warnings));
+    TEST_ASSERT(ParseGameplayDefinitions("{\"enemies\": {\"brute\": {\"health\": 400, \"moveSpeed\": 0.5}}}",
+                                         "edit.json", edited, errors, warnings));
     Entity entity{};
     ApplyEnemyArchetype(entity, EnemyVariant::Brute, edited.enemies);
     TEST_ASSERT(entity.health == 400 && entity.variant == EnemyVariant::Brute);
@@ -3295,17 +3331,20 @@ void TestEntityVariantValidation() {
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"health\", \"key\": \"red\"},"
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"key\", \"key\": \"red\", \"value\": 5}]}";
     TEST_ASSERT(!ParseEntityPlacementsJson(bad, "v.entities.json", placements, errors, warnings));
-    TEST_ASSERT(AnyMessageContains(
-        errors, {"v.entities.json: entities[1] (enemy): field \"variant\" must be \"guard\", \"brute\" or \"runner\", got \"ninja\""}));
+    TEST_ASSERT(AnyMessageContains(errors, {"v.entities.json: entities[1] (enemy): field \"variant\" must be "
+                                            "\"guard\", \"brute\" or \"runner\", got \"ninja\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[2] (enemy): field \"variant\" must be", "got 3"}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[3] (enemy): field \"variant\" must be", "\"Guard\""}));
-    TEST_ASSERT(AnyMessageContains(errors, {"entities[4] (pickup): field \"key\" is required (\"red\", \"blue\" or \"gold\")"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"entities[5] (pickup): field \"key\" must be \"red\", \"blue\" or \"gold\", got \"green\""}));
+    TEST_ASSERT(AnyMessageContains(
+        errors, {"entities[4] (pickup): field \"key\" is required (\"red\", \"blue\" or \"gold\")"}));
+    TEST_ASSERT(AnyMessageContains(
+        errors, {"entities[5] (pickup): field \"key\" must be \"red\", \"blue\" or \"gold\", got \"green\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[6] (door): field \"lock\" must be", "\"purple\""}));
     TEST_ASSERT(errors.size() == 6);
     TEST_ASSERT(AnyMessageContains(warnings, {"entities[7] (enemy): field \"lock\" only applies to door"}));
     TEST_ASSERT(AnyMessageContains(warnings, {"entities[8] (pickup): field \"key\" only applies to pickups of kind"}));
-    TEST_ASSERT(AnyMessageContains(warnings, {"entities[9] (pickup): field \"value\" only applies to health and ammo"}));
+    TEST_ASSERT(
+        AnyMessageContains(warnings, {"entities[9] (pickup): field \"value\" only applies to health and ammo"}));
     TEST_ASSERT(placements.size() == 4);  // the player, the runner and the two pickups with warnings only
 
     // The CSV export uses the same rules.
@@ -3328,7 +3367,8 @@ void TestEntityVariantValidation() {
 
 // Places a door at (cellX, cellY) with `lock` (entity and map) and returns its id.
 int AddDoor(EntityManager& manager, Map& map, int cellX, int cellY, KeyColor lock, bool open = false) {
-    Entity& door = manager.CreateEntity(EntityType::Door, Vec2{static_cast<float>(cellX) + 0.5f, static_cast<float>(cellY) + 0.5f});
+    Entity& door = manager.CreateEntity(EntityType::Door,
+                                        Vec2{static_cast<float>(cellX) + 0.5f, static_cast<float>(cellY) + 0.5f});
     door.mapX = cellX;
     door.mapY = cellY;
     door.doorLock = lock;
@@ -3581,7 +3621,8 @@ void TestCorpseAndHitFlash() {
     runner.active = false;
     std::vector<SpriteEntity> runnerSprites;
     SyncSpritesWithEntities(single, runnerSprites);
-    TEST_ASSERT(runnerSprites.size() == 1 && runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::RunnerDead));
+    TEST_ASSERT(runnerSprites.size() == 1 &&
+                runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::RunnerDead));
     single.Entities()[0].variant = EnemyVariant::Brute;
     SyncSpritesWithEntities(single, runnerSprites);
     TEST_ASSERT(runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::BruteDead));
@@ -3688,11 +3729,13 @@ void TestHudKeyIconsLayout() {
     options.errorDialogs = false;
     options.preview = PreviewScreen::Items;
     TEST_ASSERT(engine.Init(options));
-    TEST_ASSERT(engine.keys_.Has(KeyColor::Red) && engine.keys_.Has(KeyColor::Blue) && engine.keys_.Has(KeyColor::Gold));
+    TEST_ASSERT(engine.keys_.Has(KeyColor::Red) && engine.keys_.Has(KeyColor::Blue) &&
+                engine.keys_.Has(KeyColor::Gold));
     engine.Render();
     AssertInsideMargin(engine.framebuffer_, "items preview");
     const UiRenderer::UiRect gold = UiRenderer::KeyCardRect(width, height, KeyColor::Gold);
-    TEST_ASSERT(engine.framebuffer_.Data()[(gold.y + 1) * width + gold.x + 1] == UiRenderer::KeyCardColor(KeyColor::Gold));
+    TEST_ASSERT(engine.framebuffer_.Data()[(gold.y + 1) * width + gold.x + 1] ==
+                UiRenderer::KeyCardColor(KeyColor::Gold));
 }
 
 void TestAiStress20Enemies() {
@@ -3714,8 +3757,8 @@ void TestAiStress20Enemies() {
     std::string entities = "{\"entities\": [{\"type\": \"player\", \"x\": 12.5, \"y\": 24.5, \"angle\": 0}";
     for (int i = 0; i < 20; ++i) {
         const char* variants[] = {"guard", "brute", "runner"};
-        entities += ",{\"type\": \"enemy\", \"x\": " + std::to_string(30.5 + (i % 5) * 3) + ", \"y\": " +
-                    std::to_string(8.5 + (i / 5) * 9) + ", \"variant\": \"" + variants[i % 3] + "\"}";
+        entities += ",{\"type\": \"enemy\", \"x\": " + std::to_string(30.5 + (i % 5) * 3) +
+                    ", \"y\": " + std::to_string(8.5 + (i / 5) * 9) + ", \"variant\": \"" + variants[i % 3] + "\"}";
     }
     entities += "]}";
     MakeContentRoot(root);
@@ -3889,10 +3932,11 @@ void TestAutoplayUnwinnableLevels() {
     TEST_ASSERT(locked.levels[0].reason.find("red door at (3, 1)") != std::string::npos);
 
     // --all stops at the first failure; the later levels are reported as not played.
-    WriteAutoplayFixture(root, {{"locked", "#######\n#..D..X\n#######\n",
-                                 R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 },
+    WriteAutoplayFixture(
+        root, {{"locked", "#######\n#..D..X\n#######\n",
+                R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 },
                                      { "type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "red" } ] })"},
-                                {"open", "#####\n#..X#\n#####\n", R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 } ] })"}});
+               {"open", "#####\n#..X#\n#####\n", R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 } ] })"}});
     options.level = 0;
     const AutoplayRunReport campaign = RunAutoplay(options);
     TEST_ASSERT(!campaign.Success() && campaign.levels.size() == 2 && !campaign.campaignCompleted);
@@ -4017,7 +4061,8 @@ void TestPlayerEnemyCollision() {
     float closest = 100.0f;
     for (int frame = 0; frame < 240; ++frame) {
         engine.Update(1.0 / 60.0);
-        closest = std::min(closest, Length(engine.entityManager_.GetEntityById(enemyId)->position - engine.player_.position));
+        closest =
+            std::min(closest, Length(engine.entityManager_.GetEntityById(enemyId)->position - engine.player_.position));
     }
     TEST_ASSERT(closest >= contact - 0.01f);
     TEST_ASSERT(engine.player_.position.x < 6.5f);
@@ -4056,7 +4101,8 @@ void TestSpriteVerticalCrop() {
     Framebuffer framebuffer(320, 240);
     const std::vector<float> depth(320, 100.0f);
     const auto channel = [&](int x, int y, int shift) {
-        return static_cast<int>((framebuffer.Data()[static_cast<std::size_t>(y) * 320u + static_cast<std::size_t>(x)] >> shift) & 0xFFu);
+        return static_cast<int>(
+            (framebuffer.Data()[static_cast<std::size_t>(y) * 320u + static_cast<std::size_t>(x)] >> shift) & 0xFFu);
     };
     const auto render = [&](float distance) {
         framebuffer.Clear(0);
@@ -4068,7 +4114,7 @@ void TestSpriteVerticalCrop() {
     // 960 pixels tall: the screen shows texture rows 0.37..0.62, i.e. green at the top and blue
     // at the bottom (the old code squeezed the whole texture in: red at the top, white below).
     render(0.25f);
-    TEST_ASSERT(channel(160, 0, 8) > 150 && channel(160, 0, 16) < 60);   // green
+    TEST_ASSERT(channel(160, 0, 8) > 150 && channel(160, 0, 16) < 60);     // green
     TEST_ASSERT(channel(160, 239, 0) > 150 && channel(160, 239, 8) < 60);  // blue
     // A sprite that fits on screen still shows the whole texture, red on top and white below.
     render(2.0f);
@@ -4087,7 +4133,8 @@ void TestContentParityFixtures() {
         std::vector<std::string> errors;
         const bool ok = LoadMapFromFile(PathToUtf8(dir / name), map, errors);
         if (ok != want["ok"].get<bool>()) {
-            FailTest(__FILE__, __LINE__, name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
+            FailTest(__FILE__, __LINE__,
+                     name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
         }
         if (ok) {
             TEST_ASSERT(map.Width() == want["width"].get<int>() && map.Height() == want["height"].get<int>());
@@ -4101,7 +4148,8 @@ void TestContentParityFixtures() {
         std::vector<std::string> warnings;
         const bool ok = LoadEntityPlacementsFromFile(PathToUtf8(dir / name), placements, lights, errors, warnings);
         if (ok != want["ok"].get<bool>()) {
-            FailTest(__FILE__, __LINE__, name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
+            FailTest(__FILE__, __LINE__,
+                     name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
         }
         if (ok) {
             std::vector<std::string> types;
@@ -4130,13 +4178,14 @@ void TestContentParityFixtures() {
         std::vector<std::string> errors;
         std::vector<std::string> warnings;
         TEST_ASSERT(LoadMapFromFile(PathToUtf8(dir / want["map"].get<std::string>()), map, errors));
-        TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(dir / want["entities"].get<std::string>()), placements, lights,
-                                                 errors, warnings));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(dir / want["entities"].get<std::string>()), placements,
+                                                 lights, errors, warnings));
         LevelContents level{};
         const bool ok = BuildLevelFromPlacements(map, placements, lights, GameplayDefinitions{}, level, errors);
         if (ok != want["ok"].get<bool>()) {
-            FailTest(__FILE__, __LINE__, "levels." + name + ": the engine " + (ok ? "builds" : "rejects") +
-                                             " it, expected.json says otherwise");
+            FailTest(
+                __FILE__, __LINE__,
+                "levels." + name + ": the engine " + (ok ? "builds" : "rejects") + " it, expected.json says otherwise");
         }
         if (ok) {
             const nlohmann::json& rows = want["light"];
@@ -4145,7 +4194,8 @@ void TestContentParityFixtures() {
                 TEST_ASSERT(static_cast<int>(rows[static_cast<std::size_t>(y)].size()) == map.Width());
                 for (int x = 0; x < map.Width(); ++x) {
                     TEST_ASSERT_NEAR(map.GetLightLevel(x, y),
-                                     rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)].get<float>(), 1e-6f);
+                                     rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)].get<float>(),
+                                     1e-6f);
                 }
             }
         }
@@ -4218,9 +4268,12 @@ void TestLightZones() {
     TEST_ASSERT(!ParseEntityPlacementsJson(bad, "bad.json", placements, lights, errors, warnings));
     TEST_ASSERT(placements.size() == 1 && lights.size() == 1);
     TEST_ASSERT(errors.size() == 9);
-    TEST_ASSERT(AnyMessageContains(errors, {"bad.json: lights[0]: field \"level\" must be a number from 0.2 to 1.0, got 0.1"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"bad.json: lights[1]: field \"level\" must be a number from 0.2 to 1.0, got 1.5"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"lights[2]: field \"level\" must be a number from 0.2 to 1.0, got \"dark\""}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"bad.json: lights[0]: field \"level\" must be a number from 0.2 to 1.0, got 0.1"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"bad.json: lights[1]: field \"level\" must be a number from 0.2 to 1.0, got 1.5"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"lights[2]: field \"level\" must be a number from 0.2 to 1.0, got \"dark\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"lights[3]: field \"level\" is required"}));
     TEST_ASSERT(AnyMessageContains(errors, {"lights[4]: field \"w\" must be an integer from 1 to 100000, got 0"}));
     TEST_ASSERT(AnyMessageContains(errors, {"lights[5]: field \"x\" must be an integer from 0 to 100000, got -1"}));
@@ -4233,7 +4286,8 @@ void TestLightZones() {
     warnings.clear();
     TEST_ASSERT(!ParseEntityPlacementsJson(R"({"entities": [], "lights": {"x": 1}})", "obj.json", placements, lights,
                                            errors, warnings));
-    TEST_ASSERT(AnyMessageContains(errors, {"obj.json: field \"lights\" must be an array of light zones, got an object"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"obj.json: field \"lights\" must be an array of light zones, got an object"}));
     errors.clear();
     // The overload without zones still rejects a file with an invalid zone.
     TEST_ASSERT(!ParseEntityPlacementsJson(bad, "bad.json", placements, errors, warnings));
@@ -4251,8 +4305,10 @@ void TestLightZones() {
     BuildBorderWalls(untouched);
     TEST_ASSERT(!BuildLevelFromPlacements(untouched, placements, lights, GameplayDefinitions{}, level, errors));
     TEST_ASSERT(errors.size() == 2);
-    TEST_ASSERT(AnyMessageContains(errors, {"out.json: lights[1]: cells (6, 1) to (8, 1) are not all inside the 8x6 map"}));
-    TEST_ASSERT(AnyMessageContains(errors, {"out.json: lights[2]: cells (1, 5) to (1, 6) are not all inside the 8x6 map"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"out.json: lights[1]: cells (6, 1) to (8, 1) are not all inside the 8x6 map"}));
+    TEST_ASSERT(
+        AnyMessageContains(errors, {"out.json: lights[2]: cells (1, 5) to (1, 6) are not all inside the 8x6 map"}));
     TEST_ASSERT_NEAR(untouched.GetLightLevel(1, 1), 1.0f, 1e-6f);
     errors.clear();
 
@@ -4348,20 +4404,25 @@ const TestCase kTests[] = {
     {"gameplay_definitions_exact", "gameplay.json exact values per section", &TestGameplayDefinitionsExactValues},
     {"gameplay_definitions_invalid", "Malformed or invalid gameplay.json is rejected", &TestGameplayDefinitionsInvalid},
     {"entity_placements_json_csv", "JSON entity placements, errors, CSV equivalence", &TestEntityPlacementsJsonAndCsv},
-    {"decorations_and_sprite_sync", "Decorations are not triggers; sprites survive updates", &TestDecorationsAndSpriteSync},
+    {"decorations_and_sprite_sync", "Decorations are not triggers; sprites survive updates",
+     &TestDecorationsAndSpriteSync},
     {"pickup_kind_from_data", "Pickup kind and value come from data", &TestPickupKindFromData},
     {"edited_data_changes_game", "Edited gameplay and entity files change the game", &TestEditedDataChangesGame},
     {"level_load_failures", "Missing or invalid entity files fail the level load", &TestLevelLoadFailures},
     {"game_flow_menu", "Game flow: main menu, level select, quit, new game", &TestGameFlowMenu},
     {"game_flow_progression", "Game flow: level complete, carry-over, campaign complete", &TestGameFlowProgression},
-    {"game_flow_death_pause", "Game flow: death snapshot, pause, continue, external states", &TestGameFlowDeathAndPause},
-    {"campaign_manifest_validation", "campaign.json loads and invalid manifests are rejected", &TestCampaignManifestValidation},
-    {"exit_switch_activation", "Exit switch: reach, facing, walls; triggers do not end the level", &TestExitSwitchActivation},
+    {"game_flow_death_pause", "Game flow: death snapshot, pause, continue, external states",
+     &TestGameFlowDeathAndPause},
+    {"campaign_manifest_validation", "campaign.json loads and invalid manifests are rejected",
+     &TestCampaignManifestValidation},
+    {"exit_switch_activation", "Exit switch: reach, facing, walls; triggers do not end the level",
+     &TestExitSwitchActivation},
     {"progress_file_roundtrip", "progress.json round trip, atomic save, corrupt files", &TestProgressFileRoundTrip},
     {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
     {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
     {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
-    {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete", &TestCampaignPlaythrough},
+    {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete",
+     &TestCampaignPlaythrough},
     {"line_of_sight", "Line of sight: walls and closed doors block, open doors do not", &TestLineOfSight},
     {"enemy_hearing", "Enemies hear shots through open cells only", &TestEnemyHearing},
     {"enemy_pathfinding", "Grid path finding and enemies walking round walls", &TestEnemyPathfinding},
@@ -4376,8 +4437,10 @@ const TestCase kTests[] = {
     {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
     {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
     {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
-    {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic", &TestAutoplayFixtureLevel},
-    {"autoplay_unwinnable_levels", "Autoplay bot reports unwinnable levels with a reason", &TestAutoplayUnwinnableLevels},
+    {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic",
+     &TestAutoplayFixtureLevel},
+    {"autoplay_unwinnable_levels", "Autoplay bot reports unwinnable levels with a reason",
+     &TestAutoplayUnwinnableLevels},
     {"autoplay_command_line", "neo_wolf_autoplay command line and report formats", &TestAutoplayCommandLine},
     {"player_enemy_collision", "Living enemies block the player, corpses do not (C15)", &TestPlayerEnemyCollision},
     {"sprite_vertical_crop", "Close sprites are cropped, not squeezed", &TestSpriteVerticalCrop},
@@ -4398,7 +4461,7 @@ bool Matches(const TestCase& test, const std::string& filter) {
     return std::string(test.id).find(filter) != std::string::npos ||
            std::string(test.name).find(filter) != std::string::npos;
 }
-} // namespace
+}  // namespace
 
 int main(int argc, char* argv[]) {
     std::vector<std::string> filters;

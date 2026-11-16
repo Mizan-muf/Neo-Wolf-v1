@@ -39,17 +39,10 @@ bool IsValidContentId(const std::string& id);
 // Parses campaign JSON text. File references are checked relative to `contentRoot` (an empty
 // root means the working directory). `sourceName` starts every message. On failure
 // `outCampaign` is unchanged.
-bool ParseCampaign(
-    const std::string& jsonText,
-    const std::string& sourceName,
-    const std::filesystem::path& contentRoot,
-    CampaignDefinition& outCampaign,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool ParseCampaign(const std::string& jsonText, const std::string& sourceName, const std::filesystem::path& contentRoot,
+                   CampaignDefinition& outCampaign, std::vector<std::string>& errors,
+                   std::vector<std::string>& warnings);
 
-bool LoadCampaign(
-    const std::string& filePath,
-    const std::filesystem::path& contentRoot,
-    CampaignDefinition& outCampaign,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool LoadCampaign(const std::string& filePath, const std::filesystem::path& contentRoot,
+                  CampaignDefinition& outCampaign, std::vector<std::string>& errors,
+                  std::vector<std::string>& warnings);

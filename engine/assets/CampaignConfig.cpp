@@ -48,7 +48,7 @@ void WarnLongName(const std::string& name, const std::string& label, std::vector
                            " characters and is shortened on screen");
     }
 }
-} // namespace
+}  // namespace
 
 bool IsValidContentId(const std::string& id) {
     if (id.empty()) {
@@ -63,13 +63,9 @@ bool IsValidContentId(const std::string& id) {
     return true;
 }
 
-bool ParseCampaign(
-    const std::string& jsonText,
-    const std::string& sourceName,
-    const std::filesystem::path& contentRoot,
-    CampaignDefinition& outCampaign,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool ParseCampaign(const std::string& jsonText, const std::string& sourceName, const std::filesystem::path& contentRoot,
+                   CampaignDefinition& outCampaign, std::vector<std::string>& errors,
+                   std::vector<std::string>& warnings) {
     const std::size_t errorsBefore = errors.size();
 
     json document;
@@ -109,7 +105,8 @@ bool ParseCampaign(
                 if (!IsValidContentId(level.id)) {
                     errors.push_back(label + ": id must use only a-z, 0-9, '_' and '-'");
                 } else if (!seenIds.insert(level.id).second) {
-                    errors.push_back(label + ": id \"" + level.id + "\" is used by an earlier level (ids must be unique)");
+                    errors.push_back(label + ": id \"" + level.id +
+                                     "\" is used by an earlier level (ids must be unique)");
                 }
             }
             if (ReadString(entry, "name", label, level.name, errors)) {
@@ -124,7 +121,8 @@ bool ParseCampaign(
             }
             if (ReadString(entry, "theme", label, level.theme, errors)) {
                 if (!IsValidContentId(level.theme)) {
-                    errors.push_back(label + ": theme must use only a-z, 0-9, '_' and '-', got \"" + level.theme + "\"");
+                    errors.push_back(label + ": theme must use only a-z, 0-9, '_' and '-', got \"" + level.theme +
+                                     "\"");
                 } else if (!ContentFileExists(contentRoot, ThemeConfigPath(level.theme))) {
                     errors.push_back(label + ": theme \"" + level.theme + "\" not found (" +
                                      ThemeConfigPath(level.theme) + ")");
@@ -142,12 +140,9 @@ bool ParseCampaign(
     return true;
 }
 
-bool LoadCampaign(
-    const std::string& filePath,
-    const std::filesystem::path& contentRoot,
-    CampaignDefinition& outCampaign,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool LoadCampaign(const std::string& filePath, const std::filesystem::path& contentRoot,
+                  CampaignDefinition& outCampaign, std::vector<std::string>& errors,
+                  std::vector<std::string>& warnings) {
     std::string text;
     if (!ReadTextFile(filePath, "campaign manifest", text, errors)) {
         return false;

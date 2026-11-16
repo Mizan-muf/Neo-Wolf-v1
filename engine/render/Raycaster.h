@@ -11,10 +11,7 @@ class Framebuffer;
 class Texture;
 struct Player;
 
-enum class RayHitSide : std::uint8_t {
-    Vertical = 0,
-    Horizontal
-};
+enum class RayHitSide : std::uint8_t { Vertical = 0, Horizontal };
 
 struct RaycastHit {
     bool hit = false;
@@ -28,7 +25,7 @@ struct RaycastHit {
 };
 
 struct RaycasterRenderParams {
-    float fieldOfViewRadians = 1.04719755f; // 60 degrees
+    float fieldOfViewRadians = 1.04719755f;  // 60 degrees
     const Texture* wallTexture = nullptr;
     const Texture* wallAltATexture = nullptr;
     const Texture* wallAltBTexture = nullptr;
@@ -44,16 +41,9 @@ struct RaycasterRenderParams {
 
 class Raycaster {
 public:
-    static RaycastHit CastRay(
-        const Map& map,
-        const Vec2& rayOrigin,
-        const Vec2& rayDirection,
-        float playerDirectionAngleRadians);
+    static RaycastHit CastRay(const Map& map, const Vec2& rayOrigin, const Vec2& rayDirection,
+                              float playerDirectionAngleRadians);
 
-    static void RenderWalls(
-        const Map& map,
-        const Player& player,
-        Framebuffer& framebuffer,
-        const RaycasterRenderParams& params,
-        std::vector<RaycastHit>& outHits);
+    static void RenderWalls(const Map& map, const Player& player, Framebuffer& framebuffer,
+                            const RaycasterRenderParams& params, std::vector<RaycastHit>& outHits);
 };

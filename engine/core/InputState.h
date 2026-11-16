@@ -19,9 +19,9 @@ enum class InputAction : std::uint8_t {
     ToggleDebugView,  // F3: FPS / position overlay
     Back,             // Escape only: leaves the current screen (quits from the main menu)
     // Appended in Phase 5 (docs/CONTROLS.md):
-    Select,           // Enter or Space: activates the highlighted menu item
-    ToggleMinimap,    // M or Tab
-    QuitToMenu,       // Q (also TurnLeft): leaves the pause screen for the main menu
+    Select,         // Enter or Space: activates the highlighted menu item
+    ToggleMinimap,  // M or Tab
+    QuitToMenu,     // Q (also TurnLeft): leaves the pause screen for the main menu
     Count
 };
 
@@ -67,15 +67,9 @@ struct InputState {
         state.wasReleased = false;
     }
 
-    bool IsDown(InputAction action) const {
-        return actions[static_cast<std::size_t>(action)].isDown;
-    }
+    bool IsDown(InputAction action) const { return actions[static_cast<std::size_t>(action)].isDown; }
 
-    bool WasPressed(InputAction action) const {
-        return actions[static_cast<std::size_t>(action)].wasPressed;
-    }
+    bool WasPressed(InputAction action) const { return actions[static_cast<std::size_t>(action)].wasPressed; }
 
-    bool WasReleased(InputAction action) const {
-        return actions[static_cast<std::size_t>(action)].wasReleased;
-    }
+    bool WasReleased(InputAction action) const { return actions[static_cast<std::size_t>(action)].wasReleased; }
 };

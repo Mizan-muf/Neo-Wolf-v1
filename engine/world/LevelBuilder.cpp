@@ -15,44 +15,44 @@ namespace {
 // their corpse texture when they die.
 bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId& outTexture) {
     switch (entity.type) {
-    case EntityType::Enemy: {
-        const bool dead = IsEnemyCorpse(entity);
-        outType = dead ? SpriteType::Corpse : SpriteType::Enemy;
-        switch (entity.variant) {
-        case EnemyVariant::Brute:
-            outTexture = dead ? SpriteTextureId::BruteDead : SpriteTextureId::Brute;
-            break;
-        case EnemyVariant::Runner:
-            outTexture = dead ? SpriteTextureId::RunnerDead : SpriteTextureId::Runner;
-            break;
-        case EnemyVariant::Guard:
-            outTexture = dead ? SpriteTextureId::GuardDead : SpriteTextureId::Guard;
-            break;
+        case EntityType::Enemy: {
+            const bool dead = IsEnemyCorpse(entity);
+            outType = dead ? SpriteType::Corpse : SpriteType::Enemy;
+            switch (entity.variant) {
+                case EnemyVariant::Brute:
+                    outTexture = dead ? SpriteTextureId::BruteDead : SpriteTextureId::Brute;
+                    break;
+                case EnemyVariant::Runner:
+                    outTexture = dead ? SpriteTextureId::RunnerDead : SpriteTextureId::Runner;
+                    break;
+                case EnemyVariant::Guard:
+                    outTexture = dead ? SpriteTextureId::GuardDead : SpriteTextureId::Guard;
+                    break;
+            }
+            return true;
         }
-        return true;
-    }
-    case EntityType::Pickup:
-        outType = entity.pickupType == PickupType::Key ? SpriteType::Key : SpriteType::Pickup;
-        switch (entity.pickupType) {
-        case PickupType::Ammo:
-            outTexture = SpriteTextureId::Ammo;
-            break;
-        case PickupType::Key:
-            outTexture = entity.keyColor == KeyColor::Blue   ? SpriteTextureId::KeyBlue
-                         : entity.keyColor == KeyColor::Gold ? SpriteTextureId::KeyGold
-                                                             : SpriteTextureId::KeyRed;
-            break;
-        case PickupType::Health:
-            outTexture = SpriteTextureId::Health;
-            break;
-        }
-        return true;
-    case EntityType::Decoration:
-        outType = SpriteType::Decoration;
-        outTexture = SpriteTextureId::Decoration;
-        return true;
-    default:
-        return false;
+        case EntityType::Pickup:
+            outType = entity.pickupType == PickupType::Key ? SpriteType::Key : SpriteType::Pickup;
+            switch (entity.pickupType) {
+                case PickupType::Ammo:
+                    outTexture = SpriteTextureId::Ammo;
+                    break;
+                case PickupType::Key:
+                    outTexture = entity.keyColor == KeyColor::Blue   ? SpriteTextureId::KeyBlue
+                                 : entity.keyColor == KeyColor::Gold ? SpriteTextureId::KeyGold
+                                                                     : SpriteTextureId::KeyRed;
+                    break;
+                case PickupType::Health:
+                    outTexture = SpriteTextureId::Health;
+                    break;
+            }
+            return true;
+        case EntityType::Decoration:
+            outType = SpriteType::Decoration;
+            outTexture = SpriteTextureId::Decoration;
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -115,29 +115,23 @@ void ValidateLightZones(const Map& map, const std::vector<LightZone>& lights, st
             bottom > map.Height()) {
             errors.push_back((zone.source.empty() ? std::string("light zone") : zone.source) + ": cells (" +
                              std::to_string(zone.x) + ", " + std::to_string(zone.y) + ") to (" +
-                             std::to_string(right - 1) + ", " + std::to_string(bottom - 1) + ") are not all inside the " +
-                             std::to_string(map.Width()) + "x" + std::to_string(map.Height()) + " map");
+                             std::to_string(right - 1) + ", " + std::to_string(bottom - 1) +
+                             ") are not all inside the " + std::to_string(map.Width()) + "x" +
+                             std::to_string(map.Height()) + " map");
         }
     }
 }
-} // namespace
+}  // namespace
 
-bool BuildLevelFromPlacements(
-    Map& map,
-    const std::vector<EntityPlacement>& placements,
-    const GameplayDefinitions& gameplay,
-    LevelContents& out,
-    std::vector<std::string>& errors) {
+bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& placements,
+                              const GameplayDefinitions& gameplay, LevelContents& out,
+                              std::vector<std::string>& errors) {
     return BuildLevelFromPlacements(map, placements, {}, gameplay, out, errors);
 }
 
-bool BuildLevelFromPlacements(
-    Map& map,
-    const std::vector<EntityPlacement>& placements,
-    const std::vector<LightZone>& lights,
-    const GameplayDefinitions& gameplay,
-    LevelContents& out,
-    std::vector<std::string>& errors) {
+bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& placements,
+                              const std::vector<LightZone>& lights, const GameplayDefinitions& gameplay,
+                              LevelContents& out, std::vector<std::string>& errors) {
     const std::size_t errorsBefore = errors.size();
     ValidatePlacements(map, placements, errors);
     ValidateLightZones(map, lights, errors);
@@ -152,53 +146,53 @@ bool BuildLevelFromPlacements(
 
     for (const EntityPlacement& placement : placements) {
         switch (placement.type) {
-        case PlacementType::Player: {
-            level.player.position = placement.position;
-            level.player.directionAngleRadians = NormalizeAngle(DegreesToRadians(placement.angleDegrees));
-            Entity& entity = level.entities.CreateEntity(EntityType::Player, placement.position);
-            entity.visible = false;  // the camera
-            break;
-        }
-        case PlacementType::Enemy: {
-            Entity& entity = level.entities.CreateEntity(EntityType::Enemy, placement.position);
-            ApplyEnemyArchetype(entity, placement.variant, gameplay.enemies);
-            AddSprite(entity, level.sprites);
-            break;
-        }
-        case PlacementType::Pickup: {
-            Entity& entity = level.entities.CreateEntity(EntityType::Pickup, placement.position);
-            entity.pickupType = placement.pickupKind;
-            if (placement.pickupKind == PickupType::Key) {
-                entity.keyColor = placement.key;
-                entity.pickupValue = 0;
-            } else {
-                const PickupDefinition& definition = placement.pickupKind == PickupType::Ammo ? gameplay.pickups.ammo
-                                                                                             : gameplay.pickups.health;
-                entity.pickupValue = placement.pickupValue.value_or(definition.value);
+            case PlacementType::Player: {
+                level.player.position = placement.position;
+                level.player.directionAngleRadians = NormalizeAngle(DegreesToRadians(placement.angleDegrees));
+                Entity& entity = level.entities.CreateEntity(EntityType::Player, placement.position);
+                entity.visible = false;  // the camera
+                break;
             }
-            AddSprite(entity, level.sprites);
-            break;
-        }
-        case PlacementType::Door: {
-            Entity& entity = level.entities.CreateEntity(EntityType::Door, placement.position);
-            entity.mapX = placement.mapX;
-            entity.mapY = placement.mapY;
-            entity.doorOpen = false;
-            entity.doorLock = placement.lock;
-            break;
-        }
-        case PlacementType::Trigger: {
-            Entity& entity = level.entities.CreateEntity(EntityType::Trigger, placement.position);
-            entity.mapX = placement.mapX;
-            entity.mapY = placement.mapY;
-            entity.triggerActivated = false;
-            break;
-        }
-        case PlacementType::Decoration: {
-            const Entity& entity = level.entities.CreateEntity(EntityType::Decoration, placement.position);
-            AddSprite(entity, level.sprites);
-            break;
-        }
+            case PlacementType::Enemy: {
+                Entity& entity = level.entities.CreateEntity(EntityType::Enemy, placement.position);
+                ApplyEnemyArchetype(entity, placement.variant, gameplay.enemies);
+                AddSprite(entity, level.sprites);
+                break;
+            }
+            case PlacementType::Pickup: {
+                Entity& entity = level.entities.CreateEntity(EntityType::Pickup, placement.position);
+                entity.pickupType = placement.pickupKind;
+                if (placement.pickupKind == PickupType::Key) {
+                    entity.keyColor = placement.key;
+                    entity.pickupValue = 0;
+                } else {
+                    const PickupDefinition& definition =
+                        placement.pickupKind == PickupType::Ammo ? gameplay.pickups.ammo : gameplay.pickups.health;
+                    entity.pickupValue = placement.pickupValue.value_or(definition.value);
+                }
+                AddSprite(entity, level.sprites);
+                break;
+            }
+            case PlacementType::Door: {
+                Entity& entity = level.entities.CreateEntity(EntityType::Door, placement.position);
+                entity.mapX = placement.mapX;
+                entity.mapY = placement.mapY;
+                entity.doorOpen = false;
+                entity.doorLock = placement.lock;
+                break;
+            }
+            case PlacementType::Trigger: {
+                Entity& entity = level.entities.CreateEntity(EntityType::Trigger, placement.position);
+                entity.mapX = placement.mapX;
+                entity.mapY = placement.mapY;
+                entity.triggerActivated = false;
+                break;
+            }
+            case PlacementType::Decoration: {
+                const Entity& entity = level.entities.CreateEntity(EntityType::Decoration, placement.position);
+                AddSprite(entity, level.sprites);
+                break;
+            }
         }
     }
 

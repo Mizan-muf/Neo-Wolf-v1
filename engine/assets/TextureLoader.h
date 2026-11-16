@@ -7,4 +7,4 @@
 namespace TextureLoader {
 bool LoadPPM(const std::string& filePath, Texture& outTexture);
 void BuildFallbackChecker(Texture& outTexture, int width, int height);
-} // namespace TextureLoader
+}  // namespace TextureLoader

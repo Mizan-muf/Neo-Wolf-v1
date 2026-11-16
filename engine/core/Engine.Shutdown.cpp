@@ -73,5 +73,3 @@ void Engine::Shutdown() {
 
     LogInfo("Engine shutdown finished.");
 }
-
-

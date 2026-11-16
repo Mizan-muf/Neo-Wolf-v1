@@ -23,36 +23,36 @@ enum class PreviewScreen : std::uint8_t {
 
 inline const char* PreviewScreenName(PreviewScreen screen) {
     switch (screen) {
-    case PreviewScreen::None:
-        return "none";
-    case PreviewScreen::Menu:
-        return "menu";
-    case PreviewScreen::LevelSelect:
-        return "levelselect";
-    case PreviewScreen::Hud:
-        return "hud";
-    case PreviewScreen::Minimap:
-        return "minimap";
-    case PreviewScreen::Pause:
-        return "pause";
-    case PreviewScreen::LevelComplete:
-        return "levelcomplete";
-    case PreviewScreen::GameOver:
-        return "gameover";
-    case PreviewScreen::CampaignComplete:
-        return "campaigncomplete";
-    case PreviewScreen::Enemies:
-        return "enemies";
-    case PreviewScreen::Items:
-        return "items";
+        case PreviewScreen::None:
+            return "none";
+        case PreviewScreen::Menu:
+            return "menu";
+        case PreviewScreen::LevelSelect:
+            return "levelselect";
+        case PreviewScreen::Hud:
+            return "hud";
+        case PreviewScreen::Minimap:
+            return "minimap";
+        case PreviewScreen::Pause:
+            return "pause";
+        case PreviewScreen::LevelComplete:
+            return "levelcomplete";
+        case PreviewScreen::GameOver:
+            return "gameover";
+        case PreviewScreen::CampaignComplete:
+            return "campaigncomplete";
+        case PreviewScreen::Enemies:
+            return "enemies";
+        case PreviewScreen::Items:
+            return "items";
     }
     return "none";
 }
 
 // Every preview id, for help texts and tests.
 inline constexpr PreviewScreen kPreviewScreens[] = {
-    PreviewScreen::Menu,  PreviewScreen::LevelSelect,   PreviewScreen::Hud,      PreviewScreen::Minimap,
-    PreviewScreen::Pause, PreviewScreen::LevelComplete, PreviewScreen::GameOver, PreviewScreen::CampaignComplete,
+    PreviewScreen::Menu,    PreviewScreen::LevelSelect,   PreviewScreen::Hud,      PreviewScreen::Minimap,
+    PreviewScreen::Pause,   PreviewScreen::LevelComplete, PreviewScreen::GameOver, PreviewScreen::CampaignComplete,
     PreviewScreen::Enemies, PreviewScreen::Items};
 
 inline bool ParsePreviewScreen(const std::string& name, PreviewScreen& out) {

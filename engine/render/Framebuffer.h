@@ -39,15 +39,9 @@ public:
     void ResetDrawBounds() { drawBounds_ = DrawBounds{}; }
     const DrawBounds& GetDrawBounds() const { return drawBounds_; }
 
-    static constexpr std::uint32_t PackRGBA(
-        std::uint8_t r,
-        std::uint8_t g,
-        std::uint8_t b,
-        std::uint8_t a = 255) {
-        return (static_cast<std::uint32_t>(a) << 24) |
-               (static_cast<std::uint32_t>(r) << 16) |
-               (static_cast<std::uint32_t>(g) << 8) |
-               static_cast<std::uint32_t>(b);
+    static constexpr std::uint32_t PackRGBA(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255) {
+        return (static_cast<std::uint32_t>(a) << 24) | (static_cast<std::uint32_t>(r) << 16) |
+               (static_cast<std::uint32_t>(g) << 8) | static_cast<std::uint32_t>(b);
     }
 
 private:

@@ -29,7 +29,7 @@ struct FloatRange {
 constexpr std::int64_t kMaxStat = kMaxGameplayStat;
 constexpr IntRange kPositiveStat{1, kMaxStat};
 constexpr IntRange kNonNegativeStat{0, kMaxStat};
-constexpr FloatRange kSpeed{0.0, 20.0, true, false};             // > 0, <= 20
+constexpr FloatRange kSpeed{0.0, 20.0, true, false};              // > 0, <= 20
 constexpr FloatRange kNonNegativeSpeed{0.0, 20.0, false, false};  // 0 = stands still
 constexpr FloatRange kDistance{0.0, 1000.0, false, false};
 constexpr FloatRange kPositiveDistance{0.0, 1000.0, true, false};
@@ -81,7 +81,8 @@ public:
             return;  // optional: keep the default
         }
         const std::string name = Join(path, key);
-        const std::string expected = "an integer from " + std::to_string(range.min) + " to " + std::to_string(range.max);
+        const std::string expected =
+            "an integer from " + std::to_string(range.min) + " to " + std::to_string(range.max);
         if (!it->is_number_integer()) {
             Error(name + " must be " + expected + ", got " + DescribeJsonValue(*it));
             return;
@@ -188,17 +189,18 @@ void ReadEnemy(GameplayReader& reader, const json& section, const std::string& p
     reader.Float(section, path, "attackRate", kPositiveCooldown, enemy.attackRate);
     reader.Float(section, path, "reactionTime", kCooldown, enemy.reactionTime);
     reader.Int(section, path, "score", kNonNegativeStat, enemy.score);
-    reader.WarnUnknownKeys(section, path,
-                           {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate",
-                            "reactionTime", "score"});
+    reader.WarnUnknownKeys(
+        section, path,
+        {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate", "reactionTime", "score"});
 }
 
 void ReadEnemies(GameplayReader& reader, const json& document, EnemyDefinitions& enemies) {
     const json* legacy = reader.Section(document, "", "enemy");
     const json* archetypes = reader.Section(document, "", "enemies");
     if (legacy != nullptr && archetypes != nullptr) {
-        reader.Error("use either \"enemies\" or the old \"enemy\" section, not both (\"enemy\" is now "
-                     "\"enemies.guard\")");
+        reader.Error(
+            "use either \"enemies\" or the old \"enemy\" section, not both (\"enemy\" is now "
+            "\"enemies.guard\")");
         return;
     }
     if (legacy != nullptr) {
@@ -229,14 +231,11 @@ void ReadPickup(GameplayReader& reader, const json& pickups, const char* key, Pi
     reader.Int(*section, path, "value", kPositiveStat, pickup.value);
     reader.WarnUnknownKeys(*section, path, {"value"});
 }
-} // namespace
+}  // namespace
 
-bool ParseGameplayDefinitions(
-    const std::string& jsonText,
-    const std::string& sourceName,
-    GameplayDefinitions& outDefinitions,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool ParseGameplayDefinitions(const std::string& jsonText, const std::string& sourceName,
+                              GameplayDefinitions& outDefinitions, std::vector<std::string>& errors,
+                              std::vector<std::string>& warnings) {
     const std::size_t errorsBefore = errors.size();
 
     json document;
@@ -284,11 +283,8 @@ bool ParseGameplayDefinitions(
     return true;
 }
 
-bool LoadGameplayDefinitions(
-    const std::string& filePath,
-    GameplayDefinitions& outDefinitions,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool LoadGameplayDefinitions(const std::string& filePath, GameplayDefinitions& outDefinitions,
+                             std::vector<std::string>& errors, std::vector<std::string>& warnings) {
     std::string text;
     if (!ReadTextFile(filePath, "gameplay definitions", text, errors)) {
         return false;
@@ -304,9 +300,9 @@ std::string DescribeGameplayDefinitions(const GameplayDefinitions& definitions) 
                   "player health %d/%d, move %.2f, turn %.2f, radius %.2f; "
                   "weapon damage %d, fire interval %.2f s, range %.1f, ammo %d/%d, noise %.1f; ",
                   player.initialHealth, player.maxHealth, static_cast<double>(player.moveSpeed),
-                  static_cast<double>(player.turnSpeed), static_cast<double>(player.collisionRadius),
-                  weapon.damage, static_cast<double>(weapon.fireRate), static_cast<double>(weapon.range),
-                  weapon.initialAmmo, weapon.maxAmmo, static_cast<double>(weapon.noiseRadius));
+                  static_cast<double>(player.turnSpeed), static_cast<double>(player.collisionRadius), weapon.damage,
+                  static_cast<double>(weapon.fireRate), static_cast<double>(weapon.range), weapon.initialAmmo,
+                  weapon.maxAmmo, static_cast<double>(weapon.noiseRadius));
     std::string text = buffer;
     for (const EnemyVariant variant : kEnemyVariants) {
         const EnemyDefinition& enemy = definitions.enemies.For(variant);

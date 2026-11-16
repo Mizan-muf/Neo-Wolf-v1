@@ -91,7 +91,7 @@ Vec2 MoveAxisSeparated(const Map& map, const Vec2& position, const Vec2& displac
 
     return nextPosition;
 }
-} // namespace
+}  // namespace
 
 Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacement, float radius) {
     return MoveAxisSeparated(map, position, displacement, radius, nullptr);

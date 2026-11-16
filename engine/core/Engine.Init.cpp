@@ -38,7 +38,7 @@ void LogLoadErrors(std::vector<std::string>& errors) {
     }
     errors.clear();
 }
-} // namespace
+}  // namespace
 
 bool Engine::Init(const EngineOptions& options) {
     LogInfo("Initializing Neo-Wolf Engine...");

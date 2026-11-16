@@ -20,7 +20,7 @@ struct GameplayEvents {
     bool doorOpened = false;
     int doorMapX = -1;
     int doorMapY = -1;
-    bool doorBlocked = false;              // a close was refused: the player or an enemy is in the doorway
+    bool doorBlocked = false;                // a close was refused: the player or an enemy is in the doorway
     KeyColor doorNeedsKey = KeyColor::None;  // an open was refused: the door is locked and the key is missing
 
     bool triggerActivated = false;
@@ -50,8 +50,8 @@ struct GameplayEvents {
 // around the view direction (centre and up to kExitFacingHalfAngle either side) hits an Exit
 // cell no further than kExitReach from the player. Rays stop at the first solid cell, so a
 // switch behind a wall, behind the player or out of reach is never activated.
-inline constexpr float kExitReach = 1.1f;              // map cells, player centre to the switch face
-inline constexpr float kExitFacingHalfAngle = 0.35f;   // radians (about 20 degrees)
+inline constexpr float kExitReach = 1.1f;             // map cells, player centre to the switch face
+inline constexpr float kExitFacingHalfAngle = 0.35f;  // radians (about 20 degrees)
 
 struct ExitSwitchHit {
     bool found = false;
@@ -70,29 +70,14 @@ void SyncPlayerEntity(EntityManager& entityManager, const Player& player);
 // does not close while the player or a living enemy overlaps its cell (outEvents.doorBlocked);
 // corpses do not block it. An Interact press that activates an exit switch (FindExitSwitchInReach)
 // is not also used on a door.
-void UpdateEntityInteractions(
-    EntityManager& entityManager,
-    Map& map,
-    const Player& player,
-    int& playerHealth,
-    int& playerAmmo,
-    int maxHealth,
-    int maxAmmo,
-    bool interactPressed,
-    KeyRing& keys,
-    GameplayEvents& outEvents);
+void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, int& playerHealth,
+                              int& playerAmmo, int maxHealth, int maxAmmo, bool interactPressed, KeyRing& keys,
+                              GameplayEvents& outEvents);
 
 // The same without key cards (every locked door stays shut), for callers that have none.
-void UpdateEntityInteractions(
-    EntityManager& entityManager,
-    Map& map,
-    const Player& player,
-    int& playerHealth,
-    int& playerAmmo,
-    int maxHealth,
-    int maxAmmo,
-    bool interactPressed,
-    GameplayEvents& outEvents);
+void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, int& playerHealth,
+                              int& playerAmmo, int maxHealth, int maxAmmo, bool interactPressed,
+                              GameplayEvents& outEvents);
 
 // True when a door in (cellX, cellY) cannot close: the player's body or a living enemy's
 // overlaps the cell.
@@ -101,11 +86,5 @@ bool IsDoorwayOccupied(const EntityManager& entityManager, const Player& player,
 // Hitscan shot along the view direction: the nearest living enemy within `maxRange` and in
 // front of the first wall takes `damage`. A hit enemy flashes and starts chasing (alerted, no
 // reaction delay); at 0 health it dies and stays as a corpse. Enemy AI: EnemyAi.h.
-bool PerformPlayerAttack(
-    EntityManager& entityManager,
-    const Map& map,
-    const Player& player,
-    int& playerAmmo,
-    int damage,
-    float maxRange,
-    GameplayEvents& outEvents);
+bool PerformPlayerAttack(EntityManager& entityManager, const Map& map, const Player& player, int& playerAmmo,
+                         int damage, float maxRange, GameplayEvents& outEvents);

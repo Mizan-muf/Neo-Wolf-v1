@@ -14,12 +14,9 @@
 #include "engine/ui/UiRenderer.h"
 
 namespace {
-constexpr float kFieldOfViewRadians = 1.04719755f; // 60 degrees
+constexpr float kFieldOfViewRadians = 1.04719755f;  // 60 degrees
 
-void RenderCeilingAndFloor(
-    Framebuffer& framebuffer,
-    const Texture* ceilingTexture,
-    const Texture* floorTexture) {
+void RenderCeilingAndFloor(Framebuffer& framebuffer, const Texture* ceilingTexture, const Texture* floorTexture) {
     const int halfHeight = framebuffer.Height() / 2;
     const int width = framebuffer.Width();
 
@@ -48,7 +45,7 @@ void RenderCeilingAndFloor(
     }
 }
 
-} // namespace
+}  // namespace
 
 void Engine::Render() {
     if (!running_ || framebuffer_.Data() == nullptr) {
@@ -98,22 +95,11 @@ void Engine::RenderWorld() {
     spriteTextures.slots = spriteTextures_;
     spriteTextures.missing = &missingTexture_;
 
-    SpriteRenderer::Render(
-        map_,
-        player_,
-        framebuffer_,
-        latestWallDepthBuffer_,
-        sprites_,
-        spriteTextures,
-        kFieldOfViewRadians);
+    SpriteRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, sprites_, spriteTextures,
+                           kFieldOfViewRadians);
 
-    ParticleRenderer::Render(
-        map_,
-        player_,
-        framebuffer_,
-        latestWallDepthBuffer_,
-        particleManager_.Particles(),
-        kFieldOfViewRadians);
+    ParticleRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, particleManager_.Particles(),
+                             kFieldOfViewRadians);
 }
 
 void Engine::RenderUi() {
@@ -135,8 +121,8 @@ void Engine::RenderUi() {
             UiRenderer::LevelSelectView view{};
             view.campaignTitle = campaign_.title;
             for (std::size_t i = 0; i < campaign_.levels.size(); ++i) {
-                view.levels.push_back(UiRenderer::LevelSelectEntry{
-                    static_cast<int>(i) + 1, campaign_.levels[i].name, flow_.IsLevelUnlocked(static_cast<int>(i))});
+                view.levels.push_back(UiRenderer::LevelSelectEntry{static_cast<int>(i) + 1, campaign_.levels[i].name,
+                                                                   flow_.IsLevelUnlocked(static_cast<int>(i))});
             }
             view.selected = flow_.LevelCursor();
             UiRenderer::DrawLevelSelectScreen(framebuffer_, view);
@@ -144,7 +130,8 @@ void Engine::RenderUi() {
         return;
     }
     if (state == GameState::CampaignComplete) {
-        UiRenderer::DrawCampaignCompleteScreen(framebuffer_, campaign_.title, static_cast<int>(campaign_.levels.size()));
+        UiRenderer::DrawCampaignCompleteScreen(framebuffer_, campaign_.title,
+                                               static_cast<int>(campaign_.levels.size()));
         return;
     }
 
@@ -169,10 +156,9 @@ void Engine::RenderUi() {
 
     if (debugOverlayVisible_) {
         const float fps = time_.deltaSeconds > 0.0 ? static_cast<float>(1.0 / time_.deltaSeconds) : 0.0f;
-        UiRenderer::DrawDebugOverlay(framebuffer_, fps, player_.position.x, player_.position.y,
-                                     player_.directionAngleRadians * 57.2957795f,
-                                     static_cast<int>(std::floor(player_.position.x)),
-                                     static_cast<int>(std::floor(player_.position.y)));
+        UiRenderer::DrawDebugOverlay(
+            framebuffer_, fps, player_.position.x, player_.position.y, player_.directionAngleRadians * 57.2957795f,
+            static_cast<int>(std::floor(player_.position.x)), static_cast<int>(std::floor(player_.position.y)));
     }
 
     const std::string label = UiRenderer::LevelLabel(levelNumber, levelName);

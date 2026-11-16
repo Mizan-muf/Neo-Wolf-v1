@@ -4,14 +4,14 @@
 
 const char* MenuItemLabel(MenuItem item) {
     switch (item) {
-    case MenuItem::NewGame:
-        return "NEW GAME";
-    case MenuItem::Continue:
-        return "CONTINUE";
-    case MenuItem::LevelSelect:
-        return "LEVEL SELECT";
-    case MenuItem::Quit:
-        return "QUIT";
+        case MenuItem::NewGame:
+            return "NEW GAME";
+        case MenuItem::Continue:
+            return "CONTINUE";
+        case MenuItem::LevelSelect:
+            return "LEVEL SELECT";
+        case MenuItem::Quit:
+            return "QUIT";
     }
     return "?";
 }
@@ -66,7 +66,8 @@ PlayerStats GameFlow::ClampCarried(const PlayerStats& stats) const {
 
 FlowRequest GameFlow::StartLevelDirect(int levelIndex) {
     std::vector<FlowRequest> requests;
-    StartLevel(std::clamp(levelIndex, 0, config_.levelCount - 1), config_.initial, FlowRequestType::LoadLevel, requests);
+    StartLevel(std::clamp(levelIndex, 0, config_.levelCount - 1), config_.initial, FlowRequestType::LoadLevel,
+               requests);
     return requests.front();
 }
 
@@ -102,49 +103,49 @@ void GameFlow::StartLevel(int levelIndex, const PlayerStats& stats, FlowRequestT
 std::vector<FlowRequest> GameFlow::Update(const InputState& input, const FlowEvents& events) {
     std::vector<FlowRequest> requests;
     switch (state_) {
-    case GameState::Menu:
-        if (page_ == MenuPage::Main) {
-            UpdateMainMenu(input, requests);
-        } else {
-            UpdateLevelSelect(input, requests);
-        }
-        break;
-    case GameState::Gameplay:
-        UpdateGameplay(input, events, requests);
-        break;
-    case GameState::Paused:
-        if (input.WasPressed(InputAction::QuitToMenu)) {
-            GoToMenu();
-        } else if (input.WasPressed(InputAction::Restart)) {
-            StartLevel(currentLevel_, entrySnapshot_, FlowRequestType::RestartLevel, requests);
-        } else if (input.WasPressed(InputAction::Pause) || input.WasPressed(InputAction::Confirm)) {
-            state_ = GameState::Gameplay;
-        }
-        break;
-    case GameState::GameOver:
-        if (input.WasPressed(InputAction::Restart) || input.WasPressed(InputAction::Confirm)) {
-            StartLevel(currentLevel_, entrySnapshot_, FlowRequestType::RestartLevel, requests);
-        } else if (input.WasPressed(InputAction::Back)) {
-            GoToMenu();
-        }
-        break;
-    case GameState::LevelComplete:
-    case GameState::Victory:  // never stored (ForceState maps it); handled like LevelComplete
-        if (input.WasPressed(InputAction::Confirm)) {
-            if (IsLastLevel() || currentLevel_ < 0) {
-                state_ = GameState::CampaignComplete;
+        case GameState::Menu:
+            if (page_ == MenuPage::Main) {
+                UpdateMainMenu(input, requests);
             } else {
-                StartLevel(currentLevel_ + 1, carried_, FlowRequestType::LoadLevel, requests);
+                UpdateLevelSelect(input, requests);
             }
-        } else if (input.WasPressed(InputAction::Back)) {
-            GoToMenu();
-        }
-        break;
-    case GameState::CampaignComplete:
-        if (input.WasPressed(InputAction::Confirm) || input.WasPressed(InputAction::Back)) {
-            GoToMenu();
-        }
-        break;
+            break;
+        case GameState::Gameplay:
+            UpdateGameplay(input, events, requests);
+            break;
+        case GameState::Paused:
+            if (input.WasPressed(InputAction::QuitToMenu)) {
+                GoToMenu();
+            } else if (input.WasPressed(InputAction::Restart)) {
+                StartLevel(currentLevel_, entrySnapshot_, FlowRequestType::RestartLevel, requests);
+            } else if (input.WasPressed(InputAction::Pause) || input.WasPressed(InputAction::Confirm)) {
+                state_ = GameState::Gameplay;
+            }
+            break;
+        case GameState::GameOver:
+            if (input.WasPressed(InputAction::Restart) || input.WasPressed(InputAction::Confirm)) {
+                StartLevel(currentLevel_, entrySnapshot_, FlowRequestType::RestartLevel, requests);
+            } else if (input.WasPressed(InputAction::Back)) {
+                GoToMenu();
+            }
+            break;
+        case GameState::LevelComplete:
+        case GameState::Victory:  // never stored (ForceState maps it); handled like LevelComplete
+            if (input.WasPressed(InputAction::Confirm)) {
+                if (IsLastLevel() || currentLevel_ < 0) {
+                    state_ = GameState::CampaignComplete;
+                } else {
+                    StartLevel(currentLevel_ + 1, carried_, FlowRequestType::LoadLevel, requests);
+                }
+            } else if (input.WasPressed(InputAction::Back)) {
+                GoToMenu();
+            }
+            break;
+        case GameState::CampaignComplete:
+            if (input.WasPressed(InputAction::Confirm) || input.WasPressed(InputAction::Back)) {
+                GoToMenu();
+            }
+            break;
     }
     return requests;
 }
@@ -169,22 +170,22 @@ void GameFlow::UpdateMainMenu(const InputState& input, std::vector<FlowRequest>&
         return;
     }
     switch (items[static_cast<std::size_t>(menuCursor_)]) {
-    case MenuItem::NewGame:
-        StartLevel(0, config_.initial, FlowRequestType::LoadLevel, requests);
-        break;
-    case MenuItem::Continue:
-        StartLevel(highestUnlocked_ - 1, config_.initial, FlowRequestType::LoadLevel, requests);
-        break;
-    case MenuItem::LevelSelect:
-        page_ = MenuPage::LevelSelect;
-        levelCursor_ = highestUnlocked_ - 1;
-        break;
-    case MenuItem::Quit: {
-        FlowRequest quit{};
-        quit.type = FlowRequestType::Quit;
-        requests.push_back(quit);
-        break;
-    }
+        case MenuItem::NewGame:
+            StartLevel(0, config_.initial, FlowRequestType::LoadLevel, requests);
+            break;
+        case MenuItem::Continue:
+            StartLevel(highestUnlocked_ - 1, config_.initial, FlowRequestType::LoadLevel, requests);
+            break;
+        case MenuItem::LevelSelect:
+            page_ = MenuPage::LevelSelect;
+            levelCursor_ = highestUnlocked_ - 1;
+            break;
+        case MenuItem::Quit: {
+            FlowRequest quit{};
+            quit.type = FlowRequestType::Quit;
+            requests.push_back(quit);
+            break;
+        }
     }
 }
 

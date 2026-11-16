@@ -22,18 +22,18 @@ float SafeInverse(float value) {
 
 const Texture* ResolveTextureForTile(const RaycasterRenderParams& params, TileType tileType) {
     switch (tileType) {
-    case TileType::Wall:
-        return params.wallTexture != nullptr ? params.wallTexture : params.missingTexture;
-    case TileType::Door:
-        return params.doorTexture != nullptr ? params.doorTexture : params.missingTexture;
-    case TileType::WallAltA:
-        return params.wallAltATexture != nullptr ? params.wallAltATexture : params.missingTexture;
-    case TileType::WallAltB:
-        return params.wallAltBTexture != nullptr ? params.wallAltBTexture : params.missingTexture;
-    case TileType::Exit:
-        return params.exitTexture != nullptr ? params.exitTexture : params.missingTexture;
-    default:
-        return params.missingTexture;
+        case TileType::Wall:
+            return params.wallTexture != nullptr ? params.wallTexture : params.missingTexture;
+        case TileType::Door:
+            return params.doorTexture != nullptr ? params.doorTexture : params.missingTexture;
+        case TileType::WallAltA:
+            return params.wallAltATexture != nullptr ? params.wallAltATexture : params.missingTexture;
+        case TileType::WallAltB:
+            return params.wallAltBTexture != nullptr ? params.wallAltBTexture : params.missingTexture;
+        case TileType::Exit:
+            return params.exitTexture != nullptr ? params.exitTexture : params.missingTexture;
+        default:
+            return params.missingTexture;
     }
 }
 
@@ -43,11 +43,9 @@ std::uint32_t DarkenColor(std::uint32_t argbColor, float factor) {
     const std::uint8_t r = static_cast<std::uint8_t>((argbColor >> 16) & 0xFFu);
     const std::uint8_t g = static_cast<std::uint8_t>((argbColor >> 8) & 0xFFu);
     const std::uint8_t b = static_cast<std::uint8_t>(argbColor & 0xFFu);
-    return PackARGB32(MakeColor(
-        static_cast<std::uint8_t>(static_cast<float>(r) * factor),
-        static_cast<std::uint8_t>(static_cast<float>(g) * factor),
-        static_cast<std::uint8_t>(static_cast<float>(b) * factor),
-        a));
+    return PackARGB32(MakeColor(static_cast<std::uint8_t>(static_cast<float>(r) * factor),
+                                static_cast<std::uint8_t>(static_cast<float>(g) * factor),
+                                static_cast<std::uint8_t>(static_cast<float>(b) * factor), a));
 }
 
 float SampleMapLight(const Map& map, float worldX, float worldY) {
@@ -55,13 +53,10 @@ float SampleMapLight(const Map& map, float worldX, float worldY) {
     const int cellY = static_cast<int>(std::floor(worldY));
     return map.GetLightLevel(cellX, cellY);
 }
-} // namespace
+}  // namespace
 
-RaycastHit Raycaster::CastRay(
-    const Map& map,
-    const Vec2& rayOrigin,
-    const Vec2& rayDirection,
-    float playerDirectionAngleRadians) {
+RaycastHit Raycaster::CastRay(const Map& map, const Vec2& rayOrigin, const Vec2& rayDirection,
+                              float playerDirectionAngleRadians) {
     RaycastHit result{};
 
     if (map.Width() <= 0 || map.Height() <= 0) {
@@ -143,9 +138,8 @@ RaycastHit Raycaster::CastRay(
     }
 
     distanceRayParameter = std::max(distanceRayParameter, 0.0f);
-    result.hitPosition = {
-        rayOrigin.x + rayDirection.x * distanceRayParameter,
-        rayOrigin.y + rayDirection.y * distanceRayParameter};
+    result.hitPosition = {rayOrigin.x + rayDirection.x * distanceRayParameter,
+                          rayOrigin.y + rayDirection.y * distanceRayParameter};
 
     result.distanceRaw = distanceRayParameter * rayLength;
     const float rayAngle = std::atan2(rayDirection.y, rayDirection.x);
@@ -155,12 +149,8 @@ RaycastHit Raycaster::CastRay(
     return result;
 }
 
-void Raycaster::RenderWalls(
-    const Map& map,
-    const Player& player,
-    Framebuffer& framebuffer,
-    const RaycasterRenderParams& params,
-    std::vector<RaycastHit>& outHits) {
+void Raycaster::RenderWalls(const Map& map, const Player& player, Framebuffer& framebuffer,
+                            const RaycasterRenderParams& params, std::vector<RaycastHit>& outHits) {
     outHits.clear();
 
     const int width = framebuffer.Width();
@@ -184,8 +174,7 @@ void Raycaster::RenderWalls(
             ? params.floorTexture
             : params.missingTexture;
     const Texture* ceilingTexture =
-        (params.ceilingTexture != nullptr && params.ceilingTexture->Width() > 0 &&
-         params.ceilingTexture->Height() > 0)
+        (params.ceilingTexture != nullptr && params.ceilingTexture->Width() > 0 && params.ceilingTexture->Height() > 0)
             ? params.ceilingTexture
             : params.missingTexture;
 
@@ -224,9 +213,7 @@ void Raycaster::RenderWalls(
 
     for (int x = 0; x < width; ++x) {
         const float cameraX = (2.0f * static_cast<float>(x) / static_cast<float>(width)) - 1.0f;
-        const Vec2 rayDirection{
-            forward.x + cameraPlane.x * cameraX,
-            forward.y + cameraPlane.y * cameraX};
+        const Vec2 rayDirection{forward.x + cameraPlane.x * cameraX, forward.y + cameraPlane.y * cameraX};
 
         RaycastHit hit = CastRay(map, player.position, rayDirection, player.directionAngleRadians);
         outHits[static_cast<std::size_t>(x)] = hit;
@@ -272,8 +259,9 @@ void Raycaster::RenderWalls(
         const float mapLight = map.GetLightLevel(faceX, faceY);
         const float wallShade = Clamp(sideShade * distanceShade * mapLight, 0.18f, 1.0f);
         for (int y = yStart; y <= yEnd; ++y) {
-            const float wallV =
-                (projectedWallHeight <= 1) ? 0.0f : static_cast<float>(y - yStart) / static_cast<float>(projectedWallHeight - 1);
+            const float wallV = (projectedWallHeight <= 1)
+                                    ? 0.0f
+                                    : static_cast<float>(y - yStart) / static_cast<float>(projectedWallHeight - 1);
             std::uint32_t sampled = texture->SampleNearest(wallU, wallV);
             sampled = DarkenColor(sampled, wallShade);
             framebuffer.PutPixel(x, y, sampled);

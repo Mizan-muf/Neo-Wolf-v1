@@ -24,10 +24,8 @@ std::string Trim(const std::string& value) {
     return value.substr(start, end - start);
 }
 
-bool LoadKeyValueConfig(
-    const std::string& filePath,
-    std::unordered_map<std::string, std::string>& outValues,
-    std::vector<std::string>& errors) {
+bool LoadKeyValueConfig(const std::string& filePath, std::unordered_map<std::string, std::string>& outValues,
+                        std::vector<std::string>& errors) {
     std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         errors.push_back("Unable to open config: " + filePath);
@@ -66,12 +64,8 @@ bool LoadKeyValueConfig(
     return errors.empty();
 }
 
-bool RequireKey(
-    const std::unordered_map<std::string, std::string>& values,
-    const std::string& key,
-    std::string& outValue,
-    const std::string& filePath,
-    std::vector<std::string>& errors) {
+bool RequireKey(const std::unordered_map<std::string, std::string>& values, const std::string& key,
+                std::string& outValue, const std::string& filePath, std::vector<std::string>& errors) {
     const auto it = values.find(key);
     if (it == values.end()) {
         errors.push_back(filePath + " missing required key: " + key);
@@ -81,12 +75,10 @@ bool RequireKey(
     outValue = it->second;
     return true;
 }
-} // namespace
+}  // namespace
 
-bool LoadAudioEffectDefinitions(
-    const std::string& filePath,
-    AudioEffectDefinitions& outDefinitions,
-    std::vector<std::string>& errors) {
+bool LoadAudioEffectDefinitions(const std::string& filePath, AudioEffectDefinitions& outDefinitions,
+                                std::vector<std::string>& errors) {
     std::unordered_map<std::string, std::string> values;
     if (!LoadKeyValueConfig(filePath, values, errors)) {
         return false;

@@ -48,17 +48,9 @@ bool IsDoorwayOccupied(const EntityManager& entityManager, const Player& player,
     return false;
 }
 
-void UpdateEntityInteractions(
-    EntityManager& entityManager,
-    Map& map,
-    const Player& player,
-    int& playerHealth,
-    int& playerAmmo,
-    int maxHealth,
-    int maxAmmo,
-    bool interactPressed,
-    KeyRing& keys,
-    GameplayEvents& outEvents) {
+void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, int& playerHealth,
+                              int& playerAmmo, int maxHealth, int maxAmmo, bool interactPressed, KeyRing& keys,
+                              GameplayEvents& outEvents) {
     constexpr float kPickupRadiusSq = 0.60f * 0.60f;
     constexpr float kTriggerRadiusSq = 0.80f * 0.80f;
     constexpr float kDoorInteractRadiusSq = 1.05f * 1.05f;
@@ -141,29 +133,16 @@ void UpdateEntityInteractions(
     }
 }
 
-void UpdateEntityInteractions(
-    EntityManager& entityManager,
-    Map& map,
-    const Player& player,
-    int& playerHealth,
-    int& playerAmmo,
-    int maxHealth,
-    int maxAmmo,
-    bool interactPressed,
-    GameplayEvents& outEvents) {
+void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, int& playerHealth,
+                              int& playerAmmo, int maxHealth, int maxAmmo, bool interactPressed,
+                              GameplayEvents& outEvents) {
     KeyRing noKeys{};
     UpdateEntityInteractions(entityManager, map, player, playerHealth, playerAmmo, maxHealth, maxAmmo, interactPressed,
                              noKeys, outEvents);
 }
 
-bool PerformPlayerAttack(
-    EntityManager& entityManager,
-    const Map& map,
-    const Player& player,
-    int& playerAmmo,
-    int damage,
-    float maxRange,
-    GameplayEvents& outEvents) {
+bool PerformPlayerAttack(EntityManager& entityManager, const Map& map, const Player& player, int& playerAmmo,
+                         int damage, float maxRange, GameplayEvents& outEvents) {
     if (playerAmmo <= 0) {
         return false;
     }
@@ -171,10 +150,7 @@ bool PerformPlayerAttack(
     playerAmmo -= 1;
     outEvents.weaponFired = true;
 
-    const Vec2 playerDir{
-        std::cos(player.directionAngleRadians),
-        std::sin(player.directionAngleRadians)
-    };
+    const Vec2 playerDir{std::cos(player.directionAngleRadians), std::sin(player.directionAngleRadians)};
 
     const RaycastHit wallHit = Raycaster::CastRay(map, player.position, playerDir, player.directionAngleRadians);
     float maxDistance = (wallHit.hit && wallHit.distanceRaw > 0.0f) ? wallHit.distanceRaw : maxRange;

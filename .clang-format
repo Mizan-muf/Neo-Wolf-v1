@@ -1,0 +1,22 @@
+---
+# C++ formatting for Neo-Wolf (see docs/CODING_STANDARDS.md). Check: clang-format --dry-run --Werror
+Language: Cpp
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+SpacesBeforeTrailingComments: 2
+BreakBeforeBraces: Attach
+InsertBraces: false
+NamespaceIndentation: None
+FixNamespaceComments: true
+Standard: c++17

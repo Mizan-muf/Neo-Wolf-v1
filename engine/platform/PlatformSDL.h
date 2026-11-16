@@ -9,11 +9,11 @@ class Framebuffer;
 
 struct PlatformConfig {
     const char* title = "Neo-Wolf";
-    int windowWidth = 1024;    // initial window size in points (HiDPI scales it)
+    int windowWidth = 1024;  // initial window size in points (HiDPI scales it)
     int windowHeight = 768;
-    int logicalWidth = 320;    // framebuffer size; letterboxed and scaled with nearest-neighbour
+    int logicalWidth = 320;  // framebuffer size; letterboxed and scaled with nearest-neighbour
     int logicalHeight = 240;
-    bool fullscreen = false;   // start in desktop fullscreen
+    bool fullscreen = false;  // start in desktop fullscreen
 };
 
 class PlatformSDL {

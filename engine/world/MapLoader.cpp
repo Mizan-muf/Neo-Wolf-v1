@@ -11,26 +11,26 @@ namespace {
 TileType DecodeTile(char c, bool& valid) {
     valid = true;
     switch (c) {
-    case '.':
-        return TileType::Empty;
-    case '#':
-        return TileType::Wall;
-    case 'A':
-        return TileType::WallAltA;
-    case 'B':
-        return TileType::WallAltB;
-    case 'D':
-        return TileType::Door;
-    case 'T':
-        return TileType::Trigger;
-    case 'X':
-        return TileType::Exit;
-    default:
-        valid = false;
-        return TileType::Empty;
+        case '.':
+            return TileType::Empty;
+        case '#':
+            return TileType::Wall;
+        case 'A':
+            return TileType::WallAltA;
+        case 'B':
+            return TileType::WallAltB;
+        case 'D':
+            return TileType::Door;
+        case 'T':
+            return TileType::Trigger;
+        case 'X':
+            return TileType::Exit;
+        default:
+            valid = false;
+            return TileType::Empty;
     }
 }
-} // namespace
+}  // namespace
 
 bool LoadMapFromFile(const std::string& filePath, Map& outMap, std::vector<std::string>& errors) {
     std::ifstream file(PathFromUtf8(filePath));
@@ -75,9 +75,8 @@ bool LoadMapFromFile(const std::string& filePath, Map& outMap, std::vector<std::
             bool valid = false;
             const TileType tile = DecodeTile(rows[y][x], valid);
             if (!valid) {
-                errors.push_back(
-                    filePath + ": invalid tile '" + std::string(1, rows[y][x]) + "' at (" +
-                    std::to_string(x) + "," + std::to_string(y) + ")");
+                errors.push_back(filePath + ": invalid tile '" + std::string(1, rows[y][x]) + "' at (" +
+                                 std::to_string(x) + "," + std::to_string(y) + ")");
                 ok = false;
                 continue;
             }

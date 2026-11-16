@@ -39,11 +39,10 @@ bool IsSpritePixelTransparent(std::uint32_t argb) {
     // Color-key magenta for simple sprite masks.
     return (argb & 0x00FFFFFFu) == 0x00FF00FFu;
 }
-} // namespace
+}  // namespace
 
-std::vector<std::size_t> SpriteRenderer::BuildSortedSpriteIndices(
-    const Player& player,
-    const std::vector<SpriteEntity>& sprites) {
+std::vector<std::size_t> SpriteRenderer::BuildSortedSpriteIndices(const Player& player,
+                                                                  const std::vector<SpriteEntity>& sprites) {
     std::vector<SpriteRenderCandidate> candidates;
     candidates.reserve(sprites.size());
     for (std::size_t i = 0; i < sprites.size(); ++i) {
@@ -57,12 +56,9 @@ std::vector<std::size_t> SpriteRenderer::BuildSortedSpriteIndices(
         candidates.push_back({i, dx * dx + dy * dy});
     }
 
-    std::sort(
-        candidates.begin(),
-        candidates.end(),
-        [](const SpriteRenderCandidate& a, const SpriteRenderCandidate& b) {
-            return a.distanceSq > b.distanceSq;
-        });
+    std::sort(candidates.begin(), candidates.end(), [](const SpriteRenderCandidate& a, const SpriteRenderCandidate& b) {
+        return a.distanceSq > b.distanceSq;
+    });
 
     std::vector<std::size_t> result;
     result.reserve(candidates.size());
@@ -72,14 +68,9 @@ std::vector<std::size_t> SpriteRenderer::BuildSortedSpriteIndices(
     return result;
 }
 
-void SpriteRenderer::Render(
-    const Map& map,
-    const Player& player,
-    Framebuffer& framebuffer,
-    const std::vector<float>& wallDepthBuffer,
-    const std::vector<SpriteEntity>& sprites,
-    const SpriteTextureSet& textures,
-    float fieldOfViewRadians) {
+void SpriteRenderer::Render(const Map& map, const Player& player, Framebuffer& framebuffer,
+                            const std::vector<float>& wallDepthBuffer, const std::vector<SpriteEntity>& sprites,
+                            const SpriteTextureSet& textures, float fieldOfViewRadians) {
     const int screenWidth = framebuffer.Width();
     const int screenHeight = framebuffer.Height();
     if (screenWidth <= 0 || screenHeight <= 0) {
@@ -117,8 +108,10 @@ void SpriteRenderer::Render(
             continue;
         }
 
-        const int spriteScreenX = static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
-        const int spriteHeight = std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / transformY)));
+        const int spriteScreenX =
+            static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
+        const int spriteHeight =
+            std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / transformY)));
         const int spriteWidth = spriteHeight;
 
         // The unclamped top edge: texture rows are measured from it, so a sprite taller than the
@@ -136,7 +129,8 @@ void SpriteRenderer::Render(
                 continue;
             }
 
-            const float texU = static_cast<float>(stripe - ((-spriteWidth / 2) + spriteScreenX)) / static_cast<float>(spriteWidth);
+            const float texU =
+                static_cast<float>(stripe - ((-spriteWidth / 2) + spriteScreenX)) / static_cast<float>(spriteWidth);
             if (texU < 0.0f || texU > 1.0f) {
                 continue;
             }

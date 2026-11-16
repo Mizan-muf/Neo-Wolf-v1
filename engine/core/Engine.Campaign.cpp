@@ -18,16 +18,15 @@ constexpr float kLevelBannerSeconds = 3.0f;
 
 struct ThemeSlot {
     const char* textureId;
-    const std::string ThemeTextureAssignments::*path;
+    const std::string ThemeTextureAssignments::* path;
 };
 
 constexpr ThemeSlot kThemeSlots[] = {
-    {"wall", &ThemeTextureAssignments::wall},       {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
+    {"wall", &ThemeTextureAssignments::wall},           {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
     {"wall_alt_b", &ThemeTextureAssignments::wallAltB}, {"door", &ThemeTextureAssignments::door},
-    {"door_red", &ThemeTextureAssignments::doorRed}, {"door_blue", &ThemeTextureAssignments::doorBlue},
-    {"door_gold", &ThemeTextureAssignments::doorGold},
-    {"floor", &ThemeTextureAssignments::floor},     {"ceiling", &ThemeTextureAssignments::ceiling},
-    {"exit", &ThemeTextureAssignments::exit},
+    {"door_red", &ThemeTextureAssignments::doorRed},    {"door_blue", &ThemeTextureAssignments::doorBlue},
+    {"door_gold", &ThemeTextureAssignments::doorGold},  {"floor", &ThemeTextureAssignments::floor},
+    {"ceiling", &ThemeTextureAssignments::ceiling},     {"exit", &ThemeTextureAssignments::exit},
 };
 
 // The fixed stage of the "enemies" and "items" previews: the hall of the Phase 7 level 1
@@ -43,20 +42,20 @@ constexpr const char* kShowcaseRows[kShowcaseHeight] = {
 
 TileType ShowcaseTile(char c) {
     switch (c) {
-    case '#':
-        return TileType::Wall;
-    case 'A':
-        return TileType::WallAltA;
-    case 'B':
-        return TileType::WallAltB;
-    case 'D':
-        return TileType::Door;
-    case 'T':
-        return TileType::Trigger;
-    case 'X':
-        return TileType::Exit;
-    default:
-        return TileType::Empty;
+        case '#':
+            return TileType::Wall;
+        case 'A':
+            return TileType::WallAltA;
+        case 'B':
+            return TileType::WallAltB;
+        case 'D':
+            return TileType::Door;
+        case 'T':
+            return TileType::Trigger;
+        case 'X':
+            return TileType::Exit;
+        default:
+            return TileType::Empty;
     }
 }
 
@@ -69,7 +68,7 @@ EntityPlacement ShowcasePlacement(PlacementType type, Vec2 position, int mapX, i
     placement.source = "preview stage";
     return placement;
 }
-} // namespace
+}  // namespace
 
 bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors) {
     const std::string resolvedPath = ResolveContentPath(relativePath);
@@ -121,18 +120,18 @@ void Engine::LoadSavedProgress() {
     ProgressData data{};
     std::string message;
     switch (LoadProgressFile(path, data, message)) {
-    case ProgressLoadResult::Loaded:
-        flow_.SetProgress(true, data.highestUnlocked);
-        LogInfo("Saved " + message + " (campaign has " + std::to_string(flow_.LevelCount()) + ")");
-        break;
-    case ProgressLoadResult::Missing:
-        flow_.SetProgress(false, 1);
-        LogInfo("Progress: " + message);
-        break;
-    case ProgressLoadResult::Invalid:
-        flow_.SetProgress(false, 1);
-        LogWarning("Ignoring the saved progress (starting without it): " + message);
-        break;
+        case ProgressLoadResult::Loaded:
+            flow_.SetProgress(true, data.highestUnlocked);
+            LogInfo("Saved " + message + " (campaign has " + std::to_string(flow_.LevelCount()) + ")");
+            break;
+        case ProgressLoadResult::Missing:
+            flow_.SetProgress(false, 1);
+            LogInfo("Progress: " + message);
+            break;
+        case ProgressLoadResult::Invalid:
+            flow_.SetProgress(false, 1);
+            LogWarning("Ignoring the saved progress (starting without it): " + message);
+            break;
     }
 }
 
@@ -261,20 +260,20 @@ LevelResults Engine::CurrentLevelResults() const {
 void Engine::ExecuteFlowRequests(const std::vector<FlowRequest>& requests) {
     for (const FlowRequest& request : requests) {
         switch (request.type) {
-        case FlowRequestType::LoadLevel:
-        case FlowRequestType::RestartLevel:
-            if (!LoadCampaignLevel(request.levelIndex, request.stats)) {
-                LogError("Could not start the level; back to the main menu.");
-                flow_.ForceState(GameState::Menu);
-            }
-            break;
-        case FlowRequestType::SaveProgress:
-            SaveProgress(request.highestUnlocked);
-            break;
-        case FlowRequestType::Quit:
-            LogInfo("Quit from the main menu.");
-            running_ = false;
-            break;
+            case FlowRequestType::LoadLevel:
+            case FlowRequestType::RestartLevel:
+                if (!LoadCampaignLevel(request.levelIndex, request.stats)) {
+                    LogError("Could not start the level; back to the main menu.");
+                    flow_.ForceState(GameState::Menu);
+                }
+                break;
+            case FlowRequestType::SaveProgress:
+                SaveProgress(request.highestUnlocked);
+                break;
+            case FlowRequestType::Quit:
+                LogInfo("Quit from the main menu.");
+                running_ = false;
+                break;
         }
     }
 }
@@ -295,66 +294,66 @@ bool Engine::SetupPreview(PreviewScreen screen) {
     const auto startLevelOne = [&startLevel]() { return startLevel(0); };
 
     switch (screen) {
-    case PreviewScreen::None:
-        break;
-    case PreviewScreen::Menu:
-        flow_.SetMenuPage(MenuPage::Main, 0);
-        break;
-    case PreviewScreen::LevelSelect:
-        flow_.SetMenuPage(MenuPage::LevelSelect, 1);
-        break;
-    case PreviewScreen::Hud:
-    case PreviewScreen::Minimap:
-        if (!startLevelOne()) {
-            return false;
+        case PreviewScreen::None:
+            break;
+        case PreviewScreen::Menu:
+            flow_.SetMenuPage(MenuPage::Main, 0);
+            break;
+        case PreviewScreen::LevelSelect:
+            flow_.SetMenuPage(MenuPage::LevelSelect, 1);
+            break;
+        case PreviewScreen::Hud:
+        case PreviewScreen::Minimap:
+            if (!startLevelOne()) {
+                return false;
+            }
+            playerHealth_ = 75;
+            playerAmmo_ = 18;
+            if (screen == PreviewScreen::Hud) {
+                ShowMessage("HEALTH RESTORED (+25 HP)", 60.0f);
+            } else {
+                levelBannerTimer_ = 0.0f;
+                minimapVisible_ = true;
+            }
+            break;
+        case PreviewScreen::Pause:
+            if (!startLevelOne()) {
+                return false;
+            }
+            flow_.ForceState(GameState::Paused);
+            break;
+        case PreviewScreen::LevelComplete: {
+            if (!startLevelOne()) {
+                return false;
+            }
+            LevelResults results{};
+            results.kills = 1;
+            results.totalEnemies = 1;
+            results.pickups = 1;
+            results.totalPickups = 1;
+            results.seconds = 42.0;
+            flow_.SetLastResults(results);
+            flow_.ForceState(GameState::LevelComplete);
+            break;
         }
-        playerHealth_ = 75;
-        playerAmmo_ = 18;
-        if (screen == PreviewScreen::Hud) {
-            ShowMessage("HEALTH RESTORED (+25 HP)", 60.0f);
-        } else {
-            levelBannerTimer_ = 0.0f;
-            minimapVisible_ = true;
-        }
-        break;
-    case PreviewScreen::Pause:
-        if (!startLevelOne()) {
-            return false;
-        }
-        flow_.ForceState(GameState::Paused);
-        break;
-    case PreviewScreen::LevelComplete: {
-        if (!startLevelOne()) {
-            return false;
-        }
-        LevelResults results{};
-        results.kills = 1;
-        results.totalEnemies = 1;
-        results.pickups = 1;
-        results.totalPickups = 1;
-        results.seconds = 42.0;
-        flow_.SetLastResults(results);
-        flow_.ForceState(GameState::LevelComplete);
-        break;
-    }
-    case PreviewScreen::GameOver:
-        if (!startLevelOne()) {
-            return false;
-        }
-        playerHealth_ = 0;
-        flow_.ForceState(GameState::GameOver);
-        break;
-    case PreviewScreen::CampaignComplete:
-        flow_.ForceState(GameState::CampaignComplete);
-        break;
-    case PreviewScreen::Enemies:
-    case PreviewScreen::Items:
-        // A fixed hall (not the campaign's level 1, which Phase 8 redraws): the preview locks
-        // its door and puts a fixed line-up in front of the player.
-        if (!startLevelOne() || !SetupShowcase(screen == PreviewScreen::Enemies)) {
-            return false;
-        }
-        break;
+        case PreviewScreen::GameOver:
+            if (!startLevelOne()) {
+                return false;
+            }
+            playerHealth_ = 0;
+            flow_.ForceState(GameState::GameOver);
+            break;
+        case PreviewScreen::CampaignComplete:
+            flow_.ForceState(GameState::CampaignComplete);
+            break;
+        case PreviewScreen::Enemies:
+        case PreviewScreen::Items:
+            // A fixed hall (not the campaign's level 1, which Phase 8 redraws): the preview locks
+            // its door and puts a fixed line-up in front of the player.
+            if (!startLevelOne() || !SetupShowcase(screen == PreviewScreen::Enemies)) {
+                return false;
+            }
+            break;
     }
     PublishStateChange();
     return true;
@@ -409,8 +408,10 @@ bool Engine::SetupShowcase(bool enemies) {
         const struct {
             EnemyVariant variant;
             Vec2 position;
-        } lineUp[] = {{EnemyVariant::Guard, {6.0f, 6.0f}}, {EnemyVariant::Runner, {5.5f, 6.95f}},
-                      {EnemyVariant::Brute, {5.8f, 8.9f}}, {EnemyVariant::Guard, {4.6f, 8.0f}}};
+        } lineUp[] = {{EnemyVariant::Guard, {6.0f, 6.0f}},
+                      {EnemyVariant::Runner, {5.5f, 6.95f}},
+                      {EnemyVariant::Brute, {5.8f, 8.9f}},
+                      {EnemyVariant::Guard, {4.6f, 8.0f}}};
         for (const auto& placement : lineUp) {
             Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, placement.position);
             ApplyEnemyArchetype(enemy, placement.variant, gameplay_.enemies);
@@ -425,14 +426,17 @@ bool Engine::SetupShowcase(bool enemies) {
             PickupType kind;
             KeyColor key;
             Vec2 position;
-        } items[] = {{PickupType::Health, KeyColor::None, {7.0f, 5.6f}}, {PickupType::Key, KeyColor::Red, {7.0f, 6.4f}},
-                     {PickupType::Key, KeyColor::Blue, {7.0f, 7.5f}},     {PickupType::Key, KeyColor::Gold, {7.0f, 8.6f}},
+        } items[] = {{PickupType::Health, KeyColor::None, {7.0f, 5.6f}},
+                     {PickupType::Key, KeyColor::Red, {7.0f, 6.4f}},
+                     {PickupType::Key, KeyColor::Blue, {7.0f, 7.5f}},
+                     {PickupType::Key, KeyColor::Gold, {7.0f, 8.6f}},
                      {PickupType::Ammo, KeyColor::None, {7.0f, 9.4f}}};
         for (const auto& item : items) {
             Entity& pickup = entityManager_.CreateEntity(EntityType::Pickup, item.position);
             pickup.pickupType = item.kind;
             pickup.keyColor = item.key;
-            pickup.pickupValue = item.kind == PickupType::Ammo ? gameplay_.pickups.ammo.value : gameplay_.pickups.health.value;
+            pickup.pickupValue =
+                item.kind == PickupType::Ammo ? gameplay_.pickups.ammo.value : gameplay_.pickups.health.value;
         }
         for (const KeyColor color : kKeyColors) {
             keys_.Add(color);

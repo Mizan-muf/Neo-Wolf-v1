@@ -10,7 +10,7 @@ Vec2 DirectionFromIndex(int i, int count) {
     const float angle = (static_cast<float>(i) / static_cast<float>(count)) * (2.0f * kPi);
     return {std::cos(angle), std::sin(angle)};
 }
-} // namespace
+}  // namespace
 
 void ParticleManager::Clear() {
     particles_.clear();
@@ -40,7 +40,7 @@ void ParticleManager::SpawnHitSpark(const Vec2& worldPosition) {
         p.lifetimeTotal = 0.22f;
         p.spriteFrame = 0;
         p.size = 0.06f;
-        p.color = 0xFFFFC266u; // warm spark
+        p.color = 0xFFFFC266u;  // warm spark
         p.active = true;
         Spawn(p);
     }
@@ -57,7 +57,7 @@ void ParticleManager::SpawnPickupSparkle(const Vec2& worldPosition) {
         p.lifetimeTotal = 0.55f;
         p.spriteFrame = 1;
         p.size = 0.08f;
-        p.color = 0xFFFFF29Eu; // bright pickup sparkle
+        p.color = 0xFFFFF29Eu;  // bright pickup sparkle
         p.active = true;
         Spawn(p);
     }
@@ -71,7 +71,7 @@ void ParticleManager::SpawnAmbientDust(const Vec2& worldPosition) {
     p.lifetimeTotal = 2.2f;
     p.spriteFrame = 2;
     p.size = 0.045f;
-    p.color = 0x99C2CCD8u; // subtle dusty blue-gray
+    p.color = 0x99C2CCD8u;  // subtle dusty blue-gray
     p.active = true;
     Spawn(p);
 }

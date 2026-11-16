@@ -21,15 +21,11 @@ std::uint32_t ShadeParticle(std::uint32_t color, float factor) {
            (static_cast<std::uint32_t>(static_cast<std::uint8_t>(g * factor)) << 8) |
            static_cast<std::uint32_t>(static_cast<std::uint8_t>(b * factor));
 }
-} // namespace
+}  // namespace
 
-void ParticleRenderer::Render(
-    const Map& map,
-    const Player& player,
-    Framebuffer& framebuffer,
-    const std::vector<float>& wallDepthBuffer,
-    const std::vector<Particle>& particles,
-    float fieldOfViewRadians) {
+void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer& framebuffer,
+                              const std::vector<float>& wallDepthBuffer, const std::vector<Particle>& particles,
+                              float fieldOfViewRadians) {
     const int screenWidth = framebuffer.Width();
     const int screenHeight = framebuffer.Height();
     if (screenWidth <= 0 || screenHeight <= 0) {
@@ -62,7 +58,8 @@ void ParticleRenderer::Render(
             continue;
         }
 
-        const int screenX = static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
+        const int screenX =
+            static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
         const int sizePx = std::max(1, static_cast<int>((p.size * static_cast<float>(screenHeight)) / transformY));
         const int x0 = screenX - (sizePx / 2);
         const int y0 = (screenHeight / 2) - (sizePx / 2);

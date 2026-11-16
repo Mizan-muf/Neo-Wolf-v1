@@ -36,7 +36,7 @@ bool ReadBoundedInt(const json& document, const char* key, std::int64_t min, std
     out = value;
     return true;
 }
-} // namespace
+}  // namespace
 
 bool ParseProgressJson(const std::string& text, const std::string& sourceName, ProgressData& outData,
                        std::string& message) {

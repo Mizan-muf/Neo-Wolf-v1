@@ -71,11 +71,11 @@ struct AutoplayLevelReport {
     std::string name;
     AutoplayResult result = AutoplayResult::NotPlayed;
     std::string reason;
-    double gameSeconds = 0.0;   // time in Gameplay on this level
-    std::uint64_t frames = 0;   // Engine::Update calls in Gameplay on this level
+    double gameSeconds = 0.0;  // time in Gameplay on this level
+    std::uint64_t frames = 0;  // Engine::Update calls in Gameplay on this level
     int healthStart = 0;
     int ammoStart = 0;
-    int healthEnd = 0;          // at the exit (complete), or when the run stopped
+    int healthEnd = 0;  // at the exit (complete), or when the run stopped
     int ammoEnd = 0;
     int damageTaken = 0;
     int kills = 0;
@@ -92,12 +92,12 @@ struct AutoplayLevelReport {
 struct AutoplayRunReport {
     std::string campaignTitle;
     int campaignLevels = 0;
-    bool wholeCampaign = false;           // --all
-    bool campaignCompleted = false;       // --all: the credits screen was reached
+    bool wholeCampaign = false;      // --all
+    bool campaignCompleted = false;  // --all: the credits screen was reached
     std::vector<AutoplayLevelReport> levels;
-    bool carryOverChecked = false;        // --all with more than one level played
+    bool carryOverChecked = false;  // --all with more than one level played
     std::vector<std::string> carryOverProblems;
-    std::string error;                    // the engine did not start, or a usage problem
+    std::string error;  // the engine did not start, or a usage problem
     double fixedStepSeconds = 0.0;
     double timeLimitSeconds = 0.0;
 
@@ -226,11 +226,11 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
                                      std::string* trace = nullptr);
 
 struct AutoplayRunOptions {
-    std::string dataDir;               // --data; empty = the automatic content-root search
-    std::filesystem::path prefDir;     // progress.json goes here (must be set)
-    int level = 0;                     // 1-based campaign level; 0 = the whole campaign (--all)
+    std::string dataDir;            // --data; empty = the automatic content-root search
+    std::filesystem::path prefDir;  // progress.json goes here (must be set)
+    int level = 0;                  // 1-based campaign level; 0 = the whole campaign (--all)
     AutoplayConfig config{};
-    std::string* trace = nullptr;      // --trace: receives the event log (see RunAutoplaySession)
+    std::string* trace = nullptr;  // --trace: receives the event log (see RunAutoplaySession)
 };
 
 // Starts a headless engine (EngineOptions::headless, no error dialogs) and runs the session.

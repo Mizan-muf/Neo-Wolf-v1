@@ -12,15 +12,15 @@
 struct AutoplayCommandLine {
     enum class Action { Run, ShowHelp, ShowVersion, Error };
     Action action = Action::Run;
-    std::string error;          // Action::Error: why (the caller prints it with the usage, exit 2)
-    int level = 0;              // --level N (1-based)
-    bool all = false;           // --all
-    std::string dataDir;        // --data DIR
-    std::string prefDir;        // --pref-dir DIR (empty: a temporary folder, removed afterwards)
+    std::string error;    // Action::Error: why (the caller prints it with the usage, exit 2)
+    int level = 0;        // --level N (1-based)
+    bool all = false;     // --all
+    std::string dataDir;  // --data DIR
+    std::string prefDir;  // --pref-dir DIR (empty: a temporary folder, removed afterwards)
     double timeLimitSeconds = AutoplayConfig{}.timeLimitSeconds;  // --time-limit SECONDS
-    std::string jsonPath;       // --json FILE
-    std::string tracePath;      // --trace FILE: the per-event log (RunAutoplaySession)
-    bool verbose = false;       // --verbose: print the engine's log to the console
+    std::string jsonPath;                                         // --json FILE
+    std::string tracePath;  // --trace FILE: the per-event log (RunAutoplaySession)
+    bool verbose = false;   // --verbose: print the engine's log to the console
 };
 
 // `args` excludes the program name. Exactly one of --level N and --all is required.

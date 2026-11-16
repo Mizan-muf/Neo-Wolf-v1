@@ -21,14 +21,14 @@ inline constexpr KeyColor kKeyColors[kKeyColorCount] = {KeyColor::Red, KeyColor:
 // "red", "blue", "gold" (the names used in content files); "none" for KeyColor::None.
 inline const char* KeyColorName(KeyColor color) {
     switch (color) {
-    case KeyColor::Red:
-        return "red";
-    case KeyColor::Blue:
-        return "blue";
-    case KeyColor::Gold:
-        return "gold";
-    case KeyColor::None:
-        break;
+        case KeyColor::Red:
+            return "red";
+        case KeyColor::Blue:
+            return "blue";
+        case KeyColor::Gold:
+            return "gold";
+        case KeyColor::None:
+            break;
     }
     return "none";
 }
@@ -36,14 +36,14 @@ inline const char* KeyColorName(KeyColor color) {
 // "RED", "BLUE", "GOLD" (HUD messages such as "NEED RED KEY"); "" for KeyColor::None.
 inline const char* KeyColorLabel(KeyColor color) {
     switch (color) {
-    case KeyColor::Red:
-        return "RED";
-    case KeyColor::Blue:
-        return "BLUE";
-    case KeyColor::Gold:
-        return "GOLD";
-    case KeyColor::None:
-        break;
+        case KeyColor::Red:
+            return "RED";
+        case KeyColor::Blue:
+            return "BLUE";
+        case KeyColor::Gold:
+            return "GOLD";
+        case KeyColor::None:
+            break;
     }
     return "";
 }

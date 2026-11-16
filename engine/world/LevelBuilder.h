@@ -34,21 +34,14 @@ struct LevelContents {
 // The level needs exactly one player; every position, map cell and light zone must lie inside
 // the map. On an error nothing is changed: `map` and `out` are only written when the function
 // returns true. Errors name the placement's or zone's source (file and index).
-bool BuildLevelFromPlacements(
-    Map& map,
-    const std::vector<EntityPlacement>& placements,
-    const std::vector<LightZone>& lights,
-    const GameplayDefinitions& gameplay,
-    LevelContents& out,
-    std::vector<std::string>& errors);
+bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& placements,
+                              const std::vector<LightZone>& lights, const GameplayDefinitions& gameplay,
+                              LevelContents& out, std::vector<std::string>& errors);
 
 // The same without light zones.
-bool BuildLevelFromPlacements(
-    Map& map,
-    const std::vector<EntityPlacement>& placements,
-    const GameplayDefinitions& gameplay,
-    LevelContents& out,
-    std::vector<std::string>& errors);
+bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& placements,
+                              const GameplayDefinitions& gameplay, LevelContents& out,
+                              std::vector<std::string>& errors);
 
 // Copies an archetype's stats onto an enemy entity (health, damage, speeds, radii, rates).
 void ApplyEnemyArchetype(Entity& enemy, EnemyVariant variant, const EnemyDefinitions& enemies);

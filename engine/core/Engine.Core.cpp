@@ -20,7 +20,7 @@ void LogMessages(const std::vector<std::string>& messages, void (*log)(std::stri
         log("  " + message);
     }
 }
-} // namespace
+}  // namespace
 
 Engine::~Engine() {
     Shutdown();
@@ -63,9 +63,8 @@ void Engine::ShowMessage(const std::string& message, float duration) {
 
 void Engine::ResetLevel() {
     LogInfo("Resetting level...");
-    const bool loaded = currentLevelIndex_ >= 0
-                            ? LoadCampaignLevel(currentLevelIndex_, flow_.EntrySnapshot())
-                            : LoadLevel(currentMapPath_, currentEntitiesPath_);
+    const bool loaded = currentLevelIndex_ >= 0 ? LoadCampaignLevel(currentLevelIndex_, flow_.EntrySnapshot())
+                                                : LoadLevel(currentMapPath_, currentEntitiesPath_);
     if (!loaded) {
         LogError("Level reset failed (see above); continuing with the current level state.");
     }
@@ -192,8 +191,8 @@ void Engine::PlayerAttack() {
     playerAttackCooldown_ = gameplay_.weapon.fireRate;
 
     GameplayEvents events{};
-    const bool fired = PerformPlayerAttack(
-        entityManager_, map_, player_, playerAmmo_, gameplay_.weapon.damage, gameplay_.weapon.range, events);
+    const bool fired = PerformPlayerAttack(entityManager_, map_, player_, playerAmmo_, gameplay_.weapon.damage,
+                                           gameplay_.weapon.range, events);
     if (!fired) {
         return;
     }

@@ -75,7 +75,8 @@ void MoveTowards(Entity& enemy, const Map& map, const Vec2& target, float stopDi
         return;
     }
     const Vec2 before = enemy.position;
-    enemy.position = MoveWithSliding(map, enemy.position, Vec2{to.x / distance * step, to.y / distance * step}, kEnemyRadius);
+    enemy.position =
+        MoveWithSliding(map, enemy.position, Vec2{to.x / distance * step, to.y / distance * step}, kEnemyRadius);
 
     // Wedged (e.g. a door closed on the path): forget the path and search again.
     if (Length(enemy.position - before) < step * 0.2f) {
@@ -148,34 +149,34 @@ void UpdateEnemy(Entity& enemy, const Map& map, const Player& player, int& playe
     }
 
     switch (enemy.enemyState) {
-    case EnemyState::Alert:
-        enemy.stateTimer -= dt;
-        if (enemy.stateTimer <= 0.0f) {
-            StartChase(enemy, events);
-        }
-        return;
-    case EnemyState::Search:
-        if (sees || heard) {
-            StartChase(enemy, events);
-            break;  // continue as Chase below
-        }
-        enemy.stateTimer -= dt;
-        if (enemy.stateTimer <= 0.0f) {
-            enemy.enemyState = EnemyState::Idle;
-            enemy.path.clear();
+        case EnemyState::Alert:
+            enemy.stateTimer -= dt;
+            if (enemy.stateTimer <= 0.0f) {
+                StartChase(enemy, events);
+            }
             return;
-        }
-        MoveTowards(enemy, map, enemy.lastKnownPlayerPosition, 0.0f, dt);
-        return;
-    case EnemyState::Attack:
-        if (sees && distance <= enemy.attackRadius + kEnemyAttackHysteresis) {
-            Attack(enemy, playerHealth, events);
+        case EnemyState::Search:
+            if (sees || heard) {
+                StartChase(enemy, events);
+                break;  // continue as Chase below
+            }
+            enemy.stateTimer -= dt;
+            if (enemy.stateTimer <= 0.0f) {
+                enemy.enemyState = EnemyState::Idle;
+                enemy.path.clear();
+                return;
+            }
+            MoveTowards(enemy, map, enemy.lastKnownPlayerPosition, 0.0f, dt);
             return;
-        }
-        enemy.enemyState = EnemyState::Chase;
-        break;
-    default:
-        break;
+        case EnemyState::Attack:
+            if (sees && distance <= enemy.attackRadius + kEnemyAttackHysteresis) {
+                Attack(enemy, playerHealth, events);
+                return;
+            }
+            enemy.enemyState = EnemyState::Chase;
+            break;
+        default:
+            break;
     }
 
     // Chase.
@@ -193,7 +194,7 @@ void UpdateEnemy(Entity& enemy, const Map& map, const Player& player, int& playe
     const float stopDistance = sees ? std::min(enemy.attackRadius * 0.9f, player.collisionRadius + kEnemyRadius) : 0.0f;
     MoveTowards(enemy, map, sees ? player.position : enemy.lastKnownPlayerPosition, stopDistance, dt);
 }
-} // namespace
+}  // namespace
 
 bool IsEnemyAlive(const Entity& entity) {
     return entity.type == EntityType::Enemy && entity.active && entity.enemyState != EnemyState::Dead;
@@ -203,17 +204,12 @@ bool IsEnemyCorpse(const Entity& entity) {
     return entity.type == EntityType::Enemy && entity.enemyState == EnemyState::Dead;
 }
 
-void UpdateEnemyAi(
-    EntityManager& entityManager,
-    const Map& map,
-    const Player& player,
-    int& playerHealth,
-    float deltaSeconds,
-    GameplayEvents& outEvents,
-    const NoiseEvent* noise) {
+void UpdateEnemyAi(EntityManager& entityManager, const Map& map, const Player& player, int& playerHealth,
+                   float deltaSeconds, GameplayEvents& outEvents, const NoiseEvent* noise) {
     std::vector<int> soundDistances;
     if (noise != nullptr && noise->active && noise->radius >= 0.0f) {
-        soundDistances = ComputeSoundDistances(map, CellOf(noise->position), static_cast<int>(std::ceil(noise->radius)));
+        soundDistances =
+            ComputeSoundDistances(map, CellOf(noise->position), static_cast<int>(std::ceil(noise->radius)));
     }
     for (Entity& entity : entityManager.Entities()) {
         if (IsEnemyAlive(entity)) {

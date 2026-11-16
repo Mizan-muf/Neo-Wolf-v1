@@ -21,11 +21,11 @@ struct PlayerDefinition {
 };
 
 struct WeaponDefinition {
-    int damage = 35;          // health removed from an enemy per hit
-    float fireRate = 0.25f;   // seconds between two shots (a cooldown, not shots per second)
-    float range = 12.0f;      // map cells; walls stop shots earlier
-    int initialAmmo = 24;     // ammo at level start
-    int maxAmmo = 99;         // ammo pickups never raise ammo above this
+    int damage = 35;         // health removed from an enemy per hit
+    float fireRate = 0.25f;  // seconds between two shots (a cooldown, not shots per second)
+    float range = 12.0f;     // map cells; walls stop shots earlier
+    int initialAmmo = 24;    // ammo at level start
+    int maxAmmo = 99;        // ammo pickups never raise ammo above this
     // Enemies hear a shot when the path from the shooter to them through open cells (closed
     // doors and walls block sound) is at most this many cells long.
     float noiseRadius = 10.0f;
@@ -34,11 +34,7 @@ struct WeaponDefinition {
 // Enemy archetypes (Roadmap Phase 6). An enemy placement's "variant" selects one; a placement
 // without a variant is a guard. The values are appended to the C API's numbering, never
 // reordered.
-enum class EnemyVariant : std::uint8_t {
-    Guard = 0,
-    Brute,
-    Runner
-};
+enum class EnemyVariant : std::uint8_t { Guard = 0, Brute, Runner };
 
 inline constexpr int kEnemyVariantCount = 3;
 inline constexpr EnemyVariant kEnemyVariants[kEnemyVariantCount] = {EnemyVariant::Guard, EnemyVariant::Brute,
@@ -47,12 +43,12 @@ inline constexpr EnemyVariant kEnemyVariants[kEnemyVariantCount] = {EnemyVariant
 // "guard", "brute", "runner" (the names used in gameplay.json and entity files).
 inline const char* EnemyVariantName(EnemyVariant variant) {
     switch (variant) {
-    case EnemyVariant::Guard:
-        return "guard";
-    case EnemyVariant::Brute:
-        return "brute";
-    case EnemyVariant::Runner:
-        return "runner";
+        case EnemyVariant::Guard:
+            return "guard";
+        case EnemyVariant::Brute:
+            return "brute";
+        case EnemyVariant::Runner:
+            return "runner";
     }
     return "guard";
 }
@@ -60,28 +56,28 @@ inline const char* EnemyVariantName(EnemyVariant variant) {
 // One enemy archetype: gameplay.json "enemies.<variant>".
 struct EnemyDefinition {
     int health = 50;
-    int damage = 12;             // health removed from the player per attack
-    float moveSpeed = 1.6f;      // map cells per second while chasing
-    float alertRadius = 6.5f;    // map cells; an idle enemy that sees the player this close is alerted
-    float attackRadius = 1.1f;   // map cells; attacks inside this distance (with line of sight)
-    float attackRate = 1.0f;     // seconds between two attacks (a cooldown)
-    float reactionTime = 0.5f;   // seconds between noticing the player and chasing (Alert state)
-    int score = 100;             // points for a kill (logged at level end)
+    int damage = 12;            // health removed from the player per attack
+    float moveSpeed = 1.6f;     // map cells per second while chasing
+    float alertRadius = 6.5f;   // map cells; an idle enemy that sees the player this close is alerted
+    float attackRadius = 1.1f;  // map cells; attacks inside this distance (with line of sight)
+    float attackRate = 1.0f;    // seconds between two attacks (a cooldown)
+    float reactionTime = 0.5f;  // seconds between noticing the player and chasing (Alert state)
+    int score = 100;            // points for a kill (logged at level end)
 };
 
 struct EnemyDefinitions {
     EnemyDefinition guard{};
-    EnemyDefinition brute{140, 25, 1.0f, 5.5f, 1.3f, 1.6f, 0.8f, 300};   // tanky, slow, hits hard
-    EnemyDefinition runner{25, 6, 2.8f, 8.0f, 1.0f, 0.6f, 0.2f, 150};    // fast, fragile, low damage
+    EnemyDefinition brute{140, 25, 1.0f, 5.5f, 1.3f, 1.6f, 0.8f, 300};  // tanky, slow, hits hard
+    EnemyDefinition runner{25, 6, 2.8f, 8.0f, 1.0f, 0.6f, 0.2f, 150};   // fast, fragile, low damage
 
     const EnemyDefinition& For(EnemyVariant variant) const {
         switch (variant) {
-        case EnemyVariant::Brute:
-            return brute;
-        case EnemyVariant::Runner:
-            return runner;
-        case EnemyVariant::Guard:
-            break;
+            case EnemyVariant::Brute:
+                return brute;
+            case EnemyVariant::Runner:
+                return runner;
+            case EnemyVariant::Guard:
+                break;
         }
         return guard;
     }

@@ -80,7 +80,7 @@ std::string Pad(const std::string& text, std::size_t width, bool right) {
 std::string Fraction(int a, int b) {
     return std::to_string(a) + "/" + std::to_string(b);
 }
-} // namespace
+}  // namespace
 
 AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& args) {
     AutoplayCommandLine result{};
@@ -115,8 +115,8 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
                     return fail("--level given twice");
                 }
                 if (!ParseLevel(value, result.level)) {
-                    return fail("--level must be a campaign level number from " + std::to_string(kMinLevel) +
-                                " to " + std::to_string(kMaxLevel) + ", got '" + value + "'");
+                    return fail("--level must be a campaign level number from " + std::to_string(kMinLevel) + " to " +
+                                std::to_string(kMaxLevel) + ", got '" + value + "'");
                 }
             } else if (arg == "--data") {
                 result.dataDir = value;
@@ -124,7 +124,8 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
                 result.prefDir = value;
             } else if (arg == "--time-limit") {
                 if (!ParseSeconds(value, result.timeLimitSeconds)) {
-                    return fail("--time-limit must be a number of seconds above 0 (at most 86400), got '" + value + "'");
+                    return fail("--time-limit must be a number of seconds above 0 (at most 86400), got '" + value +
+                                "'");
                 }
             } else if (arg == "--json") {
                 result.jsonPath = value;
@@ -159,8 +160,8 @@ std::string AutoplayUsage(std::string_view programName) {
         << "                       game's automatic search\n"
         << "  --pref-dir DIR       folder for progress.json; default: a temporary folder that is\n"
         << "                       removed afterwards\n"
-        << "  --time-limit SECONDS game time allowed per level (default "
-        << Fixed(AutoplayConfig{}.timeLimitSeconds, 0) << ")\n"
+        << "  --time-limit SECONDS game time allowed per level (default " << Fixed(AutoplayConfig{}.timeLimitSeconds, 0)
+        << ")\n"
         << "  --json FILE          also write a machine-readable report\n"
         << "  --trace FILE         also write an event log, one line per event (level start/end,\n"
         << "                       enemy states, hits taken and dealt, pickups, keys, doors,\n"
@@ -185,19 +186,19 @@ std::string FormatAutoplayTable(const AutoplayRunReport& report) {
         return out.str();
     }
 
-    const std::vector<std::string> header = {"#",  "Level", "Result", "Time s", "Frames", "Damage", "HP",
-                                             "Ammo", "Kills", "Pickups", "Keys", "Shots"};
+    const std::vector<std::string> header = {"#",  "Level", "Result", "Time s",  "Frames", "Damage",
+                                             "HP", "Ammo",  "Kills",  "Pickups", "Keys",   "Shots"};
     const std::vector<bool> right = {true, false, false, true, true, true, true, true, true, true, false, true};
     std::vector<std::vector<std::string>> rows;
     for (const AutoplayLevelReport& level : report.levels) {
         const bool played = level.result != AutoplayResult::NotPlayed;
-        rows.push_back({std::to_string(level.levelNumber), level.id, AutoplayResultName(level.result),
-                        played ? Fixed(level.gameSeconds, 2) : "-", played ? std::to_string(level.frames) : "-",
-                        played ? std::to_string(level.damageTaken) : "-",
-                        played ? std::to_string(level.healthEnd) : "-", played ? std::to_string(level.ammoEnd) : "-",
-                        played ? Fraction(level.kills, level.totalEnemies) : "-",
-                        played ? Fraction(level.pickups, level.totalPickups) : "-",
-                        played ? Join(level.keysUsed, ",", "-") : "-", played ? std::to_string(level.shotsFired) : "-"});
+        rows.push_back(
+            {std::to_string(level.levelNumber), level.id, AutoplayResultName(level.result),
+             played ? Fixed(level.gameSeconds, 2) : "-", played ? std::to_string(level.frames) : "-",
+             played ? std::to_string(level.damageTaken) : "-", played ? std::to_string(level.healthEnd) : "-",
+             played ? std::to_string(level.ammoEnd) : "-", played ? Fraction(level.kills, level.totalEnemies) : "-",
+             played ? Fraction(level.pickups, level.totalPickups) : "-", played ? Join(level.keysUsed, ",", "-") : "-",
+             played ? std::to_string(level.shotsFired) : "-"});
     }
     std::vector<std::size_t> widths(header.size());
     for (std::size_t c = 0; c < header.size(); ++c) {

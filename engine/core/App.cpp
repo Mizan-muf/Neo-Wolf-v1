@@ -15,7 +15,7 @@
 #include "engine/platform/PlatformSDL.h"
 
 namespace {
-constexpr double kMaxFrameSeconds = 0.1;     // dt clamp: a stall never becomes a huge simulation step
+constexpr double kMaxFrameSeconds = 0.1;  // dt clamp: a stall never becomes a huge simulation step
 constexpr double kStatsIntervalSeconds = 10.0;
 constexpr int kDefaultRefreshRate = 60;
 
@@ -58,7 +58,7 @@ int CapRefreshRate(const PlatformSDL& platform) {
     const int rate = platform.DisplayRefreshRate();
     return (rate >= 30 && rate <= 500) ? rate : kDefaultRefreshRate;
 }
-} // namespace
+}  // namespace
 
 int App::Run(const CommandLineOptions& options) {
     // The per-user folder holds the log and progress.json. --pref-dir / NEOWOLF_PREF_DIR keep

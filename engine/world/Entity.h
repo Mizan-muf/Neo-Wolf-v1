@@ -63,20 +63,20 @@ struct Entity {
     EnemyState enemyState = EnemyState::Idle;
 
     // Enemy AI working state (engine/world/EnemyAi.cpp).
-    float stateTimer = 0.0f;        // Alert: reaction time left; Search: time left before giving up
-    float lostTimer = 0.0f;         // Chase: seconds without line of sight to the player
-    float repathTimer = 0.0f;       // seconds until the path may be recomputed
-    float hitFlashTimer = 0.0f;     // > 0: the sprite flashes (just hit)
-    float stuckTimer = 0.0f;        // seconds of moving with (almost) no progress
+    float stateTimer = 0.0f;     // Alert: reaction time left; Search: time left before giving up
+    float lostTimer = 0.0f;      // Chase: seconds without line of sight to the player
+    float repathTimer = 0.0f;    // seconds until the path may be recomputed
+    float hitFlashTimer = 0.0f;  // > 0: the sprite flashes (just hit)
+    float stuckTimer = 0.0f;     // seconds of moving with (almost) no progress
     Vec2 lastKnownPlayerPosition{};
-    std::vector<Vec2i> path{};      // cells still to walk, nearest first
-    Vec2i pathGoal{-1, -1};         // the cell the path leads to
+    std::vector<Vec2i> path{};  // cells still to walk, nearest first
+    Vec2i pathGoal{-1, -1};     // the cell the path leads to
 
     // Pickup kind and amount (from the entity file and gameplay.json for levels).
     PickupType pickupType = PickupType::Health;
     int pickupValue = kDefaultPickupDefinitions.health.value;
-    KeyColor keyColor = KeyColor::None;   // pickup of kind Key: which key
-    KeyColor doorLock = KeyColor::None;   // door: the key needed to open it (None = unlocked)
+    KeyColor keyColor = KeyColor::None;  // pickup of kind Key: which key
+    KeyColor doorLock = KeyColor::None;  // door: the key needed to open it (None = unlocked)
 };
 
 class EntityManager {

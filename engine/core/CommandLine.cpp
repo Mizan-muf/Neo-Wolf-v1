@@ -37,7 +37,7 @@ CommandLineResult Fail(std::string message) {
     result.error = std::move(message);
     return result;
 }
-} // namespace
+}  // namespace
 
 CommandLineResult ParseCommandLine(const std::vector<std::string>& args) {
     CommandLineResult result{};
@@ -187,7 +187,9 @@ std::string CommandLineUsage(std::string_view programName) {
         "\n"
         "Developer tools:\n"
         "  --preview <screen>  show one screen with fixed sample data, one of:\n"
-        "                      " + PreviewScreenList() + "\n"
+        "                      " +
+        PreviewScreenList() +
+        "\n"
         "  --screenshot <file> when the game exits, save the last 320x240 frame as a BMP\n"
         "                      (use with --frames N)\n"
         "\n"

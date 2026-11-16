@@ -12,8 +12,8 @@ enum class GameState : std::uint8_t {
     // Deprecated since Phase 5 (value kept for the C API): the game never enters this state.
     // Setting it through the C API or the command bridge selects LevelComplete instead.
     Victory,
-    LevelComplete,     // a level's exit switch was used; Enter continues
-    CampaignComplete   // the last level was completed; credits screen
+    LevelComplete,    // a level's exit switch was used; Enter continues
+    CampaignComplete  // the last level was completed; credits screen
 };
 
 // The highest valid value, for range checks on integers from the C API.
@@ -25,21 +25,21 @@ inline bool IsValidGameStateValue(int value) {
 
 inline const char* GameStateToString(GameState state) {
     switch (state) {
-    case GameState::Menu:
-        return "Menu";
-    case GameState::Gameplay:
-        return "Gameplay";
-    case GameState::Paused:
-        return "Paused";
-    case GameState::GameOver:
-        return "GameOver";
-    case GameState::Victory:
-        return "Victory";  // deprecated alias of LevelComplete
-    case GameState::LevelComplete:
-        return "LevelComplete";
-    case GameState::CampaignComplete:
-        return "CampaignComplete";
-    default:
-        return "Unknown";
+        case GameState::Menu:
+            return "Menu";
+        case GameState::Gameplay:
+            return "Gameplay";
+        case GameState::Paused:
+            return "Paused";
+        case GameState::GameOver:
+            return "GameOver";
+        case GameState::Victory:
+            return "Victory";  // deprecated alias of LevelComplete
+        case GameState::LevelComplete:
+            return "LevelComplete";
+        case GameState::CampaignComplete:
+            return "CampaignComplete";
+        default:
+            return "Unknown";
     }
 }

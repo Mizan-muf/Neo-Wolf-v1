@@ -24,16 +24,10 @@ inline constexpr float kSpriteHitFlashStrength = 0.65f;
 
 class SpriteRenderer {
 public:
-    static std::vector<std::size_t> BuildSortedSpriteIndices(
-        const Player& player,
-        const std::vector<SpriteEntity>& sprites);
+    static std::vector<std::size_t> BuildSortedSpriteIndices(const Player& player,
+                                                             const std::vector<SpriteEntity>& sprites);
 
-    static void Render(
-        const Map& map,
-        const Player& player,
-        Framebuffer& framebuffer,
-        const std::vector<float>& wallDepthBuffer,
-        const std::vector<SpriteEntity>& sprites,
-        const SpriteTextureSet& textures,
-        float fieldOfViewRadians);
+    static void Render(const Map& map, const Player& player, Framebuffer& framebuffer,
+                       const std::vector<float>& wallDepthBuffer, const std::vector<SpriteEntity>& sprites,
+                       const SpriteTextureSet& textures, float fieldOfViewRadians);
 };

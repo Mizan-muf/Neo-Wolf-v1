@@ -31,7 +31,7 @@ bool ParseIntToken(std::istream& stream, int& outValue) {
     parser >> outValue;
     return !parser.fail();
 }
-} // namespace
+}  // namespace
 
 bool TextureLoader::LoadPPM(const std::string& filePath, Texture& outTexture) {
     std::ifstream file(PathFromUtf8(filePath));

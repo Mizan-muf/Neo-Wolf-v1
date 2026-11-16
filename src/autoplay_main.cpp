@@ -29,8 +29,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <shellapi.h>
+#include <windows.h>
 #endif
 
 namespace {
@@ -80,23 +80,23 @@ std::filesystem::path MakeTemporaryPrefDir() {
     }
     return {};
 }
-} // namespace
+}  // namespace
 
 int main(int argc, char* argv[]) {
     const std::string program = "neo_wolf_autoplay";
     const AutoplayCommandLine parsed = ParseAutoplayCommandLine(CommandLineArgs(argc, argv));
     switch (parsed.action) {
-    case AutoplayCommandLine::Action::ShowHelp:
-        std::cout << VersionString() << " autoplay\n\n" << AutoplayUsage(program) << std::flush;
-        return 0;
-    case AutoplayCommandLine::Action::ShowVersion:
-        std::cout << VersionString() << " autoplay\n" << std::flush;
-        return 0;
-    case AutoplayCommandLine::Action::Error:
-        std::cerr << program << ": " << parsed.error << "\n\n" << AutoplayUsage(program) << std::flush;
-        return 2;
-    case AutoplayCommandLine::Action::Run:
-        break;
+        case AutoplayCommandLine::Action::ShowHelp:
+            std::cout << VersionString() << " autoplay\n\n" << AutoplayUsage(program) << std::flush;
+            return 0;
+        case AutoplayCommandLine::Action::ShowVersion:
+            std::cout << VersionString() << " autoplay\n" << std::flush;
+            return 0;
+        case AutoplayCommandLine::Action::Error:
+            std::cerr << program << ": " << parsed.error << "\n\n" << AutoplayUsage(program) << std::flush;
+            return 2;
+        case AutoplayCommandLine::Action::Run:
+            break;
     }
 
     // The engine logs a lot at Info level; the table is the output that matters here.

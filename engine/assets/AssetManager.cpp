@@ -10,10 +10,8 @@ void AssetManager::SetTexture(const std::string& id, const Texture& texture) {
     textures_[id] = texture;
 }
 
-bool AssetManager::LoadTextureFromPPM(
-    const std::string& id,
-    const std::string& filePath,
-    std::vector<std::string>& errors) {
+bool AssetManager::LoadTextureFromPPM(const std::string& id, const std::string& filePath,
+                                      std::vector<std::string>& errors) {
     Texture texture{};
     if (!TextureLoader::LoadPPM(filePath, texture)) {
         errors.push_back("Failed to load texture '" + id + "' from: " + filePath);

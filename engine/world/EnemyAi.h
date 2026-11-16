@@ -24,15 +24,15 @@
 #include "engine/world/MovementRules.h"
 #include "engine/world/Player.h"
 
-inline constexpr float kEnemyRadius = 0.25f;               // map cells (collision with walls and other enemies)
-inline constexpr float kEnemyRepathInterval = 0.3f;        // seconds: at most ~3 path searches per second each
-inline constexpr float kEnemyLoseTargetSeconds = 3.0f;     // Chase without sight this long -> Search
-inline constexpr float kEnemySearchSeconds = 4.0f;         // Search this long without contact -> Idle
-inline constexpr float kEnemyHitFlashSeconds = 0.15f;      // the sprite flashes this long after a hit
-inline constexpr float kEnemyAttackHysteresis = 0.15f;     // Attack ends beyond attackRadius + this
-inline constexpr float kEnemyChaseSightFactor = 2.0f;      // once alerted, sees up to alertRadius x this
-inline constexpr float kEnemyStuckSeconds = 0.5f;          // no progress this long -> new path
-inline constexpr float kEnemyAlertSoundCooldown = 2.0f;    // the alert sound plays at most this often
+inline constexpr float kEnemyRadius = 0.25f;             // map cells (collision with walls and other enemies)
+inline constexpr float kEnemyRepathInterval = 0.3f;      // seconds: at most ~3 path searches per second each
+inline constexpr float kEnemyLoseTargetSeconds = 3.0f;   // Chase without sight this long -> Search
+inline constexpr float kEnemySearchSeconds = 4.0f;       // Search this long without contact -> Idle
+inline constexpr float kEnemyHitFlashSeconds = 0.15f;    // the sprite flashes this long after a hit
+inline constexpr float kEnemyAttackHysteresis = 0.15f;   // Attack ends beyond attackRadius + this
+inline constexpr float kEnemyChaseSightFactor = 2.0f;    // once alerted, sees up to alertRadius x this
+inline constexpr float kEnemyStuckSeconds = 0.5f;        // no progress this long -> new path
+inline constexpr float kEnemyAlertSoundCooldown = 2.0f;  // the alert sound plays at most this often
 
 // A shot the enemies may hear (one per frame at most: the weapon's cooldown is longer).
 struct NoiseEvent {
@@ -47,14 +47,8 @@ bool IsEnemyCorpse(const Entity& entity);
 
 // One AI step for every living enemy: perception (sight, the optional noise), the state
 // machine, movement, attacks (they reduce playerHealth and fill outEvents), then separation.
-void UpdateEnemyAi(
-    EntityManager& entityManager,
-    const Map& map,
-    const Player& player,
-    int& playerHealth,
-    float deltaSeconds,
-    GameplayEvents& outEvents,
-    const NoiseEvent* noise = nullptr);
+void UpdateEnemyAi(EntityManager& entityManager, const Map& map, const Player& player, int& playerHealth,
+                   float deltaSeconds, GameplayEvents& outEvents, const NoiseEvent* noise = nullptr);
 
 // Called when the player's shot hits a living enemy: it flashes and, unless it is already
 // fighting, starts chasing the player at once (no reaction delay). Returns true if the enemy

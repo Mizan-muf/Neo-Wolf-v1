@@ -9,17 +9,17 @@
 #include "engine/core/PreviewScreen.h"
 
 enum class WindowModeOption {
-    Default,     // windowed (later phases may remember the last choice)
-    Windowed,    // --windowed
-    Fullscreen   // --fullscreen (desktop resolution)
+    Default,    // windowed (later phases may remember the last choice)
+    Windowed,   // --windowed
+    Fullscreen  // --fullscreen (desktop resolution)
 };
 
 struct CommandLineOptions {
-    std::string dataDir;        // --data <dir> (UTF-8), empty = automatic search
-    std::string prefDir;        // --pref-dir <dir>: log and progress.json; empty = NEOWOLF_PREF_DIR or the default
-    int level = 0;              // --level <N>: campaign level 1..99 to start in; 0 = main menu
-    int frames = 0;             // --frames <N>; 0 = run until the player quits
-    std::string screenshotPath; // --screenshot <file.bmp>: save the last frame on exit (developer tool)
+    std::string dataDir;         // --data <dir> (UTF-8), empty = automatic search
+    std::string prefDir;         // --pref-dir <dir>: log and progress.json; empty = NEOWOLF_PREF_DIR or the default
+    int level = 0;               // --level <N>: campaign level 1..99 to start in; 0 = main menu
+    int frames = 0;              // --frames <N>; 0 = run until the player quits
+    std::string screenshotPath;  // --screenshot <file.bmp>: save the last frame on exit (developer tool)
     PreviewScreen preview = PreviewScreen::None;  // --preview <screen> (developer tool)
     WindowModeOption windowMode = WindowModeOption::Default;
 };

@@ -69,7 +69,7 @@ void AddCandidate(std::vector<ContentRootCandidate>& out, const fs::path& direct
     }
     out.push_back(ContentRootCandidate{normal, source});
 }
-} // namespace
+}  // namespace
 
 fs::path PathFromUtf8(std::string_view utf8) {
     // u8path is deprecated in C++20 (use char8_t there); it is the portable C++17 way.
@@ -102,8 +102,7 @@ std::vector<ContentRootCandidate> BuildContentRootCandidates(const ContentRootIn
         fs::path dir = Normalized(PathFromUtf8(inputs.basePath));
         // In a macOS .app, SDL_GetBasePath() returns Contents/Resources, not the executable's
         // folder (Contents/MacOS); say so in the log ("Content root: ... (app bundle Resources)").
-        const bool bundleResources =
-            dir.filename() == "Resources" && dir.parent_path().filename() == "Contents";
+        const bool bundleResources = dir.filename() == "Resources" && dir.parent_path().filename() == "Contents";
         AddCandidate(candidates, dir, bundleResources ? "app bundle Resources" : "executable directory");
         for (int i = 1; i <= kBasePathParents; ++i) {
             const fs::path parent = dir.parent_path();

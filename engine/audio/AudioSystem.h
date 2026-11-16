@@ -20,10 +20,7 @@ public:
     bool Init(int sampleRate = 44100, int channels = 2, int samples = 1024);
     void Shutdown();
 
-    bool LoadEffectFromWav(
-        const std::string& effectId,
-        const std::string& filePath,
-        std::vector<std::string>& errors);
+    bool LoadEffectFromWav(const std::string& effectId, const std::string& filePath, std::vector<std::string>& errors);
     bool HasEffect(const std::string& effectId) const;
     void PlayEffect(const std::string& effectId) const;
     bool IsAvailable() const { return initialized_; }

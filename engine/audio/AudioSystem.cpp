@@ -75,10 +75,8 @@ void AudioSystem::Shutdown() {
     initialized_ = false;
 }
 
-bool AudioSystem::LoadEffectFromWav(
-    const std::string& effectId,
-    const std::string& filePath,
-    std::vector<std::string>& errors) {
+bool AudioSystem::LoadEffectFromWav(const std::string& effectId, const std::string& filePath,
+                                    std::vector<std::string>& errors) {
     if (!initialized_ || deviceId_ == 0) {
         errors.push_back("Audio device not initialized while loading: " + effectId);
         return false;
@@ -96,14 +94,8 @@ bool AudioSystem::LoadEffectFromWav(
     EffectData effect{};
 
     SDL_AudioCVT cvt{};
-    if (SDL_BuildAudioCVT(
-            &cvt,
-            sourceSpec.format,
-            sourceSpec.channels,
-            sourceSpec.freq,
-            deviceFormat_,
-            deviceChannels_,
-            deviceFrequency_) < 0) {
+    if (SDL_BuildAudioCVT(&cvt, sourceSpec.format, sourceSpec.channels, sourceSpec.freq, deviceFormat_, deviceChannels_,
+                          deviceFrequency_) < 0) {
         errors.push_back("Failed to build audio converter for " + effectId + ": " + SDL_GetError());
         ok = false;
     } else if (cvt.needed == 0) {

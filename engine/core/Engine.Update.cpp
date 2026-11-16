@@ -101,7 +101,8 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
     if (input_.IsDown(InputAction::TurnRight)) {
         turnDelta += 1.0f;
     }
-    player_.directionAngleRadians = NormalizeAngle(player_.directionAngleRadians + turnDelta * player_.turnSpeedRadians * dt);
+    player_.directionAngleRadians =
+        NormalizeAngle(player_.directionAngleRadians + turnDelta * player_.turnSpeedRadians * dt);
 
     // Player Movement
     Vec2 wishDir{0.0f, 0.0f};
@@ -135,17 +136,8 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
 
     // Entity Interactions (Pickups, Doors, Triggers)
     GameplayEvents events{};
-    UpdateEntityInteractions(
-        entityManager_,
-        map_,
-        player_,
-        playerHealth_,
-        playerAmmo_,
-        playerMaxHealth_,
-        playerMaxAmmo_,
-        input_.WasPressed(InputAction::Interact),
-        keys_,
-        events);
+    UpdateEntityInteractions(entityManager_, map_, player_, playerHealth_, playerAmmo_, playerMaxHealth_,
+                             playerMaxAmmo_, input_.WasPressed(InputAction::Interact), keys_, events);
 
     if (events.pickupCollected) {
         audio_.PlayEffect("pickup");

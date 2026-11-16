@@ -31,7 +31,7 @@ class PlatformSDL;
 
 // Startup settings (filled from the command line by App; the defaults suit the C API and tests).
 struct EngineOptions {
-    std::string dataDir{};  // --data (UTF-8); empty = automatic content-root search
+    std::string dataDir{};                                // --data (UTF-8); empty = automatic content-root search
     std::string campaignPath{"game/defs/campaign.json"};  // relative to the content root
     std::string gameplayPath{"game/defs/gameplay.json"};
     // --level N: campaign level to start in (1-based), skipping the menu and the unlock
@@ -130,8 +130,8 @@ public:
     const Texture* floorTexture_ = nullptr;
     const Texture* ceilingTexture_ = nullptr;
     std::array<const Texture*, kSpriteTextureCount> spriteTextures_{};  // by SpriteTextureId (sprites.cfg)
-    bool minimapVisible_ = false;       // M / Tab (off by default, C9)
-    bool debugOverlayVisible_ = false;  // F3
+    bool minimapVisible_ = false;                                       // M / Tab (off by default, C9)
+    bool debugOverlayVisible_ = false;                                  // F3
     std::vector<RaycastHit> latestRayHits_{};
     std::vector<float> latestWallDepthBuffer_{};
     std::vector<SpriteEntity> sprites_{};
@@ -145,8 +145,8 @@ public:
     int playerAmmo_ = kDefaultWeaponDefinition.initialAmmo;
     int playerMaxHealth_ = kDefaultPlayerDefinition.maxHealth;
     int playerMaxAmmo_ = kDefaultWeaponDefinition.maxAmmo;
-    KeyRing keys_{};                   // key cards held; cleared on every level load and restart
-    NoiseEvent pendingNoise_{};        // the last shot, heard by enemies in the next AI update
+    KeyRing keys_{};             // key cards held; cleared on every level load and restart
+    NoiseEvent pendingNoise_{};  // the last shot, heard by enemies in the next AI update
     std::string hudMessage_{};
     float hudMessageTimer_ = 0.0f;
     std::filesystem::path contentRoot_{};
@@ -154,16 +154,16 @@ public:
     std::string currentEntitiesPath_{"game/defs/level01.entities.json"};
     CampaignDefinition campaign_{};
     GameFlow flow_{};
-    std::filesystem::path prefDir_{};      // where progress.json lives; empty = not saved
+    std::filesystem::path prefDir_{};  // where progress.json lives; empty = not saved
     std::string currentThemeId_{};
-    int currentLevelIndex_ = -1;           // campaign index of the loaded level; -1 = loaded by path
-    float levelBannerTimer_ = 0.0f;        // "LEVEL N / name" banner at level start
-    double levelTimeSeconds_ = 0.0;        // time spent in Gameplay on this level
+    int currentLevelIndex_ = -1;     // campaign index of the loaded level; -1 = loaded by path
+    float levelBannerTimer_ = 0.0f;  // "LEVEL N / name" banner at level start
+    double levelTimeSeconds_ = 0.0;  // time spent in Gameplay on this level
     int levelEnemyTotal_ = 0;
     int levelPickupTotal_ = 0;
-    int levelShotsFired_ = 0;              // shots fired on this level (LevelResults)
-    int levelDamageTaken_ = 0;             // health lost to enemy attacks on this level
-    bool simulationFrozen_ = false;        // previews: Update only reads input
+    int levelShotsFired_ = 0;        // shots fired on this level (LevelResults)
+    int levelDamageTaken_ = 0;       // health lost to enemy attacks on this level
+    bool simulationFrozen_ = false;  // previews: Update only reads input
     InputInjector inputInjector_{};
     GameState reportedState_ = GameState::Menu;  // last state announced with a StateChanged event
     CommandBridge bridge_{};

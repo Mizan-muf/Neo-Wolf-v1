@@ -10,7 +10,7 @@ namespace {
 std::size_t IndexOf(const Map& map, int x, int y) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(map.Width()) + static_cast<std::size_t>(x);
 }
-} // namespace
+}  // namespace
 
 Vec2i CellOf(const Vec2& position) {
     return Vec2i{static_cast<int>(std::floor(position.x)), static_cast<int>(std::floor(position.y))};
@@ -80,7 +80,8 @@ bool FindPath(const Map& map, const Vec2i& start, const Vec2i& goal, std::vector
             if (!IsWalkableCell(map, nx, ny) || parent[IndexOf(map, nx, ny)] != -1) {
                 continue;
             }
-            if (d >= 4 && (!IsWalkableCell(map, cell.x + kDx[d], cell.y) || !IsWalkableCell(map, cell.x, cell.y + kDy[d]))) {
+            if (d >= 4 &&
+                (!IsWalkableCell(map, cell.x + kDx[d], cell.y) || !IsWalkableCell(map, cell.x, cell.y + kDy[d]))) {
                 continue;  // would cut a wall corner
             }
             parent[IndexOf(map, nx, ny)] = static_cast<int>(IndexOf(map, cell.x, cell.y));

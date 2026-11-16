@@ -20,8 +20,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <shellapi.h>
+#include <windows.h>
 
 #include <cstdio>
 #endif
@@ -78,27 +78,27 @@ std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
 
 void AttachParentConsoleForOutput() {}
 #endif
-} // namespace
+}  // namespace
 
 int main(int argc, char* argv[]) {
     const CommandLineResult parsed = ParseCommandLine(CommandLineArgs(argc, argv));
     const std::string program = "neo_wolf";
 
     switch (parsed.action) {
-    case CommandLineAction::ShowHelp:
-        AttachParentConsoleForOutput();
-        std::cout << VersionString() << "\n\n" << CommandLineUsage(program) << std::flush;
-        return 0;
-    case CommandLineAction::ShowVersion:
-        AttachParentConsoleForOutput();
-        std::cout << VersionString() << '\n' << std::flush;
-        return 0;
-    case CommandLineAction::Error:
-        AttachParentConsoleForOutput();
-        std::cerr << program << ": " << parsed.error << "\n\n" << CommandLineUsage(program) << std::flush;
-        return 2;
-    case CommandLineAction::Run:
-        break;
+        case CommandLineAction::ShowHelp:
+            AttachParentConsoleForOutput();
+            std::cout << VersionString() << "\n\n" << CommandLineUsage(program) << std::flush;
+            return 0;
+        case CommandLineAction::ShowVersion:
+            AttachParentConsoleForOutput();
+            std::cout << VersionString() << '\n' << std::flush;
+            return 0;
+        case CommandLineAction::Error:
+            AttachParentConsoleForOutput();
+            std::cerr << program << ": " << parsed.error << "\n\n" << CommandLineUsage(program) << std::flush;
+            return 2;
+        case CommandLineAction::Run:
+            break;
     }
 
     App app;

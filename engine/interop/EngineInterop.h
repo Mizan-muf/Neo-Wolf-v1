@@ -34,27 +34,14 @@ void nw_engine_player_attack(void* handle);
 
 // Entity management
 int nw_engine_get_entity_count(const void* handle);
-int nw_engine_get_entity(
-    const void* handle,
-    int index,
-    int* outId,
-    int* outType,
-    float* outX,
-    float* outY,
-    int* outActive);
+int nw_engine_get_entity(const void* handle, int index, int* outId, int* outType, float* outX, float* outY,
+                         int* outActive);
 int nw_engine_spawn_entity(void* handle, int type, float x, float y);
 int nw_engine_destroy_entity(void* handle, int id);
 
 // Audio & FX
 void nw_engine_play_sound(void* handle, const char* soundId);
-void nw_engine_spawn_particle(
-    void* handle,
-    float x,
-    float y,
-    float vx,
-    float vy,
-    float life,
-    uint32_t color);
+void nw_engine_spawn_particle(void* handle, float x, float y, float vx, float vy, float life, uint32_t color);
 void nw_engine_show_message(void* handle, const char* message, float duration);
 
 // Interop Command Bridge

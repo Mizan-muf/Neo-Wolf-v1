@@ -3,11 +3,7 @@
 #include <string>
 #include <string_view>
 
-enum class LogLevel {
-    Info,
-    Warning,
-    Error
-};
+enum class LogLevel { Info, Warning, Error };
 
 void LogMessage(LogLevel level, std::string_view message);
 void LogInfo(std::string_view message);

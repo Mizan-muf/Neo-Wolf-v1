@@ -19,7 +19,7 @@ struct ThemeTextureAssignments {
     std::string doorGold;  // ... the gold key
     std::string floor;
     std::string ceiling;
-    std::string exit;      // 'X' (exit switch)
+    std::string exit;  // 'X' (exit switch)
 };
 
 // "game/defs/themes/<themeId>.cfg" (content-relative).
@@ -27,8 +27,8 @@ std::string ThemeConfigPath(const std::string& themeId);
 
 // sprites.cfg keys, in SpriteTextureId order (all required).
 inline constexpr const char* kSpriteTextureKeys[kSpriteTextureCount] = {
-    "guard",      "health",     "decoration", "brute", "runner",   "guard_dead",
-    "brute_dead", "runner_dead", "ammo",      "key_red", "key_blue", "key_gold"};
+    "guard",      "health",      "decoration", "brute",   "runner",   "guard_dead",
+    "brute_dead", "runner_dead", "ammo",       "key_red", "key_blue", "key_gold"};
 
 // Content-relative .ppm paths, indexed by SpriteTextureId.
 struct SpriteTextureDefinitions {
@@ -39,12 +39,8 @@ struct SpriteTextureDefinitions {
 
 // Reads a theme file. A syntax error makes the whole file unusable (false, nothing set); a
 // missing key is an error for that key only (false, the other keys are set).
-bool LoadThemeTextureAssignments(
-    const std::string& filePath,
-    ThemeTextureAssignments& outAssignments,
-    std::vector<std::string>& errors);
+bool LoadThemeTextureAssignments(const std::string& filePath, ThemeTextureAssignments& outAssignments,
+                                 std::vector<std::string>& errors);
 
-bool LoadSpriteTextureDefinitions(
-    const std::string& filePath,
-    SpriteTextureDefinitions& outDefinitions,
-    std::vector<std::string>& errors);
+bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefinitions& outDefinitions,
+                                  std::vector<std::string>& errors);

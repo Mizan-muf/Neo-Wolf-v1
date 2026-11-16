@@ -26,10 +26,8 @@ std::string Trim(const std::string& value) {
     return value.substr(start, end - start);
 }
 
-bool LoadKeyValueConfig(
-    const std::string& filePath,
-    std::unordered_map<std::string, std::string>& outValues,
-    std::vector<std::string>& errors) {
+bool LoadKeyValueConfig(const std::string& filePath, std::unordered_map<std::string, std::string>& outValues,
+                        std::vector<std::string>& errors) {
     std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         errors.push_back("Unable to open config: " + filePath);
@@ -68,12 +66,8 @@ bool LoadKeyValueConfig(
     return errors.empty();
 }
 
-bool RequireKey(
-    const std::unordered_map<std::string, std::string>& values,
-    const std::string& key,
-    std::string& outValue,
-    const std::string& filePath,
-    std::vector<std::string>& errors) {
+bool RequireKey(const std::unordered_map<std::string, std::string>& values, const std::string& key,
+                std::string& outValue, const std::string& filePath, std::vector<std::string>& errors) {
     const auto it = values.find(key);
     if (it == values.end()) {
         errors.push_back(filePath + " missing required key: " + key);
@@ -82,16 +76,14 @@ bool RequireKey(
     outValue = it->second;
     return true;
 }
-} // namespace
+}  // namespace
 
 std::string ThemeConfigPath(const std::string& themeId) {
     return "game/defs/themes/" + themeId + ".cfg";
 }
 
-bool LoadThemeTextureAssignments(
-    const std::string& filePath,
-    ThemeTextureAssignments& outAssignments,
-    std::vector<std::string>& errors) {
+bool LoadThemeTextureAssignments(const std::string& filePath, ThemeTextureAssignments& outAssignments,
+                                 std::vector<std::string>& errors) {
     std::unordered_map<std::string, std::string> values;
     if (!LoadKeyValueConfig(filePath, values, errors)) {
         return false;
@@ -111,10 +103,8 @@ bool LoadThemeTextureAssignments(
     return ok;
 }
 
-bool LoadSpriteTextureDefinitions(
-    const std::string& filePath,
-    SpriteTextureDefinitions& outDefinitions,
-    std::vector<std::string>& errors) {
+bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefinitions& outDefinitions,
+                                  std::vector<std::string>& errors) {
     std::unordered_map<std::string, std::string> values;
     if (!LoadKeyValueConfig(filePath, values, errors)) {
         return false;
@@ -123,7 +113,8 @@ bool LoadSpriteTextureDefinitions(
     bool ok = true;
     for (int i = 0; i < kSpriteTextureCount; ++i) {
         ok = RequireKey(values, kSpriteTextureKeys[i], outDefinitions.paths[static_cast<std::size_t>(i)], filePath,
-                        errors) && ok;
+                        errors) &&
+             ok;
     }
     // Phase 6 renamed two keys; say so instead of only reporting them as missing.
     for (const auto& renamed : {std::pair<const char*, const char*>{"enemy", "guard"}, {"pickup", "health"}}) {

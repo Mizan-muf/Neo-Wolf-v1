@@ -23,17 +23,17 @@ int Severity(LogLevel level) {
 
 const char* LevelToText(LogLevel level) {
     switch (level) {
-    case LogLevel::Info:
-        return "INFO";
-    case LogLevel::Warning:
-        return "WARN";
-    case LogLevel::Error:
-        return "ERROR";
-    default:
-        return "LOG";
+        case LogLevel::Info:
+            return "INFO";
+        case LogLevel::Warning:
+            return "WARN";
+        case LogLevel::Error:
+            return "ERROR";
+        default:
+            return "LOG";
     }
 }
-} // namespace
+}  // namespace
 
 void SetConsoleLogLevel(LogLevel minimum) {
     std::lock_guard<std::mutex> lock(g_logMutex);
@@ -85,16 +85,14 @@ void LogMessage(LogLevel level, std::string_view message) {
     if (Severity(level) >= Severity(g_consoleMinimum)) {
         std::ostream& stream = (level == LogLevel::Error) ? std::cerr : std::cout;
         stream << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
-               << "[" << LevelToText(level) << "] "
-               << message << '\n';
+               << "[" << LevelToText(level) << "] " << message << '\n';
     }
 
     if (!g_logFilePath.empty()) {
         std::ofstream file(PathFromUtf8(g_logFilePath), std::ios::out | std::ios::app);
         if (file.is_open()) {
             file << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
-                 << "[" << LevelToText(level) << "] "
-                 << message << '\n';
+                 << "[" << LevelToText(level) << "] " << message << '\n';
         }
     }
 }

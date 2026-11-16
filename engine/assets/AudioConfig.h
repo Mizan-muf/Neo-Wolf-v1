@@ -11,7 +11,5 @@ struct AudioEffectDefinitions {
     float masterVolume = 0.85f;
 };
 
-bool LoadAudioEffectDefinitions(
-    const std::string& filePath,
-    AudioEffectDefinitions& outDefinitions,
-    std::vector<std::string>& errors);
+bool LoadAudioEffectDefinitions(const std::string& filePath, AudioEffectDefinitions& outDefinitions,
+                                std::vector<std::string>& errors);

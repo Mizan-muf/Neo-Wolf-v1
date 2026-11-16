@@ -9,28 +9,21 @@
 #include "engine/world/GameplayDefinitions.h"
 #include "engine/world/KeyColor.h"
 
-enum class PlacementType {
-    Player = 0,
-    Enemy,
-    Pickup,
-    Door,
-    Trigger,
-    Decoration
-};
+enum class PlacementType { Player = 0, Enemy, Pickup, Door, Trigger, Decoration };
 
 // One entry of a level's entity file (schema: docs/CONTENT_DEFINITIONS.md).
 struct EntityPlacement {
     PlacementType type = PlacementType::Enemy;
     Vec2 position{};
-    int mapX = -1;                      // door/trigger: the map cell it controls (required)
+    int mapX = -1;  // door/trigger: the map cell it controls (required)
     int mapY = -1;
-    float angleDegrees = 0.0f;          // player: initial view direction (0 = +x, 90 = +y)
+    float angleDegrees = 0.0f;                   // player: initial view direction (0 = +x, 90 = +y)
     PickupType pickupKind = PickupType::Health;  // pickup: "kind" (required): health, ammo or key
-    std::optional<int> pickupValue{};   // pickup: "value"; empty = gameplay.json pickups.<kind>.value
-    KeyColor key = KeyColor::None;      // pickup of kind "key": "key" (required): red, blue or gold
-    KeyColor lock = KeyColor::None;     // door: "lock" (optional): red, blue or gold
+    std::optional<int> pickupValue{};            // pickup: "value"; empty = gameplay.json pickups.<kind>.value
+    KeyColor key = KeyColor::None;               // pickup of kind "key": "key" (required): red, blue or gold
+    KeyColor lock = KeyColor::None;              // door: "lock" (optional): red, blue or gold
     EnemyVariant variant = EnemyVariant::Guard;  // enemy: "variant" (optional): guard, brute or runner
-    std::string source{};               // where it came from, for messages: "file: entities[3]" or "file:5"
+    std::string source{};                        // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
 // One entry of the optional "lights" array of a level's entity JSON file: a rectangle of map
@@ -64,40 +57,24 @@ const char* PlacementTypeName(PlacementType type);
 // added any error; outPlacements (and outLights) then hold only the entries that were valid.
 // Light zones come only from JSON (its optional "lights" array); a CSV has none, so outLights
 // is empty after loading a CSV.
-bool LoadEntityPlacementsFromFile(
-    const std::string& filePath,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<LightZone>& outLights,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool LoadEntityPlacementsFromFile(const std::string& filePath, std::vector<EntityPlacement>& outPlacements,
+                                  std::vector<LightZone>& outLights, std::vector<std::string>& errors,
+                                  std::vector<std::string>& warnings);
 
 // The same without light zones: a JSON file's "lights" are still checked (an invalid zone is
 // an error) but not returned. For tools and tests that need the placements only.
-bool LoadEntityPlacementsFromFile(
-    const std::string& filePath,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool LoadEntityPlacementsFromFile(const std::string& filePath, std::vector<EntityPlacement>& outPlacements,
+                                  std::vector<std::string>& errors, std::vector<std::string>& warnings);
 
 // The two parsers, from text; `sourceName` (normally the file path) starts every message.
-bool ParseEntityPlacementsJson(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<LightZone>& outLights,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool ParseEntityPlacementsJson(const std::string& text, const std::string& sourceName,
+                               std::vector<EntityPlacement>& outPlacements, std::vector<LightZone>& outLights,
+                               std::vector<std::string>& errors, std::vector<std::string>& warnings);
 
-bool ParseEntityPlacementsJson(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool ParseEntityPlacementsJson(const std::string& text, const std::string& sourceName,
+                               std::vector<EntityPlacement>& outPlacements, std::vector<std::string>& errors,
+                               std::vector<std::string>& warnings);
 
-bool ParseEntityPlacementsCsv(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings);
+bool ParseEntityPlacementsCsv(const std::string& text, const std::string& sourceName,
+                              std::vector<EntityPlacement>& outPlacements, std::vector<std::string>& errors,
+                              std::vector<std::string>& warnings);

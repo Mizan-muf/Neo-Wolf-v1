@@ -31,9 +31,9 @@ bool ParseJsonText(const std::string& text, const std::string& sourceName, nlohm
     std::string lastKey;
     std::vector<std::string> duplicates;
 
-    const nlohmann::json::parser_callback_t callback =
-        [&](int /*depth*/, nlohmann::json::parse_event_t event, nlohmann::json& parsed) {
-            switch (event) {
+    const nlohmann::json::parser_callback_t callback = [&](int /*depth*/, nlohmann::json::parse_event_t event,
+                                                           nlohmann::json& parsed) {
+        switch (event) {
             case nlohmann::json::parse_event_t::object_start:
                 frames.push_back(ObjectFrame{lastKey, {}});
                 break;
@@ -46,16 +46,16 @@ bool ParseJsonText(const std::string& text, const std::string& sourceName, nlohm
                 lastKey = parsed.get<std::string>();
                 if (!frames.empty() && !frames.back().keys.insert(lastKey).second) {
                     const std::string& parent = frames.back().name;
-                    duplicates.push_back("duplicate key \"" + lastKey + "\"" +
-                                         (parent.empty() ? std::string(" at the top level")
-                                                         : " inside \"" + parent + "\""));
+                    duplicates.push_back(
+                        "duplicate key \"" + lastKey + "\"" +
+                        (parent.empty() ? std::string(" at the top level") : " inside \"" + parent + "\""));
                 }
                 break;
             default:
                 break;
-            }
-            return true;
-        };
+        }
+        return true;
+    };
 
     try {
         outDocument = nlohmann::json::parse(text, callback, /*allow_exceptions=*/true, /*ignore_comments=*/false);

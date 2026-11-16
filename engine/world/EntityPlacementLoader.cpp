@@ -43,8 +43,8 @@ std::string ToLower(std::string value) {
 
 bool ParseType(const std::string& value, PlacementType& outType) {
     static constexpr PlacementType kTypes[] = {
-        PlacementType::Player, PlacementType::Enemy, PlacementType::Pickup,
-        PlacementType::Door, PlacementType::Trigger, PlacementType::Decoration,
+        PlacementType::Player, PlacementType::Enemy,   PlacementType::Pickup,
+        PlacementType::Door,   PlacementType::Trigger, PlacementType::Decoration,
     };
     for (const PlacementType type : kTypes) {
         if (value == PlacementTypeName(type)) {
@@ -110,13 +110,16 @@ bool ReadInteger(const json& object, const char* key, const std::string& where, 
 bool ReadPlacement(const json& object, const std::string& where, EntityPlacement& out, Diagnostics& diag) {
     const auto typeIt = object.find("type");
     if (typeIt == object.end()) {
-        diag.errors.push_back(where + ": field \"type\" is required "
-                                      "(player, enemy, pickup, door, trigger or decoration)");
+        diag.errors.push_back(where +
+                              ": field \"type\" is required "
+                              "(player, enemy, pickup, door, trigger or decoration)");
         return false;
     }
     if (!typeIt->is_string() || !ParseType(typeIt->get<std::string>(), out.type)) {
-        diag.errors.push_back(where + ": field \"type\" must be one of player, enemy, pickup, door, trigger, "
-                                      "decoration; got " + DescribeJsonValue(*typeIt));
+        diag.errors.push_back(where +
+                              ": field \"type\" must be one of player, enemy, pickup, door, trigger, "
+                              "decoration; got " +
+                              DescribeJsonValue(*typeIt));
         return false;
     }
     const std::string typeName = PlacementTypeName(out.type);
@@ -343,36 +346,31 @@ bool ConvertCsvCell(const std::string& cell, const CsvColumn& column, const std:
 }
 
 bool HasExtension(const std::string& path, const std::string& extension) {
-    return path.size() >= extension.size() &&
-           ToLower(path.substr(path.size() - extension.size())) == extension;
+    return path.size() >= extension.size() && ToLower(path.substr(path.size() - extension.size())) == extension;
 }
-} // namespace
+}  // namespace
 
 const char* PlacementTypeName(PlacementType type) {
     switch (type) {
-    case PlacementType::Player:
-        return "player";
-    case PlacementType::Enemy:
-        return "enemy";
-    case PlacementType::Pickup:
-        return "pickup";
-    case PlacementType::Door:
-        return "door";
-    case PlacementType::Trigger:
-        return "trigger";
-    case PlacementType::Decoration:
-        return "decoration";
+        case PlacementType::Player:
+            return "player";
+        case PlacementType::Enemy:
+            return "enemy";
+        case PlacementType::Pickup:
+            return "pickup";
+        case PlacementType::Door:
+            return "door";
+        case PlacementType::Trigger:
+            return "trigger";
+        case PlacementType::Decoration:
+            return "decoration";
     }
     return "unknown";
 }
 
-bool ParseEntityPlacementsJson(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<LightZone>& outLights,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool ParseEntityPlacementsJson(const std::string& text, const std::string& sourceName,
+                               std::vector<EntityPlacement>& outPlacements, std::vector<LightZone>& outLights,
+                               std::vector<std::string>& errors, std::vector<std::string>& warnings) {
     outPlacements.clear();
     outLights.clear();
     const std::size_t errorsBefore = errors.size();
@@ -445,22 +443,16 @@ bool ParseEntityPlacementsJson(
     return errors.size() == errorsBefore;
 }
 
-bool ParseEntityPlacementsJson(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool ParseEntityPlacementsJson(const std::string& text, const std::string& sourceName,
+                               std::vector<EntityPlacement>& outPlacements, std::vector<std::string>& errors,
+                               std::vector<std::string>& warnings) {
     std::vector<LightZone> ignoredLights;
     return ParseEntityPlacementsJson(text, sourceName, outPlacements, ignoredLights, errors, warnings);
 }
 
-bool ParseEntityPlacementsCsv(
-    const std::string& text,
-    const std::string& sourceName,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool ParseEntityPlacementsCsv(const std::string& text, const std::string& sourceName,
+                              std::vector<EntityPlacement>& outPlacements, std::vector<std::string>& errors,
+                              std::vector<std::string>& warnings) {
     outPlacements.clear();
     const std::size_t errorsBefore = errors.size();
     Diagnostics diag{errors, warnings};
@@ -485,15 +477,16 @@ bool ParseEntityPlacementsCsv(
             continue;
         }
 
-        const std::string where = sourceName + ":" + std::to_string(lineNumber) + " (entity " +
-                                  std::to_string(entityIndex) + ")";
+        const std::string where =
+            sourceName + ":" + std::to_string(lineNumber) + " (entity " + std::to_string(entityIndex) + ")";
         ++entityIndex;
 
         std::vector<std::string> cells;
         std::size_t cellStart = 0;
         for (;;) {
             const std::size_t comma = trimmed.find(',', cellStart);
-            cells.push_back(Trim(trimmed.substr(cellStart, comma == std::string::npos ? std::string::npos : comma - cellStart)));
+            cells.push_back(
+                Trim(trimmed.substr(cellStart, comma == std::string::npos ? std::string::npos : comma - cellStart)));
             if (comma == std::string::npos) {
                 break;
             }
@@ -530,12 +523,9 @@ bool ParseEntityPlacementsCsv(
     return errors.size() == errorsBefore;
 }
 
-bool LoadEntityPlacementsFromFile(
-    const std::string& filePath,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<LightZone>& outLights,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool LoadEntityPlacementsFromFile(const std::string& filePath, std::vector<EntityPlacement>& outPlacements,
+                                  std::vector<LightZone>& outLights, std::vector<std::string>& errors,
+                                  std::vector<std::string>& warnings) {
     outPlacements.clear();
     outLights.clear();
     const bool isJson = HasExtension(filePath, ".json");
@@ -553,11 +543,8 @@ bool LoadEntityPlacementsFromFile(
                   : ParseEntityPlacementsCsv(text, filePath, outPlacements, errors, warnings);
 }
 
-bool LoadEntityPlacementsFromFile(
-    const std::string& filePath,
-    std::vector<EntityPlacement>& outPlacements,
-    std::vector<std::string>& errors,
-    std::vector<std::string>& warnings) {
+bool LoadEntityPlacementsFromFile(const std::string& filePath, std::vector<EntityPlacement>& outPlacements,
+                                  std::vector<std::string>& errors, std::vector<std::string>& warnings) {
     std::vector<LightZone> ignoredLights;
     return LoadEntityPlacementsFromFile(filePath, outPlacements, ignoredLights, errors, warnings);
 }

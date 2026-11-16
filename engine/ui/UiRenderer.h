@@ -21,8 +21,8 @@ struct Player;
 struct SpriteEntity;
 
 namespace UiLayout {
-inline constexpr int kMargin = 4;        // minimum distance of any UI element from the edges
-inline constexpr int kGlyphWidth = 5;    // per scale unit
+inline constexpr int kMargin = 4;      // minimum distance of any UI element from the edges
+inline constexpr int kGlyphWidth = 5;  // per scale unit
 inline constexpr int kGlyphHeight = 7;
 inline constexpr int kGlyphAdvance = 6;  // glyph width + 1 pixel spacing
 inline constexpr int kHudBarHeight = 14;
@@ -35,7 +35,7 @@ inline constexpr int kKeyCardSlotWidth = 14;
 inline constexpr int kKeyCardWidth = 12;
 inline constexpr int kKeyCardHeight = 10;
 inline constexpr int kKeyCardsOffset = 64;  // from the ammo label's x
-} // namespace UiLayout
+}  // namespace UiLayout
 
 namespace UiRenderer {
 // Width in pixels of `text` at `scale` (no trailing spacing).
@@ -50,7 +50,7 @@ void DrawTextCentered(Framebuffer& framebuffer, int centerX, int y, const std::s
 struct HudView {
     int health = 0;
     int ammo = 0;
-    int levelNumber = 0;           // 1-based; 0 = not a campaign level (C API load)
+    int levelNumber = 0;  // 1-based; 0 = not a campaign level (C API load)
     std::string levelName;
     bool showLevelBanner = false;  // large "LEVEL N / name" banner at level start
     std::string message;           // pickups, hits, checkpoints...
@@ -70,8 +70,8 @@ UiRect KeyCardRect(int framebufferWidth, int framebufferHeight, KeyColor color);
 std::uint32_t KeyCardColor(KeyColor color);
 void DrawHud(Framebuffer& framebuffer, const HudView& view);
 void DrawCrosshair(Framebuffer& framebuffer);
-void DrawDebugOverlay(Framebuffer& framebuffer, float fps, float playerX, float playerY, float angleDegrees,
-                      int cellX, int cellY);
+void DrawDebugOverlay(Framebuffer& framebuffer, float fps, float playerX, float playerY, float angleDegrees, int cellX,
+                      int cellY);
 
 struct MenuView {
     std::string campaignTitle;
@@ -132,4 +132,4 @@ MinimapLayout ComputeMinimapLayout(int framebufferWidth, int framebufferHeight, 
 // Returns the panel's right edge (for HudView::reservedLeft).
 int DrawMinimap(Framebuffer& framebuffer, const Map& map, const Player& player,
                 const std::vector<SpriteEntity>& sprites);
-} // namespace UiRenderer
+}  // namespace UiRenderer

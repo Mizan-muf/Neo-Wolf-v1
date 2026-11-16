@@ -43,7 +43,6 @@ inline float LengthSquared(const Vec2& value) {
     return value.x * value.x + value.y * value.y;
 }
 
-
 inline Vec2 Normalize(const Vec2& value) {
     const float len = Length(value);
     if (len <= 0.000001f) {

@@ -20,7 +20,7 @@
 #include "engine/world/Navigation.h"
 
 namespace {
-constexpr float kMinTurnDeadband = 0.016f;    // radians; one frame of turning is ~0.03 at 1.8 rad/s
+constexpr float kMinTurnDeadband = 0.016f;  // radians; one frame of turning is ~0.03 at 1.8 rad/s
 constexpr float kTurnDeadband = 0.04f;
 constexpr float kWalkWhileTurning = 0.35f;    // walk only within this angle (radians) of the target
 constexpr float kAimMargin = 0.32f;           // cells off the enemy's centre; a shot hits within 0.45
@@ -31,7 +31,7 @@ constexpr float kCorridorRadius = 0.3f;       // the player's radius (0.22) plus
 constexpr std::size_t kLookahead = 6;         // path cells the bot may cut across
 constexpr double kInteractRepeat = 0.3;       // seconds between two Interact presses
 constexpr double kUnstickSeconds = 0.6;
-constexpr double kProgressStep = 0.25;        // cells closer to the goal count as progress
+constexpr double kProgressStep = 0.25;  // cells closer to the goal count as progress
 // An enemy whose centre is in sight but whose shot grazes a corner: after this long aimed at it
 // without a clear shot, the bot ignores it for kSkipEnemySeconds and walks on (an idle enemy
 // out of its own notice range would otherwise hold the bot there for good).
@@ -78,20 +78,20 @@ void AddUnique(std::vector<std::string>& list, const std::string& value) {
         list.push_back(value);
     }
 }
-} // namespace
+}  // namespace
 
 const char* AutoplayResultName(AutoplayResult result) {
     switch (result) {
-    case AutoplayResult::NotPlayed:
-        return "not-played";
-    case AutoplayResult::Complete:
-        return "complete";
-    case AutoplayResult::Died:
-        return "died";
-    case AutoplayResult::Timeout:
-        return "timeout";
-    case AutoplayResult::Stuck:
-        return "stuck";
+        case AutoplayResult::NotPlayed:
+            return "not-played";
+        case AutoplayResult::Complete:
+            return "complete";
+        case AutoplayResult::Died:
+            return "died";
+        case AutoplayResult::Timeout:
+            return "timeout";
+        case AutoplayResult::Stuck:
+            return "stuck";
     }
     return "unknown";
 }
@@ -129,7 +129,8 @@ float AutoplayBot::TurnTowards(const Vec2& target) {
     }
     const float diff = WrapAngle(std::atan2(to.y, to.x) - engine_.player_.directionAngleRadians);
     // Aim more precisely at far targets (a shot must pass within kAimMargin of an enemy).
-    const float deadband = std::max(kMinTurnDeadband, std::min(kTurnDeadband, 0.6f * std::asin(std::min(1.0f, kAimMargin / Length(to)))));
+    const float deadband =
+        std::max(kMinTurnDeadband, std::min(kTurnDeadband, 0.6f * std::asin(std::min(1.0f, kAimMargin / Length(to)))));
     if (diff > deadband) {
         Hold(InputAction::TurnRight);  // the view angle grows to the right (+y is down on the map)
     } else if (diff < -deadband) {
@@ -153,21 +154,21 @@ void AutoplayBot::Fill(InputState& input) {
     interactCooldown_ = std::max(0.0, interactCooldown_ - config_.fixedStepSeconds);
 
     switch (engine_.GetState()) {
-    case GameState::Menu:
-        if (!failed_) {
-            Tap(InputAction::Select);  // the main menu opens on New Game
-        }
-        break;
-    case GameState::LevelComplete:
-        Tap(InputAction::Confirm);  // on to the next level (or the credits)
-        break;
-    case GameState::Gameplay:
-        if (!failed_) {
-            PlayFrame();
-        }
-        break;
-    default:
-        break;  // paused, game over, credits: the session stops there
+        case GameState::Menu:
+            if (!failed_) {
+                Tap(InputAction::Select);  // the main menu opens on New Game
+            }
+            break;
+        case GameState::LevelComplete:
+            Tap(InputAction::Confirm);  // on to the next level (or the credits)
+            break;
+        case GameState::Gameplay:
+            if (!failed_) {
+                PlayFrame();
+            }
+            break;
+        default:
+            break;  // paused, game over, credits: the session stops there
     }
 
     for (std::size_t i = 0; i < kActionCount; ++i) {
@@ -339,20 +340,20 @@ void AutoplayBot::CheckProgress() {
     if (stuckStrikes_ > config_.maxStuckReplans) {
         std::string goal = "nothing";
         switch (goal_) {
-        case GoalKind::Exit:
-            goal = "the exit switch at " + FormatCell(exitCell_);
-            break;
-        case GoalKind::Key:
-            goal = "a key card in cell " + FormatCell(goalCell_);
-            break;
-        case GoalKind::Health:
-            goal = "a health pickup in cell " + FormatCell(goalCell_);
-            break;
-        case GoalKind::Ammo:
-            goal = "an ammo pickup in cell " + FormatCell(goalCell_);
-            break;
-        case GoalKind::None:
-            break;
+            case GoalKind::Exit:
+                goal = "the exit switch at " + FormatCell(exitCell_);
+                break;
+            case GoalKind::Key:
+                goal = "a key card in cell " + FormatCell(goalCell_);
+                break;
+            case GoalKind::Health:
+                goal = "a health pickup in cell " + FormatCell(goalCell_);
+                break;
+            case GoalKind::Ammo:
+                goal = "an ammo pickup in cell " + FormatCell(goalCell_);
+                break;
+            case GoalKind::None:
+                break;
         }
         Fail("no progress towards " + goal + " for " +
              FormatSeconds(config_.stuckSeconds * static_cast<double>(stuckStrikes_)) + " s (" +
@@ -730,18 +731,18 @@ namespace {
 
 const char* EnemyStateName(EnemyState state) {
     switch (state) {
-    case EnemyState::Idle:
-        return "idle";
-    case EnemyState::Alert:
-        return "alert";
-    case EnemyState::Chase:
-        return "chase";
-    case EnemyState::Attack:
-        return "attack";
-    case EnemyState::Dead:
-        return "dead";
-    case EnemyState::Search:
-        return "search";
+        case EnemyState::Idle:
+            return "idle";
+        case EnemyState::Alert:
+            return "alert";
+        case EnemyState::Chase:
+            return "chase";
+        case EnemyState::Attack:
+            return "attack";
+        case EnemyState::Dead:
+            return "dead";
+        case EnemyState::Search:
+            return "search";
     }
     return "unknown";
 }
@@ -775,8 +776,9 @@ class TraceRecorder {
 public:
     explicit TraceRecorder(std::string* out) : out_(out) {
         if (out_ != nullptr) {
-            *out_ += "# neo_wolf_autoplay trace 1: one event per line, \"L<level> t=<game seconds> f=<frame> "
-                     "<event> key=value...\" (docs/TESTING.md, Autoplay bot)\n";
+            *out_ +=
+                "# neo_wolf_autoplay trace 1: one event per line, \"L<level> t=<game seconds> f=<frame> "
+                "<event> key=value...\" (docs/TESTING.md, Autoplay bot)\n";
         }
     }
 
@@ -794,10 +796,11 @@ public:
             pickups += entity.type == EntityType::Pickup ? 1 : 0;
         }
         const CampaignLevel* level = engine.CurrentCampaignLevel();
-        Line(engine, 0, "level-start id=" + (level != nullptr ? level->id : std::string("?")) +
-                            " hp=" + std::to_string(engine.playerHealth_) + " ammo=" + std::to_string(engine.playerAmmo_) +
-                            " pos=" + TracePosition(engine.player_.position) + " enemies=" + std::to_string(enemies) +
-                            " pickups=" + std::to_string(pickups));
+        Line(engine, 0,
+             "level-start id=" + (level != nullptr ? level->id : std::string("?")) +
+                 " hp=" + std::to_string(engine.playerHealth_) + " ammo=" + std::to_string(engine.playerAmmo_) +
+                 " pos=" + TracePosition(engine.player_.position) + " enemies=" + std::to_string(enemies) +
+                 " pickups=" + std::to_string(pickups));
         Snapshot(engine);
     }
 
@@ -814,10 +817,10 @@ public:
             if (entity.type != EntityType::Enemy || was == nullptr || entity.health >= was->health) {
                 continue;
             }
-            Line(engine, frame, "hit-dealt target=" + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) +
-                                    " damage=" + std::to_string(was->health - entity.health) +
-                                    " hp=" + std::to_string(entity.health) + "/" + std::to_string(entity.maxHealth) +
-                                    (entity.enemyState == EnemyState::Dead ? " killed" : ""));
+            Line(engine, frame,
+                 "hit-dealt target=" + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) +
+                     " damage=" + std::to_string(was->health - entity.health) + " hp=" + std::to_string(entity.health) +
+                     "/" + std::to_string(entity.maxHealth) + (entity.enemyState == EnemyState::Dead ? " killed" : ""));
         }
 
         // 2. Pickups (key cards as "key" lines), 3. triggers, 4. doors.
@@ -831,23 +834,24 @@ public:
                                                    : CellOf(entity.position));
             if (entity.type == EntityType::Pickup && entity.collected && !was->collected) {
                 if (entity.pickupType == PickupType::Key) {
-                    Line(engine, frame, std::string("key colour=") + KeyColorName(entity.keyColor) + " cell=" + cell +
-                                            " held=" + HeldKeys(engine.keys_));
+                    Line(engine, frame,
+                         std::string("key colour=") + KeyColorName(entity.keyColor) + " cell=" + cell +
+                             " held=" + HeldKeys(engine.keys_));
                 } else {
-                    Line(engine, frame, std::string("pickup kind=") +
-                                            (entity.pickupType == PickupType::Health ? "health" : "ammo") +
-                                            " value=" + std::to_string(entity.pickupValue) + " cell=" + cell +
-                                            " hp=" + std::to_string(engine.playerHealth_) +
-                                            " ammo=" + std::to_string(engine.playerAmmo_));
+                    Line(engine, frame,
+                         std::string("pickup kind=") + (entity.pickupType == PickupType::Health ? "health" : "ammo") +
+                             " value=" + std::to_string(entity.pickupValue) + " cell=" + cell + " hp=" +
+                             std::to_string(engine.playerHealth_) + " ammo=" + std::to_string(engine.playerAmmo_));
                 }
             }
         }
         for (const Entity& entity : entities) {
             const Snap* was = Find(entity.id);
-            if (entity.type == EntityType::Trigger && was != nullptr && entity.triggerActivated && !was->triggerActivated) {
-                Line(engine, frame, "trigger id=" + std::to_string(entity.id) + " cell=" +
-                                        TraceCell(Vec2i{entity.mapX, entity.mapY}) +
-                                        " pos=" + TracePosition(engine.player_.position));
+            if (entity.type == EntityType::Trigger && was != nullptr && entity.triggerActivated &&
+                !was->triggerActivated) {
+                Line(engine, frame,
+                     "trigger id=" + std::to_string(entity.id) + " cell=" + TraceCell(Vec2i{entity.mapX, entity.mapY}) +
+                         " pos=" + TracePosition(engine.player_.position));
             }
         }
         for (const Entity& entity : entities) {
@@ -870,10 +874,10 @@ public:
         const bool exited = engine.GetState() == GameState::LevelComplete;
         if (exited) {
             const ExitSwitchHit exitHit = FindExitSwitchInReach(engine.map_, engine.player_);
-            Line(engine, frame, "exit cell=" + (exitHit.found ? TraceCell(Vec2i{exitHit.mapX, exitHit.mapY}) : "?") +
-                                    " pos=" + TracePosition(engine.player_.position) +
-                                    " hp=" + std::to_string(engine.playerHealth_) +
-                                    " ammo=" + std::to_string(engine.playerAmmo_));
+            Line(engine, frame,
+                 "exit cell=" + (exitHit.found ? TraceCell(Vec2i{exitHit.mapX, exitHit.mapY}) : "?") +
+                     " pos=" + TracePosition(engine.player_.position) + " hp=" + std::to_string(engine.playerHealth_) +
+                     " ammo=" + std::to_string(engine.playerAmmo_));
         }
 
         // 6. Enemy AI: state changes (one line per frame and enemy: old -> new; a change and its
@@ -881,8 +885,9 @@ public:
         for (const Entity& entity : entities) {
             const Snap* was = Find(entity.id);
             if (entity.type == EntityType::Enemy && was != nullptr && entity.enemyState != was->enemyState) {
-                Line(engine, frame, "enemy " + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) + " " +
-                                        EnemyStateName(was->enemyState) + "->" + EnemyStateName(entity.enemyState));
+                Line(engine, frame,
+                     "enemy " + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) + " " +
+                         EnemyStateName(was->enemyState) + "->" + EnemyStateName(entity.enemyState));
             }
         }
         // An enemy attacked this frame when the AI ran (the level clock moved and the exit was
@@ -900,14 +905,15 @@ public:
             const int after = std::max(0, health - entity.damage);
             attributed += health - after;
             health = after;
-            Line(engine, frame, "hit-taken by=" + TraceEnemy(entity) + " from=" + TraceCell(CellOf(entity.position)) +
-                                    " damage=" + std::to_string(entity.damage) + " hp=" + std::to_string(after) +
-                                    " pos=" + TracePosition(engine.player_.position));
+            Line(engine, frame,
+                 "hit-taken by=" + TraceEnemy(entity) + " from=" + TraceCell(CellOf(entity.position)) +
+                     " damage=" + std::to_string(entity.damage) + " hp=" + std::to_string(after) +
+                     " pos=" + TracePosition(engine.player_.position));
         }
         if (lost > attributed) {
-            Line(engine, frame, "hit-taken by=unknown damage=" + std::to_string(lost - attributed) +
-                                    " hp=" + std::to_string(engine.playerHealth_) +
-                                    " pos=" + TracePosition(engine.player_.position));
+            Line(engine, frame,
+                 "hit-taken by=unknown damage=" + std::to_string(lost - attributed) +
+                     " hp=" + std::to_string(engine.playerHealth_) + " pos=" + TracePosition(engine.player_.position));
         }
 
         Snapshot(engine);
@@ -941,7 +947,7 @@ private:
     void Snapshot(const Engine& engine) {
         snaps_.clear();
         for (const Entity& entity : engine.entityManager_.Entities()) {
-            snaps_[entity.id] = Snap{entity.health,   entity.enemyState, entity.attackCooldown,
+            snaps_[entity.id] = Snap{entity.health,    entity.enemyState, entity.attackCooldown,
                                      entity.collected, entity.doorOpen,   entity.triggerActivated};
         }
         damageTaken_ = engine.levelDamageTaken_;
@@ -1000,10 +1006,10 @@ void FinishLevel(const Engine& engine, const AutoplayBot& bot, AutoplayLevelRepo
     report.replans = std::max(0, bot.Replans());
     report.keysCollected = bot.KeysCollected();
     report.keysUsed = bot.KeysUsed();
-    LogInfo("Autoplay: level " + std::to_string(report.levelNumber) + " (" + report.id + "): " +
-            AutoplayResultName(result) + (reason.empty() ? std::string() : " - " + reason));
+    LogInfo("Autoplay: level " + std::to_string(report.levelNumber) + " (" + report.id +
+            "): " + AutoplayResultName(result) + (reason.empty() ? std::string() : " - " + reason));
 }
-} // namespace
+}  // namespace
 
 AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& config, bool wholeCampaign,
                                      std::string* trace) {
