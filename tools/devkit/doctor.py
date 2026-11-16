@@ -50,7 +50,7 @@ HINTS = {
         "Darwin": "xcode-select --install (Apple clang from the Xcode Command Line Tools)",
         "Linux": "sudo apt install g++ (or clang)",
         "Windows": "install Visual Studio 2022 or its Build Tools with the 'Desktop development with C++' "
-                   "workload: winget install Microsoft.VisualStudio.2022.BuildTools",
+        "workload: winget install Microsoft.VisualStudio.2022.BuildTools",
     },
     "python": {
         "Darwin": "brew install python@3.12",
@@ -134,12 +134,15 @@ def _sdl_header_version(header: Path) -> str:
         text = header.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
-    parts = [re.search(rf"#define\s+SDL_{name}\s+(\d+)", text) for name in ("MAJOR_VERSION", "MINOR_VERSION", "PATCHLEVEL")]
+    parts = [
+        re.search(rf"#define\s+SDL_{name}\s+(\d+)", text) for name in ("MAJOR_VERSION", "MINOR_VERSION", "PATCHLEVEL")
+    ]
     return ".".join(p.group(1) for p in parts if p) if all(parts) else ""
 
 
-def check_sdl_source(project_root: Path, report: DoctorReport, check_network: bool,
-                     network: Callable[[], bool], environ: dict) -> None:
+def check_sdl_source(
+    project_root: Path, report: DoctorReport, check_network: bool, network: Callable[[], bool], environ: dict
+) -> None:
     version, url, sha = read_sdl_pin(project_root)
     if not version:
         report.add("SDL2", "SDL2 source", "WARN", "Cannot read the pinned SDL2 version from CMakeLists.txt.")
@@ -150,7 +153,9 @@ def check_sdl_source(project_root: Path, report: DoctorReport, check_network: bo
         found = _sdl_header_version(header)
         rel = header.parents[1].relative_to(project_root).as_posix()
         if found == version:
-            report.add("SDL2", "SDL2 source", "PASS", f"SDL2 {version} is already extracted in {rel} (no download needed)")
+            report.add(
+                "SDL2", "SDL2 source", "PASS", f"SDL2 {version} is already extracted in {rel} (no download needed)"
+            )
             return
         report.add("SDL2", "SDL2 source (stale)", "INFO", f"{rel} holds SDL2 {found or '?'}; the pin is {version}")
     # 2. The downloaded tarball, checked against the pinned SHA-256.
@@ -158,7 +163,9 @@ def check_sdl_source(project_root: Path, report: DoctorReport, check_network: bo
         digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
         rel = tarball.relative_to(project_root).as_posix()
         if digest == sha:
-            report.add("SDL2", "SDL2 source", "PASS", f"The pinned tarball SDL2-{version}.tar.gz is cached ({rel}, SHA-256 OK)")
+            report.add(
+                "SDL2", "SDL2 source", "PASS", f"The pinned tarball SDL2-{version}.tar.gz is cached ({rel}, SHA-256 OK)"
+            )
             return
         report.add("SDL2", "SDL2 tarball", "WARN", f"{rel} does not match the pinned SHA-256; CMake downloads it again")
     # 3. An offline source folder, or an installed SDL2 chosen explicitly.
@@ -169,32 +176,57 @@ def check_sdl_source(project_root: Path, report: DoctorReport, check_network: bo
         if match and match.group(1).strip():
             offline = offline or match.group(1).strip()
         if re.search(r"^NEOWOLF_SYSTEM_SDL2:BOOL=ON$", text, re.MULTILINE):
-            report.add("SDL2", "SDL2 source", "PASS",
-                       f"{cache.parent.relative_to(project_root).as_posix()} uses an installed SDL2 (NEOWOLF_SYSTEM_SDL2=ON)")
+            report.add(
+                "SDL2",
+                "SDL2 source",
+                "PASS",
+                f"{cache.parent.relative_to(project_root).as_posix()} uses an installed SDL2 (NEOWOLF_SYSTEM_SDL2=ON)",
+            )
             return
     if offline:
         if (Path(offline) / "include" / "SDL_version.h").is_file():
-            report.add("SDL2", "SDL2 source", "PASS", f"Offline SDL2 source folder: {offline} (FETCHCONTENT_SOURCE_DIR_SDL2)")
+            report.add(
+                "SDL2", "SDL2 source", "PASS", f"Offline SDL2 source folder: {offline} (FETCHCONTENT_SOURCE_DIR_SDL2)"
+            )
             return
-        report.add("SDL2", "SDL2 source", "WARN", f"FETCHCONTENT_SOURCE_DIR_SDL2={offline} has no include/SDL_version.h")
+        report.add(
+            "SDL2", "SDL2 source", "WARN", f"FETCHCONTENT_SOURCE_DIR_SDL2={offline} has no include/SDL_version.h"
+        )
         return
     # 4. Not cached: the first configure downloads it, so the network must be reachable.
-    hint = (f"Configure once with network access, or download {url} (SHA-256 {sha}), extract it and pass "
-            f"-DFETCHCONTENT_SOURCE_DIR_SDL2=<folder>, or use an installed SDL2 with -DNEOWOLF_SYSTEM_SDL2=ON "
-            "(docs/BUILD_MACOS.md, docs/BUILD_WINDOWS.md)")
+    hint = (
+        f"Configure once with network access, or download {url} (SHA-256 {sha}), extract it and pass "
+        f"-DFETCHCONTENT_SOURCE_DIR_SDL2=<folder>, or use an installed SDL2 with -DNEOWOLF_SYSTEM_SDL2=ON "
+        "(docs/BUILD_MACOS.md, docs/BUILD_WINDOWS.md)"
+    )
     if not check_network:
-        report.add("SDL2", "SDL2 source", "INFO",
-                   f"SDL2 {version} is not cached yet; the first configure downloads it (network test skipped)", hint)
+        report.add(
+            "SDL2",
+            "SDL2 source",
+            "INFO",
+            f"SDL2 {version} is not cached yet; the first configure downloads it (network test skipped)",
+            hint,
+        )
     elif network():
-        report.add("SDL2", "SDL2 source", "PASS",
-                   f"SDL2 {version} is not cached yet; github.com is reachable, so the first configure can download it")
+        report.add(
+            "SDL2",
+            "SDL2 source",
+            "PASS",
+            f"SDL2 {version} is not cached yet; github.com is reachable, so the first configure can download it",
+        )
     else:
-        report.add("SDL2", "SDL2 source", "WARN",
-                   f"SDL2 {version} is not cached and github.com is not reachable: the first configure would fail", hint)
+        report.add(
+            "SDL2",
+            "SDL2 source",
+            "WARN",
+            f"SDL2 {version} is not cached and github.com is not reachable: the first configure would fail",
+            hint,
+        )
 
 
-def check_toolchain(report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner,
-                    environ: dict) -> None:
+def check_toolchain(
+    report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner, environ: dict
+) -> None:
     def hint(tool: str) -> str:
         return HINTS[tool].get(system, HINTS[tool]["Linux"])
 
@@ -207,48 +239,79 @@ def check_toolchain(report: DoctorReport, system: str, which: Callable[[str], Op
         elif version[:2] >= MIN_CMAKE:
             report.add("Toolchain", "CMake", "PASS", f"CMake {'.'.join(map(str, version))}")
         else:
-            report.add("Toolchain", "CMake", "FAIL",
-                       f"CMake {'.'.join(map(str, version))} is older than the required {MIN_CMAKE[0]}.{MIN_CMAKE[1]}",
-                       hint("cmake"))
+            report.add(
+                "Toolchain",
+                "CMake",
+                "FAIL",
+                f"CMake {'.'.join(map(str, version))} is older than the required {MIN_CMAKE[0]}.{MIN_CMAKE[1]}",
+                hint("cmake"),
+            )
     else:
         report.add("Toolchain", "CMake", "FAIL", "CMake not found on PATH (3.25 or newer is required)", hint("cmake"))
 
     # Ninja (the macOS and Linux presets)
     if which("ninja"):
         code, out = run(["ninja", "--version"])
-        report.add("Toolchain", "Ninja", "PASS", f"Ninja {out.strip() if code == 0 and out.strip() else '(version unknown)'}")
+        report.add(
+            "Toolchain", "Ninja", "PASS", f"Ninja {out.strip() if code == 0 and out.strip() else '(version unknown)'}"
+        )
     elif system == "Windows":
         report.add("Toolchain", "Ninja", "INFO", "Ninja not found (not needed for the windows-msvc presets)")
     else:
-        report.add("Toolchain", "Ninja", "FAIL", "Ninja not found on PATH (the macos/linux presets use it)", hint("ninja"))
+        report.add(
+            "Toolchain", "Ninja", "FAIL", "Ninja not found on PATH (the macos/linux presets use it)", hint("ninja")
+        )
 
     # A C++ compiler
     if system == "Windows":
-        vswhere = Path(environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / \
-            "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+        vswhere = (
+            Path(environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+            / "Microsoft Visual Studio"
+            / "Installer"
+            / "vswhere.exe"
+        )
         found_vs = ""
         exe = str(vswhere) if vswhere.is_file() else ("vswhere" if which("vswhere") else "")
         if exe:
-            query = [exe, "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-                     "-property"]
+            query = [
+                exe,
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+            ]
             code, out = run(query + ["displayName"])
             found_vs = out.strip().splitlines()[0] if code == 0 and out.strip() else ""
             if found_vs:
                 code, ver = run(query + ["catalog_productDisplayVersion"])
                 version = ver.strip().splitlines()[0] if code == 0 and ver.strip() else ""
-                report.add("Toolchain", "C++ compiler", "PASS",
-                           f"{found_vs}{' ' + version if version else ''} with the C++ tools (found by vswhere)")
+                report.add(
+                    "Toolchain",
+                    "C++ compiler",
+                    "PASS",
+                    f"{found_vs}{' ' + version if version else ''} with the C++ tools (found by vswhere)",
+                )
         if not found_vs:
             if which("cl"):
                 report.add("Toolchain", "C++ compiler", "PASS", "MSVC cl.exe on PATH (Developer prompt)")
             elif which("g++") or which("clang++"):
-                report.add("Toolchain", "C++ compiler", "WARN",
-                           "Only MinGW/clang found; the supported Windows compiler is MSVC (windows-msvc presets)",
-                           hint("compiler"))
+                report.add(
+                    "Toolchain",
+                    "C++ compiler",
+                    "WARN",
+                    "Only MinGW/clang found; the supported Windows compiler is MSVC (windows-msvc presets)",
+                    hint("compiler"),
+                )
             else:
-                report.add("Toolchain", "C++ compiler", "FAIL",
-                           "No Visual Studio with the C++ workload found (vswhere) and no compiler on PATH",
-                           hint("compiler"))
+                report.add(
+                    "Toolchain",
+                    "C++ compiler",
+                    "FAIL",
+                    "No Visual Studio with the C++ workload found (vswhere) and no compiler on PATH",
+                    hint("compiler"),
+                )
     else:
         candidates = ["clang++", "g++", "c++"] if system == "Darwin" else ["g++", "clang++", "c++"]
         for compiler in candidates:
@@ -292,47 +355,98 @@ def run_doctor(
     if py[:2] >= MIN_PYTHON:
         report.add("Host", "Python", "PASS", f"Python {py_text} ({sys.executable})")
     else:
-        report.add("Host", "Python", "FAIL", f"Python {py_text} is older than {MIN_PYTHON[0]}.{MIN_PYTHON[1]}",
-                   HINTS["python"].get(system, HINTS["python"]["Linux"]))
+        report.add(
+            "Host",
+            "Python",
+            "FAIL",
+            f"Python {py_text} is older than {MIN_PYTHON[0]}.{MIN_PYTHON[1]}",
+            HINTS["python"].get(system, HINTS["python"]["Linux"]),
+        )
 
     check_toolchain(report, system, which, run, env)
     check_sdl_source(project_root, report, check_network, network, env)
 
-    required_dirs = ["engine/core", "engine/world", "engine/autoplay", "game/assets", "game/maps", "game/defs",
-                     "docs", "tests", "tools/devkit"]
+    required_dirs = [
+        "engine/core",
+        "engine/world",
+        "engine/autoplay",
+        "game/assets",
+        "game/maps",
+        "game/defs",
+        "docs",
+        "tests",
+        "tools/devkit",
+    ]
     missing_dirs = [d for d in required_dirs if not (project_root / d).is_dir()]
     if missing_dirs:
-        report.add("Project", "Directory Structure", "FAIL", f"Missing directories: {', '.join(missing_dirs)}",
-                   "Restore them from version control.")
+        report.add(
+            "Project",
+            "Directory Structure",
+            "FAIL",
+            f"Missing directories: {', '.join(missing_dirs)}",
+            "Restore them from version control.",
+        )
     else:
         report.add("Project", "Directory Structure", "PASS", f"All {len(required_dirs)} directories present.")
-    required_files = ["CMakeLists.txt", "CMakePresets.json", "src/main.cpp", "src/autoplay_main.cpp",
-                      "game/defs/campaign.json", "game/defs/gameplay.json", "game/defs/sprites.cfg", "game/defs/audio.cfg"]
+    required_files = [
+        "CMakeLists.txt",
+        "CMakePresets.json",
+        "src/main.cpp",
+        "src/autoplay_main.cpp",
+        "game/defs/campaign.json",
+        "game/defs/gameplay.json",
+        "game/defs/sprites.cfg",
+        "game/defs/audio.cfg",
+    ]
     missing_files = [f for f in required_files if not (project_root / f).is_file()]
     if missing_files:
-        report.add("Project", "Core Files", "FAIL", f"Missing files: {', '.join(missing_files)}",
-                   "Restore them from version control.")
+        report.add(
+            "Project",
+            "Core Files",
+            "FAIL",
+            f"Missing files: {', '.join(missing_files)}",
+            "Restore them from version control.",
+        )
     else:
         report.add("Project", "Core Files", "PASS", f"All {len(required_files)} core files present.")
     build = project_root / "build"
-    built = sorted(p.relative_to(project_root).as_posix()
-                   for pattern in ("*/neo_wolf_autoplay", "*/neo_wolf_autoplay.exe", "*/*/neo_wolf_autoplay.exe")
-                   for p in build.glob(pattern) if p.is_file())
-    report.add("Project", "Builds", "INFO", ("autoplay bot built: " + ", ".join(built)) if built
-               else "No build yet (cmake --preset <preset> && cmake --build --preset <preset>)")
+    built = sorted(
+        p.relative_to(project_root).as_posix()
+        for pattern in ("*/neo_wolf_autoplay", "*/neo_wolf_autoplay.exe", "*/*/neo_wolf_autoplay.exe")
+        for p in build.glob(pattern)
+        if p.is_file()
+    )
+    report.add(
+        "Project",
+        "Builds",
+        "INFO",
+        ("autoplay bot built: " + ", ".join(built))
+        if built
+        else "No build yet (cmake --preset <preset> && cmake --build --preset <preset>)",
+    )
 
     val_report = validate_project(project_root)
     levels = next((line for line in val_report.info if line.startswith("Campaign: ")), "Campaign: ?")
     if not val_report.is_valid:
-        report.add("Content", "Content validation", "FAIL",
-                   f"{len(val_report.errors)} error(s) ({levels}); run `neo_devkit validate`",
-                   "\n".join(val_report.errors[:5]))
+        report.add(
+            "Content",
+            "Content validation",
+            "FAIL",
+            f"{len(val_report.errors)} error(s) ({levels}); run `neo_devkit validate`",
+            "\n".join(val_report.errors[:5]),
+        )
     elif val_report.warnings:
-        report.add("Content", "Content validation", "WARN",
-                   f"Valid with {len(val_report.warnings)} warning(s) ({levels}); `validate --strict` fails",
-                   "\n".join(val_report.warnings[:3]))
+        report.add(
+            "Content",
+            "Content validation",
+            "WARN",
+            f"Valid with {len(val_report.warnings)} warning(s) ({levels}); `validate --strict` fails",
+            "\n".join(val_report.warnings[:3]),
+        )
     else:
-        report.add("Content", "Content validation", "PASS", f"Maps, assets, definitions and campaign are valid ({levels}).")
+        report.add(
+            "Content", "Content validation", "PASS", f"Maps, assets, definitions and campaign are valid ({levels})."
+        )
     return report
 
 

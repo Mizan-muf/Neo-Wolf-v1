@@ -71,7 +71,9 @@ def save_entity_csv(entities: List[Dict[str, Any]], file_path: Path, dropped_lig
     file_path = Path(file_path)
     lines: List[str] = [CSV_HEADER]
     if dropped_lights:
-        lines.append(f"# lights: {dropped_lights} light zone(s) in the JSON are not exported (the CSV cannot hold them)")
+        lines.append(
+            f"# lights: {dropped_lights} light zone(s) in the JSON are not exported (the CSV cannot hold them)"
+        )
     for ent in entities:
         cells = [_format_cell(ent.get(name)) for name, _ in CSV_COLUMNS]
         while len(cells) > 3 and cells[-1] == "":
@@ -105,8 +107,9 @@ def load_entity_lights(file_path: Path) -> List[Dict[str, Any]]:
     return lights if isinstance(lights, list) else []
 
 
-def save_entity_json(level_id: str, entities: List[Dict[str, Any]], file_path: Path,
-                     lights: Optional[List[Dict[str, Any]]] = None) -> None:
+def save_entity_json(
+    level_id: str, entities: List[Dict[str, Any]], file_path: Path, lights: Optional[List[Dict[str, Any]]] = None
+) -> None:
     """Save entity dictionary list (and light zones, if any) to formatted JSON."""
     file_path = Path(file_path)
     data: Dict[str, Any] = {
@@ -134,7 +137,7 @@ def csv_to_json(csv_path: Path, json_path: Path, level_id: Optional[str] = None)
         except (ValueError, OSError) as exc:  # json.JSONDecodeError is a ValueError
             raise ValueError(
                 f"{json_path} cannot be read ({exc}); not overwriting it from {csv_path.name}, because its "
-                "light zones (\"lights\") would be lost. Fix the JSON, or delete it to rebuild it from the CSV."
+                'light zones ("lights") would be lost. Fix the JSON, or delete it to rebuild it from the CSV.'
             ) from exc
     entities = load_entity_csv(csv_path)
     save_entity_json(level_id, entities, json_path, lights)
@@ -166,8 +169,9 @@ def entity_file_pair(entities_path: Path) -> Tuple[Path, Path, str]:
     return folder / f"{base_name}.entities.json", folder / f"{base_name}.entities.csv", base_name
 
 
-def sync_entity_definitions(project_root: Path, from_csv: bool = False,
-                            entities_path: Optional[Path] = None) -> List[str]:
+def sync_entity_definitions(
+    project_root: Path, from_csv: bool = False, entities_path: Optional[Path] = None
+) -> List[str]:
     """Synchronize the entity files in game/defs/.
 
     Default: JSON (canonical) -> CSV export, overwriting every <level>.entities.csv.
@@ -204,19 +208,23 @@ def sync_entity_definitions(project_root: Path, from_csv: bool = False,
                 except (ValueError, OSError) as exc:
                     raise ValueError(
                         f"{json_file} cannot be read ({exc}); nothing was synced. sync-entities --from-csv keeps "
-                        "each JSON's light zones (\"lights\"), so it does not overwrite a JSON it cannot read. "
+                        'each JSON\'s light zones ("lights"), so it does not overwrite a JSON it cannot read. '
                         "Fix the JSON, or delete it to rebuild it from the CSV."
                     ) from exc
         for json_file, csv_file, base_name in pairs:
             kept = csv_to_json(csv_file, json_file, level_id=base_name)
-            synced.append(f"Synced {csv_file.name} -> {json_file.name}"
-                          + (f" (kept its {kept} light zone(s); the CSV has none)" if kept else ""))
+            synced.append(
+                f"Synced {csv_file.name} -> {json_file.name}"
+                + (f" (kept its {kept} light zone(s); the CSV has none)" if kept else "")
+            )
     else:
         for json_file, csv_file, _ in pairs:
             dropped = json_to_csv(json_file, csv_file)
             synced.append(f"Synced {json_file.name} -> {csv_file.name}")
             if dropped:
-                synced.append(f"Warning: {json_file.name} has {dropped} light zone(s); the CSV cannot hold them, "
-                              f"so {csv_file.name} has none (the JSON, which the game loads, keeps them)")
+                synced.append(
+                    f"Warning: {json_file.name} has {dropped} light zone(s); the CSV cannot hold them, "
+                    f"so {csv_file.name} has none (the JSON, which the game loads, keeps them)"
+                )
 
     return synced

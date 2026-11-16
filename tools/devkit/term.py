@@ -33,8 +33,12 @@ def _enable_windows_vt() -> bool:
         return False
 
 
-def supports_color(requested: bool = True, stream: Optional[TextIO] = None, platform: Optional[str] = None,
-                   environ: Optional[dict] = None) -> bool:
+def supports_color(
+    requested: bool = True,
+    stream: Optional[TextIO] = None,
+    platform: Optional[str] = None,
+    environ: Optional[dict] = None,
+) -> bool:
     """Whether to print ANSI colours (the arguments other than `requested` are for tests)."""
     if not requested:
         return False

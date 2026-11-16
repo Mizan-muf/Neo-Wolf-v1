@@ -36,8 +36,9 @@ class TestDocLinks(unittest.TestCase):
         (root / "docs").mkdir()
         (root / "docs" / "images").mkdir()
         (root / "docs" / "images" / "a.png").write_bytes(b"")
-        (root / "docs" / "B.md").write_text("# Title\n\n## Part one\n\n## Part one\n\n<a id=\"custom\"></a>\n",
-                                           encoding="utf-8")
+        (root / "docs" / "B.md").write_text(
+            '# Title\n\n## Part one\n\n## Part one\n\n<a id="custom"></a>\n', encoding="utf-8"
+        )
         (root / "README.md").write_text(
             "# Readme\n\n"
             "[ok](docs/B.md) [ok](docs/B.md#part-one) [ok](docs/B.md#part-one-1) [ok](docs/B.md#custom)\n"
@@ -46,7 +47,8 @@ class TestDocLinks(unittest.TestCase):
             "`[in code](docs/nowhere.md)`\n"
             "```text\n[in a fence](docs/nowhere.md)\n```\n"
             "[ref]: docs/missing-ref.md\n",
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         # Build output is never scanned.
         (root / "build").mkdir()
         (root / "build" / "x.md").write_text("[broken](nowhere.md)\n", encoding="utf-8")

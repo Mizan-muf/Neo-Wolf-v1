@@ -14,6 +14,7 @@ The build calls this script (cmake/Packaging.cmake) and installs the result; the
 Usage:
     python3 tools/devkit/release_readme.py --platform macos --version 0.9.0 --out README.txt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -123,8 +124,10 @@ def _format_table(rows: Table, indent: str = "  ") -> List[str]:
             out.append(f"{indent}{keys}")
             lead = " " * (len(indent) + key_width + 2)
         hanging = " " * (len(indent) + key_width + 2)
-        out.extend(textwrap.wrap(effect, WIDTH, initial_indent=lead, subsequent_indent=hanging,
-                                 break_on_hyphens=False) or [lead.rstrip()])
+        out.extend(
+            textwrap.wrap(effect, WIDTH, initial_indent=lead, subsequent_indent=hanging, break_on_hyphens=False)
+            or [lead.rstrip()]
+        )
     return out
 
 
@@ -150,20 +153,30 @@ def _heading(title: str) -> List[str]:
 
 
 def _wrap(text: str, indent: str = "", hanging: Optional[str] = None) -> List[str]:
-    return textwrap.wrap(text, WIDTH, initial_indent=indent,
-                         subsequent_indent=indent if hanging is None else hanging,
-                         break_long_words=False, break_on_hyphens=False)
+    return textwrap.wrap(
+        text,
+        WIDTH,
+        initial_indent=indent,
+        subsequent_indent=indent if hanging is None else hanging,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 def readme_text(platform: str, version: str, sdl_version: str, json_version: str, controls_markdown: str) -> str:
     if platform not in PLATFORMS:
         raise ValueError(f"unknown platform {platform!r} (expected one of {', '.join(PLATFORMS)})")
-    label = {"macos": "macOS (universal: Apple silicon and Intel)", "windows": "Windows (64-bit)",
-             "linux": "Linux (64-bit)"}[platform]
+    label = {
+        "macos": "macOS (universal: Apple silicon and Intel)",
+        "windows": "Windows (64-bit)",
+        "linux": "Linux (64-bit)",
+    }[platform]
     title = f"Neo-Wolf {version} for {label}"
     out: List[str] = [title, "=" * len(title), ""]
-    out += _wrap("A retro first-person shooter: a software raycaster with a ten-level campaign. "
-                 "Find the exit switch of each level; key cards open locked doors.")
+    out += _wrap(
+        "A retro first-person shooter: a software raycaster with a ten-level campaign. "
+        "Find the exit switch of each level; key cards open locked doors."
+    )
 
     out += _heading("What is in this folder")
     if platform == "macos":
@@ -173,49 +186,71 @@ def readme_text(platform: str, version: str, sdl_version: str, json_version: str
     else:
         out += ["  neo_wolf      the game", "  game/         the game's content (keep it next to neo_wolf)"]
     sep = "\\" if platform == "windows" else "/"
-    out += [f"  README.txt    this file",
-            f"  LICENSE.md    the game's licence (PolyForm Noncommercial 1.0.0)",
-            f"  docs{sep}         CONTROLS.md (every key, per screen) and TROUBLESHOOTING.md",
-            f"  LICENSES{sep}     notices and licence texts of the third-party libraries"]
+    out += [
+        f"  README.txt    this file",
+        f"  LICENSE.md    the game's licence (PolyForm Noncommercial 1.0.0)",
+        f"  docs{sep}         CONTROLS.md (every key, per screen) and TROUBLESHOOTING.md",
+        f"  LICENSES{sep}     notices and licence texts of the third-party libraries",
+    ]
 
     out += _heading("Starting the game")
     if platform == "macos":
-        out += _wrap("Requires macOS 10.15 (Catalina) or newer. Double-click NeoWolf.app. You may move "
-                     "it anywhere first, for example into Applications; it does not need this folder.")
-        out += _heading("First start: \"cannot be opened\" (Gatekeeper)")
-        out += _wrap("This app is signed ad hoc but not notarized by Apple (the project has no Apple "
-                     "Developer ID yet), so macOS blocks the first start of a downloaded copy with a "
-                     "message such as \"NeoWolf.app cannot be opened because Apple cannot check it for "
-                     "malicious software\" or \"Apple could not verify NeoWolf.app is free of malware\". "
-                     "To allow it once:")
+        out += _wrap(
+            "Requires macOS 10.15 (Catalina) or newer. Double-click NeoWolf.app. You may move "
+            "it anywhere first, for example into Applications; it does not need this folder."
+        )
+        out += _heading('First start: "cannot be opened" (Gatekeeper)')
+        out += _wrap(
+            "This app is signed ad hoc but not notarized by Apple (the project has no Apple "
+            "Developer ID yet), so macOS blocks the first start of a downloaded copy with a "
+            'message such as "NeoWolf.app cannot be opened because Apple cannot check it for '
+            'malicious software" or "Apple could not verify NeoWolf.app is free of malware". '
+            "To allow it once:"
+        )
         out += [""]
-        out += _wrap("- macOS 14 (Sonoma) and older: Control-click (right-click) NeoWolf.app, choose "
-                     "Open, then Open again in the dialog.", "  ", "    ")
-        out += _wrap("- macOS 15 (Sequoia) and newer: double-click NeoWolf.app once and close the "
-                     "message, then open System Settings > Privacy & Security, scroll down to "
-                     "\"NeoWolf.app was blocked\", click Open Anyway and confirm.", "  ", "    ")
-        out += _wrap("- Or, in Terminal (any version): xattr -dr com.apple.quarantine "
-                     "/path/to/NeoWolf.app (drag the app into the Terminal window to type its path).",
-                     "  ", "    ")
+        out += _wrap(
+            "- macOS 14 (Sonoma) and older: Control-click (right-click) NeoWolf.app, choose "
+            "Open, then Open again in the dialog.",
+            "  ",
+            "    ",
+        )
+        out += _wrap(
+            "- macOS 15 (Sequoia) and newer: double-click NeoWolf.app once and close the "
+            "message, then open System Settings > Privacy & Security, scroll down to "
+            '"NeoWolf.app was blocked", click Open Anyway and confirm.',
+            "  ",
+            "    ",
+        )
+        out += _wrap(
+            "- Or, in Terminal (any version): xattr -dr com.apple.quarantine "
+            "/path/to/NeoWolf.app (drag the app into the Terminal window to type its path).",
+            "  ",
+            "    ",
+        )
         out += [""]
-        out += _wrap("Do not turn Gatekeeper off for the whole system. After the first start the app "
-                     "opens normally.")
+        out += _wrap("Do not turn Gatekeeper off for the whole system. After the first start the app opens normally.")
     elif platform == "windows":
-        out += _wrap("Requires 64-bit Windows 10 or 11. Extract the whole zip first (right-click > "
-                     "Extract All...); the game cannot find its content when started from inside the "
-                     "zip. Then double-click neo_wolf.exe. No installer and no Visual C++ "
-                     "redistributable are needed.")
-        out += _heading("First start: \"Windows protected your PC\" (SmartScreen)")
-        out += _wrap("neo_wolf.exe is not code-signed (the project has no code-signing certificate), "
-                     "so Microsoft Defender SmartScreen may stop the first start of a downloaded copy. "
-                     "Click \"More info\", then \"Run anyway\". To avoid the prompt, you can instead "
-                     "right-click the downloaded zip > Properties > tick Unblock > OK before extracting it.")
+        out += _wrap(
+            "Requires 64-bit Windows 10 or 11. Extract the whole zip first (right-click > "
+            "Extract All...); the game cannot find its content when started from inside the "
+            "zip. Then double-click neo_wolf.exe. No installer and no Visual C++ "
+            "redistributable are needed."
+        )
+        out += _heading('First start: "Windows protected your PC" (SmartScreen)')
+        out += _wrap(
+            "neo_wolf.exe is not code-signed (the project has no code-signing certificate), "
+            "so Microsoft Defender SmartScreen may stop the first start of a downloaded copy. "
+            'Click "More info", then "Run anyway". To avoid the prompt, you can instead '
+            "right-click the downloaded zip > Properties > tick Unblock > OK before extracting it."
+        )
         out += [""]
         out += _wrap("Only do this for a copy downloaded from the project's own release page.")
     else:
-        out += _wrap("Best effort: built in CI, not yet tested on a Linux desktop. Run ./neo_wolf from "
-                     "this folder (or from anywhere: it finds game/ next to itself). It needs a desktop "
-                     "session (X11 or Wayland) with the usual system libraries.")
+        out += _wrap(
+            "Best effort: built in CI, not yet tested on a Linux desktop. Run ./neo_wolf from "
+            "this folder (or from anywhere: it finds game/ next to itself). It needs a desktop "
+            "session (X11 or Wayland) with the usual system libraries."
+        )
 
     out += _heading("Controls")
     out += controls_text(controls_markdown)
@@ -231,27 +266,40 @@ def readme_text(platform: str, version: str, sdl_version: str, json_version: str
         folder = "~/.local/share/NeoWolf/NeoWolf/ (or $XDG_DATA_HOME/NeoWolf/NeoWolf/)"
         how = ""
     out += _wrap(f"Progress and logs are kept per user, outside the game's folder, in {folder} {how}".rstrip())
-    out += ["", "  progress.json      which levels are unlocked (delete it to start over)",
-            "  neowolf.log        the log of the current or last run",
-            "  neowolf.prev.log   the log of the run before that", ""]
-    out += _wrap("Deleting or replacing the game keeps your progress. If the game does not start, "
-                 f"look at the log first and see docs{sep}TROUBLESHOOTING.md.")
+    out += [
+        "",
+        "  progress.json      which levels are unlocked (delete it to start over)",
+        "  neowolf.log        the log of the current or last run",
+        "  neowolf.prev.log   the log of the run before that",
+        "",
+    ]
+    out += _wrap(
+        "Deleting or replacing the game keeps your progress. If the game does not start, "
+        f"look at the log first and see docs{sep}TROUBLESHOOTING.md."
+    )
 
     out += _heading("Command-line options (optional)")
     exe = {"macos": "NeoWolf.app/Contents/MacOS/NeoWolf", "windows": "neo_wolf.exe", "linux": "./neo_wolf"}[platform]
     out += [f"  {exe}", "      --windowed | --fullscreen | --version | --help"]
-    out += _wrap("--pref-dir <folder> uses another folder for saves and logs (for example a portable "
-                 "copy on a USB stick).", "  ", "    ")
+    out += _wrap(
+        "--pref-dir <folder> uses another folder for saves and logs (for example a portable copy on a USB stick).",
+        "  ",
+        "    ",
+    )
 
     out += _heading("Licence")
-    out += _wrap(f"{COPYRIGHT}. Neo-Wolf is free for any noncommercial use under the PolyForm "
-                 "Noncommercial License 1.0.0: personal play, study, hobby projects and modding, and "
-                 "use by schools, charities and public bodies. Commercial use needs the copyright "
-                 "holder's permission. The full terms are in LICENSE.md.")
+    out += _wrap(
+        f"{COPYRIGHT}. Neo-Wolf is free for any noncommercial use under the PolyForm "
+        "Noncommercial License 1.0.0: personal play, study, hobby projects and modding, and "
+        "use by schools, charities and public bodies. Commercial use needs the copyright "
+        "holder's permission. The full terms are in LICENSE.md."
+    )
     out += [""]
-    out += _wrap(f"Third-party software in this game: SDL2 {sdl_version} (zlib licence) and "
-                 f"nlohmann/json {json_version} (MIT licence). Their notices are in the LICENSES "
-                 "folder.")
+    out += _wrap(
+        f"Third-party software in this game: SDL2 {sdl_version} (zlib licence) and "
+        f"nlohmann/json {json_version} (MIT licence). Their notices are in the LICENSES "
+        "folder."
+    )
     out += ["", f"Version {version}. Source, issues and releases:", f"  {REPOSITORY_URL}"]
     return "\n".join(out) + "\n"
 
@@ -266,8 +314,9 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--out", type=Path, required=True, help="the README.txt to write")
     args = parser.parse_args(argv)
     try:
-        text = readme_text(args.platform, args.version, args.sdl_version, args.json_version,
-                           args.controls.read_text(encoding="utf-8"))
+        text = readme_text(
+            args.platform, args.version, args.sdl_version, args.json_version, args.controls.read_text(encoding="utf-8")
+        )
     except (OSError, ValueError) as exc:
         print(f"release_readme: {exc}", file=sys.stderr)
         return 1

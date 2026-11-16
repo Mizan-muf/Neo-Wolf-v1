@@ -36,6 +36,7 @@ Usage:
     python3 tools/devkit/gen_sounds.py --out DIR       # write to DIR instead
     python3 tools/devkit/gen_sounds.py --check         # exit 1 if a committed file differs
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,6 +67,7 @@ PEAK_DBFS: Dict[str, float] = {
 
 
 # --- Building blocks ----------------------------------------------------------------------
+
 
 def frames(seconds: float) -> int:
     return int(round(seconds * SAMPLE_RATE))
@@ -171,6 +173,7 @@ def exp_sweep(f0: float, f1: float, seconds: float) -> Callable[[float], float]:
 
 # --- The effects --------------------------------------------------------------------------
 
+
 def weapon_fire(rng: random.Random) -> Signal:
     """0.20 s gunshot. A bright crack (high-passed noise, tau 12 ms), a body of noise whose
     low-pass falls from 4 kHz to 500 Hz (tau 45 ms), a sine thump sweeping 160 -> 45 Hz
@@ -192,8 +195,10 @@ def door_open(rng: random.Random) -> Signal:
     at 0.25 s."""
     n = frames(0.30)
     clunk_n = frames(0.12)
-    clunk = mul(oscillator(clunk_n, lambda t: 110.0, lambda k: {1: 1.0, 2: 0.5, 3: 0.25}.get(k, 0.0)),
-                decay(clunk_n, 0.025, 0.002))
+    clunk = mul(
+        oscillator(clunk_n, lambda t: 110.0, lambda k: {1: 1.0, 2: 0.5, 3: 0.25}.get(k, 0.0)),
+        decay(clunk_n, 0.025, 0.002),
+    )
     click_n = frames(0.004)
     click = mul(highpass(noise(rng, click_n), 1500.0), decay(click_n, 0.0015))
 
@@ -268,6 +273,7 @@ SOUNDS: Dict[str, Callable[[random.Random], Signal]] = {
 
 # --- Output -------------------------------------------------------------------------------
 
+
 def finish(signal: Signal, peak_dbfs: float) -> List[int]:
     """High-pass at 30 Hz, fade in (0.3 ms) and out (8 ms), normalise the peak to
     `peak_dbfs` and round to 16-bit samples."""
@@ -310,8 +316,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     files = generate()
     if args.check:
-        stale = [rel for rel, data in files.items()
-                 if not (args.out / rel).is_file() or (args.out / rel).read_bytes() != data]
+        stale = [
+            rel
+            for rel, data in files.items()
+            if not (args.out / rel).is_file() or (args.out / rel).read_bytes() != data
+        ]
         if stale:
             print("Out of date (run tools/devkit/gen_sounds.py): " + ", ".join(stale))
             return 1

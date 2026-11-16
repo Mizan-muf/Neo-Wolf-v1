@@ -68,7 +68,7 @@ class TestGenSounds(unittest.TestCase):
             peak_dbfs = 20 * math.log10(peak / 32768)
             self.assertLessEqual(peak_dbfs, -2.9, name)  # headroom: never clips, even after mixing in SDL
             self.assertGreaterEqual(peak_dbfs, -12.1, name)  # but clearly audible
-            key = name[len("sfx_"):-len(".wav")]
+            key = name[len("sfx_") : -len(".wav")]
             self.assertAlmostEqual(peak_dbfs, gen_sounds.PEAK_DBFS[key], delta=0.05, msg=name)
             self.assertEqual((samples[0], samples[-1]), (0, 0), name)  # faded in and out: no clicks
             self.assertLess(abs(sum(samples) / len(samples)), 50, name)  # no DC offset
@@ -87,7 +87,7 @@ class TestGenSounds(unittest.TestCase):
     def test_effects_are_distinct(self) -> None:
         """Each effect has its own character: the gunshot's energy is all at the start, the door's
         in its middle; the pickup chime is high (E6 and up), the alert low (D5, A4)."""
-        samples = {name[len("sfx_"):-len(".wav")]: s for name, (_, s) in self.decoded.items()}
+        samples = {name[len("sfx_") : -len(".wav")]: s for name, (_, s) in self.decoded.items()}
         self.assertLess(energy_centre(samples["weapon_fire"]), 0.03)
         self.assertGreater(energy_centre(samples["door_open"]), 0.08)
         chime, alert = samples["pickup"], samples["enemy_alert"]

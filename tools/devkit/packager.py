@@ -45,10 +45,17 @@ CHECKSUM_FILE = "SHA256SUMS"
 REQUIRED_INFO_KEYS = ("version", "os", "platform", "package", "format", "executable", "content_root")
 # Executables that must never ship (the native tests and the autoplay bot).
 FORBIDDEN_EXECUTABLES = ("neo_wolf_tests", "neo_wolf_autoplay")
-REQUIRED_FILES = ("README.txt", "LICENSE.md", "docs/CONTROLS.md", "docs/TROUBLESHOOTING.md",
-                  "LICENSES/SDL2-LICENSE.txt", "LICENSES/SDL2-hidapi-LICENSE-bsd.txt",
-                  "LICENSES/SDL2-yuv2rgb-LICENSE.txt", "LICENSES/nlohmann-json-LICENSE.MIT.txt",
-                  "LICENSES/THIRD_PARTY_LICENSES.md")
+REQUIRED_FILES = (
+    "README.txt",
+    "LICENSE.md",
+    "docs/CONTROLS.md",
+    "docs/TROUBLESHOOTING.md",
+    "LICENSES/SDL2-LICENSE.txt",
+    "LICENSES/SDL2-hidapi-LICENSE-bsd.txt",
+    "LICENSES/SDL2-yuv2rgb-LICENSE.txt",
+    "LICENSES/nlohmann-json-LICENSE.MIT.txt",
+    "LICENSES/THIRD_PARTY_LICENSES.md",
+)
 
 # runner(command, working directory) -> exit code. The default streams the output.
 Runner = Callable[[Sequence[str], Path], int]
@@ -90,8 +97,11 @@ def host_os() -> str:
     return platform.system().lower()
 
 
-def find_cmake(system: Optional[str] = None, which: Callable[[str], Optional[str]] = shutil.which,
-               environ: Optional[Mapping[str, str]] = None) -> Optional[str]:
+def find_cmake(
+    system: Optional[str] = None,
+    which: Callable[[str], Optional[str]] = shutil.which,
+    environ: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
     """cmake on PATH; on Windows otherwise the CMake bundled with the newest Visual Studio."""
     found = which("cmake")
     if found:
@@ -99,18 +109,39 @@ def find_cmake(system: Optional[str] = None, which: Callable[[str], Optional[str
     if (system or host_os()) != "windows":
         return None
     env = os.environ if environ is None else environ
-    vswhere = Path(env.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / \
-        "Installer" / "vswhere.exe"
+    vswhere = (
+        Path(env.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+        / "Microsoft Visual Studio"
+        / "Installer"
+        / "vswhere.exe"
+    )
     if not vswhere.is_file():
         return None
     try:
-        out = subprocess.run([str(vswhere), "-latest", "-products", "*", "-property", "installationPath"],
-                             capture_output=True, text=True, timeout=30).stdout.strip().splitlines()
+        out = (
+            subprocess.run(
+                [str(vswhere), "-latest", "-products", "*", "-property", "installationPath"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            .stdout.strip()
+            .splitlines()
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     for vs in out:
-        candidate = Path(vs.strip()) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / \
-            "CMake" / "bin" / "cmake.exe"
+        candidate = (
+            Path(vs.strip())
+            / "Common7"
+            / "IDE"
+            / "CommonExtensions"
+            / "Microsoft"
+            / "CMake"
+            / "CMake"
+            / "bin"
+            / "cmake.exe"
+        )
         if candidate.is_file():
             return str(candidate)
     return None
@@ -120,8 +151,10 @@ def read_package_info(build_dir: Path) -> Dict[str, object]:
     """The build's neowolf-package.json (written by cmake/Packaging.cmake at configure time)."""
     path = build_dir / INFO_FILE
     if not path.is_file():
-        raise ValueError(f"{path} not found: {build_dir} is not a configured Neo-Wolf build "
-                         "(configure it with CMake first, or use a package preset)")
+        raise ValueError(
+            f"{path} not found: {build_dir} is not a configured Neo-Wolf build "
+            "(configure it with CMake first, or use a package preset)"
+        )
     try:
         info = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -146,8 +179,10 @@ def check_package_tree(tree: Path, info: Mapping[str, object]) -> List[str]:
 
     exe = tree / str(info["executable"])
     if not exe.is_file():
-        errors.append(f"no executable in the package: {info['executable']} is missing "
-                      "(the build or the install rules did not produce the game)")
+        errors.append(
+            f"no executable in the package: {info['executable']} is missing "
+            "(the build or the install rules did not produce the game)"
+        )
     elif info["os"] != "windows" and not os.access(exe, os.X_OK):
         errors.append(f"{info['executable']} is not executable")
 
@@ -180,8 +215,10 @@ def check_package_tree(tree: Path, info: Mapping[str, object]) -> List[str]:
             errors.append(f"{app}/Contents/Info.plist cannot be read: {exc}")
         else:
             if plist.get("CFBundleShortVersionString") != info["version"]:
-                errors.append(f"Info.plist CFBundleShortVersionString is "
-                              f"{plist.get('CFBundleShortVersionString')!r}, expected {info['version']!r}")
+                errors.append(
+                    f"Info.plist CFBundleShortVersionString is "
+                    f"{plist.get('CFBundleShortVersionString')!r}, expected {info['version']!r}"
+                )
             if plist.get("CFBundleExecutable") != Path(str(info["executable"])).name:
                 errors.append(f"Info.plist CFBundleExecutable is {plist.get('CFBundleExecutable')!r}")
     return errors
@@ -198,8 +235,7 @@ def _zip_date(seconds: float):
     return time.localtime(max(seconds, 315532800 + 86400))[:6]  # zip dates start in 1980
 
 
-def write_archive(tree: Path, out_dir: Path, package: str, fmt: str,
-                  executables: Sequence[str] = ()) -> Path:
+def write_archive(tree: Path, out_dir: Path, package: str, fmt: str, executables: Sequence[str] = ()) -> Path:
     """<out_dir>/<package>.<fmt> containing tree as the folder <package>/ (sorted, with Unix
     permissions, so the executable stays executable after extraction).
 
@@ -230,6 +266,7 @@ def write_archive(tree: Path, out_dir: Path, package: str, fmt: str,
                     zi.compress_type = zipfile.ZIP_DEFLATED
                     zf.writestr(zi, path.read_bytes())
     else:
+
         def normalise(ti: tarfile.TarInfo) -> tarfile.TarInfo:
             ti.uid = ti.gid = 0
             ti.uname = ti.gname = ""
@@ -241,8 +278,12 @@ def write_archive(tree: Path, out_dir: Path, package: str, fmt: str,
         with tarfile.open(archive, "w:gz") as tf:
             tf.add(str(tree), arcname=package, recursive=False, filter=normalise)
             for path in entries:
-                tf.add(str(path), arcname=f"{package}/{path.relative_to(tree).as_posix()}", recursive=False,
-                       filter=normalise)
+                tf.add(
+                    str(path),
+                    arcname=f"{package}/{path.relative_to(tree).as_posix()}",
+                    recursive=False,
+                    filter=normalise,
+                )
     return archive
 
 
@@ -266,8 +307,9 @@ def clean_output(out_dir: Path) -> None:
     """Removes earlier archives and SHA256SUMS from the output folder."""
     if not out_dir.is_dir():
         return
-    for path in list(out_dir.glob("neo-wolf-*.zip")) + list(out_dir.glob("neo-wolf-*.tar.gz")) + \
-            [out_dir / CHECKSUM_FILE]:
+    for path in (
+        list(out_dir.glob("neo-wolf-*.zip")) + list(out_dir.glob("neo-wolf-*.tar.gz")) + [out_dir / CHECKSUM_FILE]
+    ):
         if path.is_file():
             path.unlink()
 
@@ -333,8 +375,10 @@ def create_release_package(
         return fail(str(exc))
     result.info = info
     if expect_version and info["version"] != expect_version:
-        return fail(f"version mismatch: CMake's project(VERSION) is {info['version']}, expected "
-                    f"{expect_version} (docs/RELEASE.md, Versioning)")
+        return fail(
+            f"version mismatch: CMake's project(VERSION) is {info['version']}, expected "
+            f"{expect_version} (docs/RELEASE.md, Versioning)"
+        )
 
     # 3. Install into staging.
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -345,8 +389,7 @@ def create_release_package(
     if staging.exists():
         shutil.rmtree(staging)
     result.staging_dir = staging
-    if runner([cmake, "--install", str(build_dir), "--config", "Release", "--prefix", str(staging)],
-              project_root) != 0:
+    if runner([cmake, "--install", str(build_dir), "--config", "Release", "--prefix", str(staging)], project_root) != 0:
         return fail("cmake --install failed")
 
     # 4. Check the tree.
@@ -361,8 +404,9 @@ def create_release_package(
     result.files = _relative_files(staging)
 
     # 5. Archive and checksum.
-    archive = write_archive(staging, output_dir, str(info["package"]), str(info["format"]),
-                            executables=[str(info["executable"])])
+    archive = write_archive(
+        staging, output_dir, str(info["package"]), str(info["format"]), executables=[str(info["executable"])]
+    )
     result.archive = archive
     result.checksum_file = update_checksums(output_dir, [archive])
     if not keep_staging:

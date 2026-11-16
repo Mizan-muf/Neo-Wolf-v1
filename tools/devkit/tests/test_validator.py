@@ -28,14 +28,7 @@ class TestValidator(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_validate_valid_map(self) -> None:
-        map_content = (
-            "######\n"
-            "#....#\n"
-            "#.A..#\n"
-            "#..D.#\n"
-            "#...T#\n"
-            "######\n"
-        )
+        map_content = "######\n#....#\n#.A..#\n#..D.#\n#...T#\n######\n"
         map_file = self.dir_path / "valid.map"
         map_file.write_text(map_content, encoding="utf-8")
 
@@ -89,40 +82,62 @@ class TestValidator(unittest.TestCase):
         self.assertTrue(any("needs the red key, but the level has no red key" in p for p in missing.problems))
 
         # Without locks every door is passable (the pre-Phase 6 rule).
-        unlocked = analyse_level_progress(rows, [player, dict(blue_door, lock=None), {"type": "door", "x": 6.5,
-                                                 "y": 1.5, "mapX": 6, "mapY": 1}], 1.5, 1.5)
+        unlocked = analyse_level_progress(
+            rows,
+            [player, dict(blue_door, lock=None), {"type": "door", "x": 6.5, "y": 1.5, "mapX": 6, "mapY": 1}],
+            1.5,
+            1.5,
+        )
         self.assertEqual((unlocked.usable_exits, unlocked.problems), (1, []))
 
     def test_campaign_reports_lock_problems(self) -> None:
         root = self._write_campaign("#######\n#..D..X\n#######\n")
-        (root / "game" / "defs" / "l1.entities.json").write_text(json.dumps({"entities": [
-            {"type": "player", "x": 1.5, "y": 1.5},
-            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "gold"},
-        ]}), encoding="utf-8")
+        (root / "game" / "defs" / "l1.entities.json").write_text(
+            json.dumps(
+                {
+                    "entities": [
+                        {"type": "player", "x": 1.5, "y": 1.5},
+                        {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "gold"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         report = validate_campaign(root)
         self.assertTrue(any("needs the gold key" in e for e in report.errors), report.errors)
         self.assertTrue(any("with the keys that can be collected first" in e for e in report.errors), report.errors)
 
     def test_entity_variants_keys_and_locks(self) -> None:
         json_file = self.dir_path / "v.entities.json"
-        json_file.write_text(json.dumps({"entities": [
-            {"type": "player", "x": 1.5, "y": 1.5},
-            {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "brute"},
-            {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "ninja"},
-            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "blue"},
-            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "green"},
-            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key"},
-            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "blue"},
-            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "purple"},
-            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "ammo", "key": "red"},
-        ]}), encoding="utf-8")
+        json_file.write_text(
+            json.dumps(
+                {
+                    "entities": [
+                        {"type": "player", "x": 1.5, "y": 1.5},
+                        {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "brute"},
+                        {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "ninja"},
+                        {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "blue"},
+                        {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "green"},
+                        {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key"},
+                        {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "blue"},
+                        {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "purple"},
+                        {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "ammo", "key": "red"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         report, entities = validate_entity_json(json_file, (8, 8))
         self.assertEqual(len(report.errors), 4, report.errors)
-        self.assertTrue(any("entities[2]" in e and "variant must be 'guard', 'brute' or 'runner'" in e for e in report.errors))
+        self.assertTrue(
+            any("entities[2]" in e and "variant must be 'guard', 'brute' or 'runner'" in e for e in report.errors)
+        )
         self.assertTrue(any("entities[4]" in e and "'green'" in e for e in report.errors))
         self.assertTrue(any("entities[5]" in e and "needs 'key'" in e for e in report.errors))
         self.assertTrue(any("entities[7]" in e and "lock must be" in e for e in report.errors))
-        self.assertTrue(any("entities[8]" in w and "only applies to pickups of kind 'key'" in w for w in report.warnings))
+        self.assertTrue(
+            any("entities[8]" in w and "only applies to pickups of kind 'key'" in w for w in report.warnings)
+        )
         self.assertEqual(len(entities), 5)
 
     def test_sprites_cfg_renamed_keys(self) -> None:
@@ -141,8 +156,20 @@ class TestValidator(unittest.TestCase):
             json.dumps({"entities": [{"type": "player", "x": 1.5, "y": 1.5}]}), encoding="utf-8"
         )
         (root / "game" / "defs" / "campaign.json").write_text(
-            json.dumps({"title": "T", "levels": [{"id": "l1", "name": "One", "map": "game/maps/l1.map",
-                                                    "entities": "game/defs/l1.entities.json", "theme": "t"}]}),
+            json.dumps(
+                {
+                    "title": "T",
+                    "levels": [
+                        {
+                            "id": "l1",
+                            "name": "One",
+                            "map": "game/maps/l1.map",
+                            "entities": "game/defs/l1.entities.json",
+                            "theme": "t",
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         return root
@@ -161,33 +188,48 @@ class TestValidator(unittest.TestCase):
 
     def _light_file(self, lights, name: str = "lights.entities.json") -> Path:
         path = self.dir_path / name
-        path.write_text(json.dumps({"level": "l", "entities": [{"type": "player", "x": 1.5, "y": 1.5}],
-                                    "lights": lights}), encoding="utf-8")
+        path.write_text(
+            json.dumps({"level": "l", "entities": [{"type": "player", "x": 1.5, "y": 1.5}], "lights": lights}),
+            encoding="utf-8",
+        )
         return path
 
     def test_light_zones_valid(self) -> None:
         # Known issue C21: "lights" is a known top-level field (no warning); the range is
         # inclusive at both ends; a zone may cover the whole map.
-        path = self._light_file([{"x": 0, "y": 0, "w": 10, "h": 10, "level": 0.2},
-                                 {"x": 2, "y": 3, "w": 1, "h": 1, "level": 1}])
+        path = self._light_file(
+            [{"x": 0, "y": 0, "w": 10, "h": 10, "level": 0.2}, {"x": 2, "y": 3, "w": 1, "h": 1, "level": 1}]
+        )
         report, _ = validate_entity_json(path, map_dimensions=(10, 10))
         self.assertEqual((report.errors, report.warnings), ([], []))
         self.assertTrue(any("2 light zone(s)" in line for line in report.info), report.info)
 
     def test_light_zones_invalid(self) -> None:
         cases = [
-            ({"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.19}, "lights[0]: field 'level' must be a number from 0.2 to 1.0, got 0.19"),
+            (
+                {"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.19},
+                "lights[0]: field 'level' must be a number from 0.2 to 1.0, got 0.19",
+            ),
             ({"x": 1, "y": 1, "w": 1, "h": 1, "level": 1.01}, "must be a number from 0.2 to 1.0, got 1.01"),
             ({"x": 1, "y": 1, "w": 1, "h": 1, "level": True}, "must be a number from 0.2 to 1.0, got True"),
             ({"x": 1, "y": 1, "w": 1, "h": 1, "level": "dim"}, "got 'dim'"),
             ({"x": 1, "y": 1, "w": 1, "h": 1}, "field 'level' is required"),
             ({"x": 1, "y": 1, "w": 0, "h": 1, "level": 0.5}, "field 'w' must be an integer from 1 to 100000, got 0"),
             ({"x": -1, "y": 1, "w": 1, "h": 1, "level": 0.5}, "field 'x' must be an integer from 0 to 100000, got -1"),
-            ({"x": 1, "y": 1.0, "w": 1, "h": 1, "level": 0.5}, "field 'y' must be an integer from 0 to 100000, got 1.0"),
+            (
+                {"x": 1, "y": 1.0, "w": 1, "h": 1, "level": 0.5},
+                "field 'y' must be an integer from 0 to 100000, got 1.0",
+            ),
             ({"x": 1, "y": 1, "w": 1, "level": 0.5}, "field 'h' is required"),
             (7, "lights[0]: each light zone must be an object, got 7"),
-            ({"x": 8, "y": 1, "w": 3, "h": 1, "level": 0.5}, "lights[0]: cells (8, 1) to (10, 1) are not all inside the 10x10 map"),
-            ({"x": 1, "y": 9, "w": 1, "h": 2, "level": 0.5}, "cells (1, 9) to (1, 10) are not all inside the 10x10 map"),
+            (
+                {"x": 8, "y": 1, "w": 3, "h": 1, "level": 0.5},
+                "lights[0]: cells (8, 1) to (10, 1) are not all inside the 10x10 map",
+            ),
+            (
+                {"x": 1, "y": 9, "w": 1, "h": 2, "level": 0.5},
+                "cells (1, 9) to (1, 10) are not all inside the 10x10 map",
+            ),
         ]
         for zone, message in cases:
             with self.subTest(zone=zone):
@@ -203,8 +245,10 @@ class TestValidator(unittest.TestCase):
     def test_campaign_checks_light_zones(self) -> None:
         root = self._write_campaign("#####\n#..X#\n#####\n")
         entities = root / "game" / "defs" / "l1.entities.json"
-        document = {"entities": [{"type": "player", "x": 1.5, "y": 1.5}],
-                    "lights": [{"x": 1, "y": 1, "w": 2, "h": 1, "level": 0.35}]}
+        document = {
+            "entities": [{"type": "player", "x": 1.5, "y": 1.5}],
+            "lights": [{"x": 1, "y": 1, "w": 2, "h": 1, "level": 0.35}],
+        }
         entities.write_text(json.dumps(document), encoding="utf-8")
         report = validate_campaign(root)
         self.assertEqual((report.errors, report.warnings), ([], []))
@@ -212,8 +256,10 @@ class TestValidator(unittest.TestCase):
         document["lights"].append({"x": 3, "y": 1, "w": 3, "h": 1, "level": 0.35})
         entities.write_text(json.dumps(document), encoding="utf-8")
         report = validate_campaign(root)
-        self.assertTrue(any("lights[1]: cells (3, 1) to (5, 1) are not all inside the 5x3 map" in e
-                            for e in report.errors), report.errors)
+        self.assertTrue(
+            any("lights[1]: cells (3, 1) to (5, 1) are not all inside the 5x3 map" in e for e in report.errors),
+            report.errors,
+        )
 
     def test_validate_unclosed_map(self) -> None:
         map_content = (
@@ -275,12 +321,7 @@ class TestValidator(unittest.TestCase):
         self.assertTrue(any("Token count mismatch" in err for err in report.errors))
 
     def test_validate_entity_csv(self) -> None:
-        csv_content = (
-            "# type,x,y,mapX,mapY\n"
-            "player,2.5,2.5\n"
-            "enemy,5.0,5.0\n"
-            "door,3.5,4.5,3,4\n"
-        )
+        csv_content = "# type,x,y,mapX,mapY\nplayer,2.5,2.5\nenemy,5.0,5.0\ndoor,3.5,4.5,3,4\n"
         csv_file = self.dir_path / "test.entities.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
 

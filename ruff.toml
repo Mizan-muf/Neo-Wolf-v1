@@ -1,0 +1,35 @@
+# Lint and format rules for the Python tools (tools/devkit, tools/ci).
+# See docs/CODING_STANDARDS.md. Run: python3 tools/ci/lint.py --python
+target-version = "py38"   # the DevKit supports Python 3.8+ (tools/devkit/doctor.py)
+line-length = 120
+extend-exclude = ["build", "third_party"]
+
+[lint]
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes: unused names, undefined names
+  "I",        # import order
+  "B",        # bugbear: likely bugs
+  "UP",       # pyupgrade (within py38)
+  "SIM",      # simplifications
+  "C4",       # comprehensions
+  "N",        # naming
+  "RUF",      # ruff's own checks
+  "PLE", "PLW",  # pylint errors and warnings
+  "PLR0911", "PLR0912", "PLR0915",  # too many returns / branches / statements
+]
+ignore = [
+  "E501",     # line length is the formatter's job; long strings and URLs are allowed
+  "RUF001",   # ambiguous unicode: the docs and messages use real dashes and arrows
+]
+
+[lint.pylint]
+max-branches = 15
+max-returns = 8
+max-statements = 60
+
+[lint.per-file-ignores]
+"tools/devkit/tests/*" = ["PLR0915"]  # test methods walk one feature through many steps
+
+[format]
+quote-style = "double"

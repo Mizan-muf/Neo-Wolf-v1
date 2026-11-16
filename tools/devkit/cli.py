@@ -113,8 +113,10 @@ def _find_campaign_level(root: Path, wanted: str) -> Tuple[Optional[CampaignLeve
     for level in levels:
         if level.id == wanted or (wanted.isdigit() and int(wanted) == level.index + 1):
             return level, []
-    return None, scratch.errors or [f"campaign.json has no level '{wanted}' (ids: {', '.join(l.id for l in levels)}; "
-                                    f"or a number from 1 to {len(levels)})"]
+    return None, scratch.errors or [
+        f"campaign.json has no level '{wanted}' (ids: {', '.join(l.id for l in levels)}; "
+        f"or a number from 1 to {len(levels)})"
+    ]
 
 
 def cmd_inspect_map(args: argparse.Namespace) -> int:
@@ -179,8 +181,10 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
             return 1
         entities = parsed.entities
         lights = parsed.lights
-        print(f"Entities: {entities_path} ({len(entities)} placements"
-              + (f", {len(lights)} light zone(s))" if lights else ")"))
+        print(
+            f"Entities: {entities_path} ({len(entities)} placements"
+            + (f", {len(lights)} light zone(s))" if lights else ")")
+        )
 
     print(render_ascii_preview(map_path, entity_placements=entities, color=args.color))
 
@@ -193,8 +197,10 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
     if lights:
         print("\n--- Light Zones (applied in order; every other cell is 1.0) ---")
         for index, zone in enumerate(lights):
-            print(f"  lights[{index}]: cells ({zone['x']}, {zone['y']}) to ({zone['x'] + zone['w'] - 1}, "
-                  f"{zone['y'] + zone['h'] - 1}), {zone['w']}x{zone['h']}, level {zone['level']}")
+            print(
+                f"  lights[{index}]: cells ({zone['x']}, {zone['y']}) to ({zone['x'] + zone['w'] - 1}, "
+                f"{zone['y'] + zone['h'] - 1}), {zone['w']}x{zone['h']}, level {zone['level']}"
+            )
 
     if args.no_reachability:
         return 0
@@ -208,29 +214,41 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
     else:
         players = [e for e in (entities or []) if e.get("type") == "player"]
         if len(players) != 1:
-            print("  Error: no spawn: " + ("the entity file has %d player entities" % len(players) if entities is not None
-                                           else "no entity file found") +
-                  "; pass --entities FILE or --spawn-x X --spawn-y Y.")
+            print(
+                "  Error: no spawn: "
+                + (
+                    "the entity file has %d player entities" % len(players)
+                    if entities is not None
+                    else "no entity file found"
+                )
+                + "; pass --entities FILE or --spawn-x X --spawn-y Y."
+            )
             return 1
         spawn = (players[0]["x"], players[0]["y"])
         source = "the player entity"
     res = analyze_reachability(map_path, spawn_x=spawn[0], spawn_y=spawn[1], entities=entities)
-    print(f"  Spawn: ({spawn[0]}, {spawn[1]}) from {source}, cell {res['spawn_cell']}"
-          + ("" if entities is not None else "; no entity file: every 'D' counts as an openable door"))
+    print(
+        f"  Spawn: ({spawn[0]}, {spawn[1]}) from {source}, cell {res['spawn_cell']}"
+        + ("" if entities is not None else "; no entity file: every 'D' counts as an openable door")
+    )
     if res["error"]:
         print(f"  Status: FAILED: {res['error']}")
         return 1
     print(f"  Reachable cells: {res['reachable_count']} of {res['total_walkable']} walkable")
     if res["unreachable_cells"]:
-        print(f"  Not reachable ({res['unreachable_count']}): {res['unreachable_cells'][:10]}"
-              + (" ..." if res["unreachable_count"] > 10 else ""))
+        print(
+            f"  Not reachable ({res['unreachable_count']}): {res['unreachable_cells'][:10]}"
+            + (" ..." if res["unreachable_count"] > 10 else "")
+        )
     print(f"  Exit switches: {res['usable_exits']} of {res['exits']} usable")
     if res["key_order"]:
         print(f"  Keys, in the order they become reachable: {', '.join(res['key_order'])}")
     for problem in res["problems"]:
         print(f"  Problem: {problem}")
     for ent in res["unreachable_entities"]:
-        print(f"  Unreachable {ent.get('type')}: ({ent.get('x')}, {ent.get('y')}) {ent.get('kind') or ent.get('variant') or ''}")
+        print(
+            f"  Unreachable {ent.get('type')}: ({ent.get('x')}, {ent.get('y')}) {ent.get('kind') or ent.get('variant') or ''}"
+        )
     if res["success"]:
         print("  Status: OK (an exit switch is reachable; every pickup and enemy can be reached)")
         return 0
@@ -292,15 +310,19 @@ def cmd_create_map(args: argparse.Namespace) -> int:
         try:
             relative_map = map_path.resolve().relative_to(root.resolve()).as_posix()
         except ValueError:
-            print(f"Error: --register needs the map inside the content root {root} (campaign paths are relative to it).")
+            print(
+                f"Error: --register needs the map inside the content root {root} (campaign paths are relative to it)."
+            )
             return 1
         document, errors = load_json_strict(campaign_path)
         if document is None or errors or not isinstance(document, dict) or not isinstance(document.get("levels"), list):
             print(f"Error: cannot register the level: {campaign_path} is missing or invalid {errors[:1]}")
             return 1
         campaign = document
-        theme = args.theme or next((lvl.get("theme") for lvl in reversed(campaign["levels"])
-                                    if isinstance(lvl, dict) and lvl.get("theme")), "bunker")
+        theme = args.theme or next(
+            (lvl.get("theme") for lvl in reversed(campaign["levels"]) if isinstance(lvl, dict) and lvl.get("theme")),
+            "bunker",
+        )
         if not (root / "game" / "defs" / "themes" / f"{theme}.cfg").is_file():
             print(f"Error: theme '{theme}' not found (game/defs/themes/{theme}.cfg).")
             return 1
@@ -321,8 +343,10 @@ def cmd_create_map(args: argparse.Namespace) -> int:
         stub = create_level_stub_entities(map_data, level_id)
         entities_path.parent.mkdir(parents=True, exist_ok=True)
         save_entities_json(stub, entities_path)
-        print(f"Created entity stub ({len(stub['entities'])} placements: the player, and a door/trigger for every "
-              f"'D'/'T') at: {entities_path}")
+        print(
+            f"Created entity stub ({len(stub['entities'])} placements: the player, and a door/trigger for every "
+            f"'D'/'T') at: {entities_path}"
+        )
 
     if campaign is not None and entities_path is not None:
         entry = {
@@ -343,11 +367,15 @@ def cmd_create_map(args: argparse.Namespace) -> int:
             campaign["levels"].append(entry)
             position = len(campaign["levels"])
         campaign_path.write_text(json.dumps(campaign, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"{'Updated' if replaced else 'Registered'} level {level_id} as level {position} "
-              f"in {campaign_path} (theme {args.theme}).")
+        print(
+            f"{'Updated' if replaced else 'Registered'} level {level_id} as level {position} "
+            f"in {campaign_path} (theme {args.theme})."
+        )
     if level_id:
-        print("Next: place enemies, pickups and keys (docs/LEVEL_AUTHORING.md), then run "
-              "`neo_devkit validate --strict` and `neo_wolf_autoplay --level N`.")
+        print(
+            "Next: place enemies, pickups and keys (docs/LEVEL_AUTHORING.md), then run "
+            "`neo_devkit validate --strict` and `neo_wolf_autoplay --level N`."
+        )
     return 0
 
 
@@ -426,7 +454,7 @@ def cmd_package(args: argparse.Namespace) -> int:
     print(f"  Version:   {res.info.get('version')} ({res.info.get('platform')})")
     print(f"  Archive:   {res.archive} ({res.archive.stat().st_size} bytes, {len(res.files)} files)")
     print(f"  Checksums: {res.checksum_file}")
-    print(f"  Check it:  python3 tools/ci/package_smoke.py \"{res.archive}\"")
+    print(f'  Check it:  python3 tools/ci/package_smoke.py "{res.archive}"')
     return 0
 
 
@@ -448,38 +476,50 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="neo_devkit",
         description="Neo-Wolf DevKit: content validation, map and asset tools, level stubs, environment "
-                    "checks and packaging (docs/DEVKIT_GUIDE.md).",
+        "checks and packaging (docs/DEVKIT_GUIDE.md).",
     )
-    parser.add_argument("--no-color", action="store_true",
-                        help="Disable ANSI colours (also off with NO_COLOR, when not a terminal, and on "
-                             "Windows consoles without ANSI support).")
-    parser.add_argument("--root", type=str, default=None,
-                        help="Content/repository root (default: the repository this DevKit is in).")
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI colours (also off with NO_COLOR, when not a terminal, and on "
+        "Windows consoles without ANSI support).",
+    )
+    parser.add_argument(
+        "--root", type=str, default=None, help="Content/repository root (default: the repository this DevKit is in)."
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doc_p = subparsers.add_parser("doctor", help="Check the build tools, the SDL source, Python and the content.")
-    doc_p.add_argument("--no-network", action="store_true",
-                       help="Do not test whether github.com is reachable (for the SDL download).")
+    doc_p.add_argument(
+        "--no-network", action="store_true", help="Do not test whether github.com is reachable (for the SDL download)."
+    )
 
     val_p = subparsers.add_parser("validate", help="Validate maps, assets, definitions and the campaign.")
     val_p.add_argument("--map", type=str, help="Validate a single .map file only.")
     val_p.add_argument("--asset", type=str, help="Validate a single .ppm or .wav file only.")
     val_p.add_argument("--strict", action="store_true", help="Warnings fail the validation too.")
-    val_p.add_argument("--require-levels", type=int, default=None, metavar="N",
-                       help="The campaign must have exactly N levels (default: any number).")
+    val_p.add_argument(
+        "--require-levels",
+        type=int,
+        default=None,
+        metavar="N",
+        help="The campaign must have exactly N levels (default: any number).",
+    )
 
     map_p = subparsers.add_parser("inspect-map", help="Show a map with its entities, statistics and reachability.")
     map_p.add_argument("map_path", type=str, nargs="?", help="Path to a .map file (or use --level).")
     map_p.add_argument("--level", type=str, help="A campaign level by id or 1-based number (map and entities).")
-    map_p.add_argument("--entities", type=str,
-                       help="Entity file (.json or .csv); default: the campaign level's, or "
-                            "game/defs/<map name>.entities.json.")
+    map_p.add_argument(
+        "--entities",
+        type=str,
+        help="Entity file (.json or .csv); default: the campaign level's, or game/defs/<map name>.entities.json.",
+    )
     map_p.add_argument("--no-entities", action="store_true", help="Do not look for an entity file.")
     map_p.add_argument("--no-stats", action="store_true", help="Skip the tile statistics.")
     map_p.add_argument("--no-reachability", action="store_true", help="Skip the reachability analysis.")
-    map_p.add_argument("--stats", action="store_true", help=argparse.SUPPRESS)          # on by default
-    map_p.add_argument("--reachability", action="store_true", help=argparse.SUPPRESS)   # on by default
+    map_p.add_argument("--stats", action="store_true", help=argparse.SUPPRESS)  # on by default
+    map_p.add_argument("--reachability", action="store_true", help=argparse.SUPPRESS)  # on by default
     map_p.add_argument("--spawn-x", type=float, default=None, help="Spawn X (default: the player entity).")
     map_p.add_argument("--spawn-y", type=float, default=None, help="Spawn Y (default: the player entity).")
 
@@ -487,15 +527,21 @@ def build_parser() -> argparse.ArgumentParser:
     ast_p.add_argument("asset_path", type=str, help="Path to a .ppm or .wav file.")
 
     cmap_p = subparsers.add_parser("create-map", help="Create a template map (and, with --level-id, a level stub).")
-    cmap_p.add_argument("output", type=str, nargs="?",
-                        help="Output .map path (default with --level-id: game/maps/<id>.map).")
-    cmap_p.add_argument("--level-id", type=str, default=None,
-                        help="Also write game/defs/<id>.entities.json with the player and a door/trigger "
-                             "entity for every 'D'/'T' of the template.")
+    cmap_p.add_argument(
+        "output", type=str, nargs="?", help="Output .map path (default with --level-id: game/maps/<id>.map)."
+    )
+    cmap_p.add_argument(
+        "--level-id",
+        type=str,
+        default=None,
+        help="Also write game/defs/<id>.entities.json with the player and a door/trigger "
+        "entity for every 'D'/'T' of the template.",
+    )
     cmap_p.add_argument("--register", action="store_true", help="Append the level to campaign.json (needs --level-id).")
     cmap_p.add_argument("--name", type=str, default=None, help="Level name for --register (default: the id).")
-    cmap_p.add_argument("--theme", type=str, default=None,
-                        help="Theme for --register (default: the last campaign level's theme).")
+    cmap_p.add_argument(
+        "--theme", type=str, default=None, help="Theme for --register (default: the last campaign level's theme)."
+    )
     cmap_p.add_argument("--force", action="store_true", help="Overwrite existing files / replace the campaign entry.")
     cmap_p.add_argument("--width", type=int, default=16, help="Map width in cells (at least 4).")
     cmap_p.add_argument("--height", type=int, default=12, help="Map height in cells (at least 4).")
@@ -512,32 +558,57 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-entities",
         help="Export the canonical <level>.entities.json files to <level>.entities.csv (overwrites the CSVs).",
     )
-    sync_p.add_argument("--from-csv", action="store_true",
-                        help="Reverse direction: overwrite each <level>.entities.json from its CSV.")
-    sync_p.add_argument("--level", type=str, default=None, metavar="ID|N",
-                        help="Only this campaign level (its id, e.g. level03, or its 1-based number); "
-                             "default: every entity file in game/defs/.")
+    sync_p.add_argument(
+        "--from-csv", action="store_true", help="Reverse direction: overwrite each <level>.entities.json from its CSV."
+    )
+    sync_p.add_argument(
+        "--level",
+        type=str,
+        default=None,
+        metavar="ID|N",
+        help="Only this campaign level (its id, e.g. level03, or its 1-based number); "
+        "default: every entity file in game/defs/.",
+    )
     # JSON -> CSV is the default since Phase 4; the old flag is still accepted and does nothing.
     sync_p.add_argument("--prefer-json", action="store_true", help=argparse.SUPPRESS)
 
     pkg_p = subparsers.add_parser(
         "package",
-        help="Build this OS's release package with CMake: zip (macOS, Windows) or tar.gz (Linux), plus SHA256SUMS.")
+        help="Build this OS's release package with CMake: zip (macOS, Windows) or tar.gz (Linux), plus SHA256SUMS.",
+    )
     pkg_p.add_argument("--out-dir", type=str, default=None, help="Output folder (default: release/).")
-    pkg_p.add_argument("--preset", type=str, default=None,
-                       help="CMake configure/build preset (default: package-macos, package-windows-msvc or "
-                            "package-linux for this OS).")
-    pkg_p.add_argument("--build-dir", type=str, default=None,
-                       help="Package an already configured build tree instead of a preset (e.g. a "
-                            "cross-compile); it is built, not configured.")
-    pkg_p.add_argument("--no-build", action="store_true",
-                       help="Do not configure or build: install and archive the build as it is.")
-    pkg_p.add_argument("--expect-version", type=str, default=None, metavar="X.Y.Z",
-                       help="Fail unless CMake's project(VERSION) is X.Y.Z (release tags).")
-    pkg_p.add_argument("--clean", action="store_true",
-                       help="Remove earlier neo-wolf-* archives and SHA256SUMS from the output folder first.")
-    pkg_p.add_argument("--keep-staging", action="store_true",
-                       help="Keep the installed tree in <out-dir>/.staging/ after archiving.")
+    pkg_p.add_argument(
+        "--preset",
+        type=str,
+        default=None,
+        help="CMake configure/build preset (default: package-macos, package-windows-msvc or "
+        "package-linux for this OS).",
+    )
+    pkg_p.add_argument(
+        "--build-dir",
+        type=str,
+        default=None,
+        help="Package an already configured build tree instead of a preset (e.g. a "
+        "cross-compile); it is built, not configured.",
+    )
+    pkg_p.add_argument(
+        "--no-build", action="store_true", help="Do not configure or build: install and archive the build as it is."
+    )
+    pkg_p.add_argument(
+        "--expect-version",
+        type=str,
+        default=None,
+        metavar="X.Y.Z",
+        help="Fail unless CMake's project(VERSION) is X.Y.Z (release tags).",
+    )
+    pkg_p.add_argument(
+        "--clean",
+        action="store_true",
+        help="Remove earlier neo-wolf-* archives and SHA256SUMS from the output folder first.",
+    )
+    pkg_p.add_argument(
+        "--keep-staging", action="store_true", help="Keep the installed tree in <out-dir>/.staging/ after archiving."
+    )
     pkg_p.add_argument("--cmake", type=str, default=None, help="The cmake executable (default: from PATH).")
 
     subparsers.add_parser("test", help="Run the DevKit's unit tests.")

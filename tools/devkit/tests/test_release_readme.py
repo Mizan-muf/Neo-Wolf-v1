@@ -26,8 +26,15 @@ class TestReleaseReadme(unittest.TestCase):
         """Every row of every 'Per screen' table and of the window-keys table reaches README.txt."""
         screens, window_keys = release_readme.parse_controls(CONTROLS_MD)
         titles = [s.title for s in screens]
-        self.assertEqual(titles, [m for m in re.findall(r"^### (.+)$", CONTROLS_MD.split("## Per screen", 1)[1]
-                                                        .split("\n## ", 1)[0], re.MULTILINE)])
+        self.assertEqual(
+            titles,
+            [
+                m
+                for m in re.findall(
+                    r"^### (.+)$", CONTROLS_MD.split("## Per screen", 1)[1].split("\n## ", 1)[0], re.MULTILINE
+                )
+            ],
+        )
         self.assertIn("Play", titles)
         self.assertGreaterEqual(len(window_keys), 2)
         for platform in release_readme.PLATFORMS:
@@ -58,8 +65,10 @@ class TestReleaseReadme(unittest.TestCase):
             self.assertIn("nlohmann/json 3.12.0 (MIT licence)", squash(text))
             self.assertIn("progress.json", text)
             self.assertIn("neowolf.log", text)
-            self.assertTrue(all(len(line) <= 78 for line in text.splitlines()),
-                            [line for line in text.splitlines() if len(line) > 78])
+            self.assertTrue(
+                all(len(line) <= 78 for line in text.splitlines()),
+                [line for line in text.splitlines() if len(line) > 78],
+            )
             text.encode("ascii")  # plain ASCII: readable in any editor
         self.assertIn("xattr -dr com.apple.quarantine", squash(mac))
         self.assertIn("Privacy & Security", mac)
@@ -82,8 +91,12 @@ class TestReleaseReadme(unittest.TestCase):
             self.assertNotIn(b"\r", out.read_bytes())
             broken = Path(temp) / "CONTROLS.md"
             broken.write_text("# Controls\n\nNothing here.\n", encoding="utf-8")
-            self.assertEqual(release_readme.main(["--platform", "linux", "--version", "1.0.0", "--controls",
-                                                  str(broken), "--out", str(out)]), 1)
+            self.assertEqual(
+                release_readme.main(
+                    ["--platform", "linux", "--version", "1.0.0", "--controls", str(broken), "--out", str(out)]
+                ),
+                1,
+            )
 
 
 if __name__ == "__main__":

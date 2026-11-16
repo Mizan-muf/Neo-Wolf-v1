@@ -23,14 +23,7 @@ class TestMapTools(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_map_load_and_stats(self) -> None:
-        map_content = (
-            "######\n"
-            "#....#\n"
-            "#.A..#\n"
-            "#..D.#\n"
-            "#...T#\n"
-            "######\n"
-        )
+        map_content = "######\n#....#\n#.A..#\n#..D.#\n#...T#\n######\n"
         map_file = self.dir_path / "test.map"
         map_file.write_text(map_content, encoding="utf-8")
 
@@ -51,14 +44,7 @@ class TestMapTools(unittest.TestCase):
         self.assertEqual(stats["walls_alt_a"], 1)
 
     def test_reachability_fully_connected(self) -> None:
-        map_content = (
-            "######\n"
-            "#....#\n"
-            "#....#\n"
-            "#..D.#\n"
-            "#....#\n"
-            "######\n"
-        )
+        map_content = "######\n#....#\n#....#\n#..D.#\n#....#\n######\n"
         map_file = self.dir_path / "connected.map"
         map_file.write_text(map_content, encoding="utf-8")
 
@@ -97,12 +83,7 @@ class TestMapTools(unittest.TestCase):
         self.assertEqual(get_map_stats(out_map)["exits"], 1)
 
     def test_ascii_preview(self) -> None:
-        map_content = (
-            "######\n"
-            "#....#\n"
-            "#....#\n"
-            "######\n"
-        )
+        map_content = "######\n#....#\n#....#\n######\n"
         map_file = self.dir_path / "preview.map"
         map_file.write_text(map_content, encoding="utf-8")
 

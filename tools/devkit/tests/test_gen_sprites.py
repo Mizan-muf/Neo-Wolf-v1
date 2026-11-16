@@ -12,16 +12,28 @@ def pixels(text: str):
     lines = text.splitlines()
     width, height = (int(v) for v in lines[2].split())
     values = [int(v) for line in lines[4:] for v in line.split()]
-    rgb = [tuple(values[i:i + 3]) for i in range(0, len(values), 3)]
-    return width, height, [rgb[y * width:(y + 1) * width] for y in range(height)]
+    rgb = [tuple(values[i : i + 3]) for i in range(0, len(values), 3)]
+    return width, height, [rgb[y * width : (y + 1) * width] for y in range(height)]
 
 
 class TestGenSprites(unittest.TestCase):
     def test_deterministic_and_complete(self) -> None:
         first = gen_sprites.generate()
         self.assertEqual(first, gen_sprites.generate())
-        expected = {"guard", "brute", "runner", "guard_dead", "brute_dead", "runner_dead",
-                    "health", "ammo", "key_red", "key_blue", "key_gold", "decoration"}
+        expected = {
+            "guard",
+            "brute",
+            "runner",
+            "guard_dead",
+            "brute_dead",
+            "runner_dead",
+            "health",
+            "ammo",
+            "key_red",
+            "key_blue",
+            "key_gold",
+            "decoration",
+        }
         self.assertEqual({name[:-4] for name in first}, expected)
         for name, text in first.items():
             width, height, rows = pixels(text)

@@ -57,8 +57,9 @@ class TestParity(unittest.TestCase):
                 self.assertEqual(parsed.ok, want["ok"], parsed.errors)
                 if want["ok"]:
                     self.assertEqual([e["type"] for e in parsed.entities], want["types"])
-                    self.assertEqual([[z["x"], z["y"], z["w"], z["h"], z["level"]] for z in parsed.lights],
-                                     want.get("lights", []))
+                    self.assertEqual(
+                        [[z["x"], z["y"], z["w"], z["h"], z["level"]] for z in parsed.lights], want.get("lights", [])
+                    )
                     validate = validate_entity_json if name.endswith(".json") else validate_entity_csv
                     report, entities = validate(PARITY_DIR / name)
                     self.assertTrue(report.is_valid, report.errors)

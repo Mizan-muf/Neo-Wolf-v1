@@ -19,6 +19,7 @@ changed map is a visible edit of the page (and its prose) too.
 
 Standard library only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,15 +36,32 @@ ENEMY_SYMBOLS = {"guard": "g", "brute": "b", "runner": "n"}
 KEY_SYMBOLS = {"red": "r", "blue": "u", "gold": "y"}
 LOCK_SYMBOLS = {"red": "1", "blue": "2", "gold": "3"}
 # When several entities share a cell, the most important one is drawn.
-PRIORITY = {"p": 0, "1": 1, "2": 1, "3": 1, "d": 1, "t": 1, "g": 2, "b": 2, "n": 2,
-            "r": 3, "u": 3, "y": 3, "h": 4, "a": 4, "v": 5}
+PRIORITY = {
+    "p": 0,
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "d": 1,
+    "t": 1,
+    "g": 2,
+    "b": 2,
+    "n": 2,
+    "r": 3,
+    "u": 3,
+    "y": 3,
+    "h": 4,
+    "a": 4,
+    "v": 5,
+}
 
-LEGEND = ("Legend (documentation only: lower case and digits are not valid map tiles; the shipped "
-          "`.map` above has `.` or `D`/`T` there): `p` player start, `g` guard, `b` brute, `n` "
-          "runner, `h` health, `a` ammo, `r` / `u` / `y` red / blue / gold key card, `d` unlocked "
-          "door, `1` / `2` / `3` red / blue / gold locked door, `t` checkpoint trigger, `v` "
-          "decoration (vase); `#` wall, `A` / `B` wall variants, `X` exit switch. Column numbers "
-          "run along the top (tens, then units), row numbers down the left.")
+LEGEND = (
+    "Legend (documentation only: lower case and digits are not valid map tiles; the shipped "
+    "`.map` above has `.` or `D`/`T` there): `p` player start, `g` guard, `b` brute, `n` "
+    "runner, `h` health, `a` ammo, `r` / `u` / `y` red / blue / gold key card, `d` unlocked "
+    "door, `1` / `2` / `3` red / blue / gold locked door, `t` checkpoint trigger, `v` "
+    "decoration (vase); `#` wall, `A` / `B` wall variants, `X` exit switch. Column numbers "
+    "run along the top (tens, then units), row numbers down the left."
+)
 
 FENCE_RE = re.compile(r"^```text\n(.*?)^```$", re.MULTILINE | re.DOTALL)
 
@@ -131,8 +149,9 @@ def check(root: Path = REPO_ROOT, write: bool = False) -> List[str]:
         blocks = list(FENCE_RE.finditer(text))
         map_text, grid = expected_blocks(root, level)
         if len(blocks) < 2:
-            problems.append(f"{rel}: expected two ```text blocks (the shipped map and the annotated grid), "
-                            f"found {len(blocks)}")
+            problems.append(
+                f"{rel}: expected two ```text blocks (the shipped map and the annotated grid), found {len(blocks)}"
+            )
             continue
         if blocks[0].group(1) != map_text:
             problems.append(f"{rel}: the first ```text block differs from {level['map']} (copy the file in)")
@@ -143,8 +162,9 @@ def check(root: Path = REPO_ROOT, write: bool = False) -> List[str]:
                 with open(page, "w", encoding="utf-8", newline="\n") as handle:  # LF on Windows too
                     handle.write(text)
             else:
-                problems.append(f"{rel}: the annotated grid is out of date "
-                                "(python3 -m tools.devkit.level_docs --write)")
+                problems.append(
+                    f"{rel}: the annotated grid is out of date (python3 -m tools.devkit.level_docs --write)"
+                )
     return problems
 
 

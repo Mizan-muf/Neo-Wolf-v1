@@ -197,7 +197,7 @@ def create_brick_ppm(
         shift = (brick_w // 2) if (row_idx % 2 == 1) else 0
         for x in range(width):
             shifted_x = (x + shift) % width
-            is_mortar_v = (shifted_x % brick_w == 0)
+            is_mortar_v = shifted_x % brick_w == 0
             if is_mortar_h or is_mortar_v:
                 pixels.append(mortar_color)
             else:
@@ -245,7 +245,7 @@ def generate_beep_wav(
     # fmt chunk
     header.extend(b"fmt ")
     header.extend(struct.pack("<I", 16))  # chunk size
-    header.extend(struct.pack("<H", 1))   # PCM format
+    header.extend(struct.pack("<H", 1))  # PCM format
     header.extend(struct.pack("<H", num_channels))
     header.extend(struct.pack("<I", sample_rate))
     header.extend(struct.pack("<I", byte_rate))

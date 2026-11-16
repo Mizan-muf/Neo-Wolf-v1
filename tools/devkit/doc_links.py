@@ -14,6 +14,7 @@ DevKit test ``test_doc_links`` runs it on the repository, so links cannot rot un
 
 Standard library only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,8 +43,8 @@ SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 def _heading_text(markdown: str) -> str:
     """Rendered text of heading Markdown outside code spans."""
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", markdown)  # images -> alt text
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)      # links -> text
-    text = re.sub(r"<[^>]+>", "", text)                          # inline HTML
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # links -> text
+    text = re.sub(r"<[^>]+>", "", text)  # inline HTML
     return text.replace("*", "")
 
 
@@ -52,7 +53,7 @@ def github_slug(heading: str) -> str:
     parts = []
     last = 0
     for code in re.finditer(r"(`+)(.+?)\1", heading):  # code spans are kept literally
-        parts.append(_heading_text(heading[last:code.start()]))
+        parts.append(_heading_text(heading[last : code.start()]))
         parts.append(code.group(2))
         last = code.end()
     parts.append(_heading_text(heading[last:]))
@@ -162,14 +163,18 @@ def check(root: Path = REPO_ROOT, files: Optional[List[Path]] = None) -> List[st
                 problems.append(f"{shown}:{number}: {target}: an anchor needs a Markdown file")
                 continue
             if unquote(fragment).lower() not in {a.lower() for a in anchors_of(destination.resolve(), cache)}:
-                problems.append(f"{shown}:{number}: {target}: no heading or anchor #{fragment} in "
-                                f"{_shown(destination.resolve(), root)}")
+                problems.append(
+                    f"{shown}:{number}: {target}: no heading or anchor #{fragment} in "
+                    f"{_shown(destination.resolve(), root)}"
+                )
     return problems
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Check relative links and anchors in Markdown files.")
-    parser.add_argument("root", nargs="?", type=Path, default=REPO_ROOT, help="repository root (default: this repository)")
+    parser.add_argument(
+        "root", nargs="?", type=Path, default=REPO_ROOT, help="repository root (default: this repository)"
+    )
     parser.add_argument("--list", action="store_true", help="list every checked file")
     args = parser.parse_args(argv)
     root = args.root.resolve()
@@ -180,8 +185,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     problems = check(root, files)
     for problem in problems:
         print(problem)
-    print(f"{len(files)} Markdown file(s) checked: "
-          + ("all relative links and anchors resolve." if not problems else f"{len(problems)} broken link(s)."))
+    print(
+        f"{len(files)} Markdown file(s) checked: "
+        + ("all relative links and anchors resolve." if not problems else f"{len(problems)} broken link(s).")
+    )
     return 1 if problems else 0
 
 

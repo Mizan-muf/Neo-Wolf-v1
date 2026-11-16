@@ -20,9 +20,9 @@ def decode_png(data: bytes):
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     pos, chunks = 8, {}
     while pos < len(data):
-        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
-        body = data[pos + 8:pos + 8 + length]
-        crc = struct.unpack(">I", data[pos + 8 + length:pos + 12 + length])[0]
+        length, kind = struct.unpack(">I4s", data[pos : pos + 8])
+        body = data[pos + 8 : pos + 8 + length]
+        crc = struct.unpack(">I", data[pos + 8 + length : pos + 12 + length])[0]
         assert crc == zlib.crc32(kind + body) & 0xFFFFFFFF, kind
         chunks[kind] = body
         pos += 12 + length
@@ -30,7 +30,7 @@ def decode_png(data: bytes):
     assert (depth, colour) == (8, 6)
     raw = zlib.decompress(chunks[b"IDAT"])
     stride = width * 4 + 1
-    rows = [raw[i * stride + 1:(i + 1) * stride] for i in range(height)]
+    rows = [raw[i * stride + 1 : (i + 1) * stride] for i in range(height)]
     assert all(raw[i * stride] == 0 for i in range(height))
     return width, height, rows
 
@@ -50,11 +50,11 @@ class TestGenIcon(unittest.TestCase):
         rows = gen_icon.icon_pixels(128)
         self.assertEqual(len(rows), 128)
         alpha = lambda x, y: rows[y][x * 4 + 3]  # noqa: E731
-        self.assertEqual(alpha(0, 0), 0)        # transparent corner (rounded square)
+        self.assertEqual(alpha(0, 0), 0)  # transparent corner (rounded square)
         self.assertEqual(alpha(127, 127), 0)
-        self.assertEqual(alpha(64, 64), 255)    # opaque middle
-        self.assertEqual(alpha(64, 6), 0)       # above the body
-        r, g, b = rows[40][64 * 4:64 * 4 + 3]   # the glowing far wall above the wolf's head
+        self.assertEqual(alpha(64, 64), 255)  # opaque middle
+        self.assertEqual(alpha(64, 6), 0)  # above the body
+        r, g, b = rows[40][64 * 4 : 64 * 4 + 3]  # the glowing far wall above the wolf's head
         self.assertGreater(r, 150)
         self.assertGreater(r, b)
 
@@ -62,8 +62,18 @@ class TestGenIcon(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp)
             with redirect_stdout(io.StringIO()):
-                code = gen_icon.main(["--iconset", str(out / "NeoWolf.iconset"), "--ico", str(out / "a.ico"),
-                                      "--png", str(out / "a.png"), "--size", "48"])
+                code = gen_icon.main(
+                    [
+                        "--iconset",
+                        str(out / "NeoWolf.iconset"),
+                        "--ico",
+                        str(out / "a.ico"),
+                        "--png",
+                        str(out / "a.png"),
+                        "--size",
+                        "48",
+                    ]
+                )
             self.assertEqual(code, 0)
             names = sorted(p.name for p in (out / "NeoWolf.iconset").iterdir())
             self.assertEqual(names, sorted(gen_icon.ICONSET))
@@ -78,9 +88,9 @@ class TestGenIcon(unittest.TestCase):
             reserved, kind, count = struct.unpack("<HHH", ico[:6])
             self.assertEqual((reserved, kind, count), (0, 1, len(gen_icon.ICO_SIZES)))
             for i, size in enumerate(gen_icon.ICO_SIZES):
-                w, h, _, _, planes, bpp, length, offset = struct.unpack("<BBBBHHII", ico[6 + 16 * i:22 + 16 * i])
+                w, h, _, _, planes, bpp, length, offset = struct.unpack("<BBBBHHII", ico[6 + 16 * i : 22 + 16 * i])
                 self.assertEqual((w or 256, h or 256, planes, bpp), (size, size, 1, 32))
-                width, _, _ = decode_png(ico[offset:offset + length])
+                width, _, _ = decode_png(ico[offset : offset + length])
                 self.assertEqual(width, size)
 
     def test_iconset_name_is_checked(self) -> None:

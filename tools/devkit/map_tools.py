@@ -12,7 +12,6 @@ from tools.devkit.engine_formats import FLOOR_TILES, SOLID_TILES, WALKABLE_TILES
 # 'X' is the exit switch (Phase 5): a solid wall cell the player activates with E.
 
 
-
 @dataclass
 class MapData:
     width: int
@@ -132,8 +131,9 @@ def analyze_reachability(
     }
     placed = [e for e in (entities or []) if isinstance(e, dict)]
     if entities is None:
-        placed = [{"type": "door", "mapX": x, "mapY": y}
-                  for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"]
+        placed = [
+            {"type": "door", "mapX": x, "mapY": y} for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"
+        ]
     door_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "door"}
     trigger_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "trigger"}
 
@@ -142,8 +142,12 @@ def analyze_reachability(
             return False
         return m.get_tile(x, y) in FLOOR_TILES or (x, y) in trigger_cells
 
-    walkable = {(x, y) for y in range(m.height) for x in range(m.width)
-                if m.get_tile(x, y) in FLOOR_TILES or (x, y) in door_cells or (x, y) in trigger_cells}
+    walkable = {
+        (x, y)
+        for y in range(m.height)
+        for x in range(m.width)
+        if m.get_tile(x, y) in FLOOR_TILES or (x, y) in door_cells or (x, y) in trigger_cells
+    }
     result["total_walkable"] = len(walkable)
     if not (0 <= spawn_cell[0] < m.width and 0 <= spawn_cell[1] < m.height):
         result["error"] = f"Spawn ({spawn_x:.2f}, {spawn_y:.2f}) is outside the {m.width}x{m.height} map"
@@ -167,12 +171,14 @@ def analyze_reachability(
         problems=list(progress.problems),
     )
     for ent in placed:
-        if ent.get("type") in ("pickup", "enemy") and isinstance(ent.get("x"), (int, float)) \
-                and isinstance(ent.get("y"), (int, float)):
+        if (
+            ent.get("type") in ("pickup", "enemy")
+            and isinstance(ent.get("x"), (int, float))
+            and isinstance(ent.get("y"), (int, float))
+        ):
             if (int(math.floor(ent["x"])), int(math.floor(ent["y"]))) not in reached:
                 result["unreachable_entities"].append(ent)
-    result["success"] = (progress.usable_exits > 0 and not progress.problems
-                         and not result["unreachable_entities"])
+    result["success"] = progress.usable_exits > 0 and not progress.problems and not result["unreachable_entities"]
     result["all_reachable"] = not unreachable
     return result
 
@@ -188,25 +194,28 @@ def render_ascii_preview(
 
     # ANSI color codes
     C_RESET = "\033[0m" if color else ""
-    C_WALL = "\033[37;1m" if color else ""      # Bright White
-    C_WALL_A = "\033[36m" if color else ""      # Cyan
-    C_WALL_B = "\033[34m" if color else ""      # Blue
-    C_DOOR = "\033[33;1m" if color else ""      # Bright Yellow
-    C_TRIGGER = "\033[35;1m" if color else ""   # Bright Magenta
-    C_EXIT = "\033[42;30m" if color else ""     # Black on green
-    C_PLAYER = "\033[32;1m" if color else ""    # Bright Green
-    C_ENEMY = "\033[31;1m" if color else ""     # Bright Red
-    C_PICKUP = "\033[33m" if color else ""      # Yellow
-    C_DECOR = "\033[36;1m" if color else ""     # Bright Cyan
-    C_EMPTY = "\033[90m" if color else ""       # Dark Gray
+    C_WALL = "\033[37;1m" if color else ""  # Bright White
+    C_WALL_A = "\033[36m" if color else ""  # Cyan
+    C_WALL_B = "\033[34m" if color else ""  # Blue
+    C_DOOR = "\033[33;1m" if color else ""  # Bright Yellow
+    C_TRIGGER = "\033[35;1m" if color else ""  # Bright Magenta
+    C_EXIT = "\033[42;30m" if color else ""  # Black on green
+    C_PLAYER = "\033[32;1m" if color else ""  # Bright Green
+    C_ENEMY = "\033[31;1m" if color else ""  # Bright Red
+    C_PICKUP = "\033[33m" if color else ""  # Yellow
+    C_DECOR = "\033[36;1m" if color else ""  # Bright Cyan
+    C_EMPTY = "\033[90m" if color else ""  # Dark Gray
 
     # Create overlay grid
     overlay = [[m.grid[y][x] for x in range(m.width)] for y in range(m.height)]
 
     if entity_placements:
         for ent in entity_placements:
-            if not isinstance(ent, dict) or not isinstance(ent.get("x"), (int, float)) \
-                    or not isinstance(ent.get("y"), (int, float)):
+            if (
+                not isinstance(ent, dict)
+                or not isinstance(ent.get("x"), (int, float))
+                or not isinstance(ent.get("y"), (int, float))
+            ):
                 continue
             ex = int(math.floor(ent["x"]))
             ey = int(math.floor(ent["y"]))
@@ -282,9 +291,7 @@ def render_ascii_preview(
     return "\n".join(lines)
 
 
-def create_template_map(
-    file_path: Path, width: int = 16, height: int = 12, style: str = "arena"
-) -> MapData:
+def create_template_map(file_path: Path, width: int = 16, height: int = 12, style: str = "arena") -> MapData:
     """Generate a valid template map."""
     if width < 4 or height < 4:
         raise ValueError(f"Dimensions {width}x{height} too small. Minimum is 4x4.")
@@ -342,10 +349,18 @@ def create_level_stub_entities(map_data: MapData, level_id: str) -> Dict[str, An
     from tools.devkit.validator import analyse_level_progress  # avoids an import cycle
 
     rows = ["".join(row) for row in map_data.grid]
-    doors = [{"type": "door", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
-             for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"]
-    triggers = [{"type": "trigger", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
-                for y, row in enumerate(rows) for x, c in enumerate(row) if c == "T"]
+    doors = [
+        {"type": "door", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
+        for y, row in enumerate(rows)
+        for x, c in enumerate(row)
+        if c == "D"
+    ]
+    triggers = [
+        {"type": "trigger", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
+        for y, row in enumerate(rows)
+        for x, c in enumerate(row)
+        if c == "T"
+    ]
     player: Optional[Dict[str, Any]] = None
     for y, row in enumerate(rows):
         for x, c in enumerate(row):

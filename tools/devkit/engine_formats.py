@@ -200,7 +200,7 @@ def load_json_strict(path: Path) -> Tuple[Any, List[str]]:
     except OSError as exc:
         return None, [f"Unable to open {path}: {exc}"]
     if data.startswith(UTF8_BOM):
-        data = data[len(UTF8_BOM):]
+        data = data[len(UTF8_BOM) :]
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -210,9 +210,7 @@ def load_json_strict(path: Path) -> Tuple[Any, List[str]]:
         document = json.loads(text, object_pairs_hook=hook, parse_constant=_reject_constant)
     except ValueError as exc:
         return None, [f"{path}: invalid JSON: {exc}"]
-    errors = [
-        f'{path}: duplicate key "{key}" (each key may appear only once per object)' for key in hook.duplicates
-    ]
+    errors = [f'{path}: duplicate key "{key}" (each key may appear only once per object)' for key in hook.duplicates]
     return document, errors
 
 
@@ -276,7 +274,9 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     if etype == "pickup":
         kind = item.get("kind")
         if kind not in PICKUP_KINDS:
-            result.errors.append(f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}")
+            result.errors.append(
+                f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}"
+            )
             ok = False
         if kind == "key":
             if item.get("key") not in KEY_COLORS:
@@ -409,7 +409,7 @@ def parse_entities_csv(path: Path) -> EntityParse:
     index = 0
     for line_number, raw in enumerate(data.split(b"\n"), start=1):
         if line_number == 1 and raw.startswith(UTF8_BOM):
-            raw = raw[len(UTF8_BOM):]
+            raw = raw[len(UTF8_BOM) :]
         line = c_strip(raw.decode("utf-8", errors="surrogateescape"))
         if not line or line.startswith("#"):
             continue

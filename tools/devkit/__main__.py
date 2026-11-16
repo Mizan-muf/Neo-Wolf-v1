@@ -1,4 +1,5 @@
 """Entry point for python -m tools.devkit."""
+
 import sys
 from tools.devkit.cli import main
 

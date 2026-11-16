@@ -30,6 +30,7 @@ Usage:
 Options: --level N (default 10), --frames N (default 300), --timeout S (per run, default 180),
 --keep (keep the extracted folder).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,14 +51,23 @@ from typing import Dict, List, Optional, Tuple
 
 ARCHIVE_NAME = re.compile(r"^neo-wolf-(?P<version>\d+\.\d+\.\d+)-(?P<platform>[a-z0-9_-]+)\.(?P<ext>zip|tar\.gz)$")
 FORBIDDEN_EXECUTABLES = ("neo_wolf_tests", "neo_wolf_autoplay")
-REQUIRED_FILES = ("README.txt", "LICENSE.md", "docs/CONTROLS.md", "docs/TROUBLESHOOTING.md", "LICENSES/SDL2-LICENSE.txt",
-                  "LICENSES/SDL2-hidapi-LICENSE-bsd.txt", "LICENSES/SDL2-yuv2rgb-LICENSE.txt",
-                  "LICENSES/nlohmann-json-LICENSE.MIT.txt", "LICENSES/THIRD_PARTY_LICENSES.md")
+REQUIRED_FILES = (
+    "README.txt",
+    "LICENSE.md",
+    "docs/CONTROLS.md",
+    "docs/TROUBLESHOOTING.md",
+    "LICENSES/SDL2-LICENSE.txt",
+    "LICENSES/SDL2-hidapi-LICENSE-bsd.txt",
+    "LICENSES/SDL2-yuv2rgb-LICENSE.txt",
+    "LICENSES/nlohmann-json-LICENSE.MIT.txt",
+    "LICENSES/THIRD_PARTY_LICENSES.md",
+)
 BUNDLE_ID = "io.github.mizan-muf.neowolf"
 COPYRIGHT = "Copyright (c) 2026 Mizan-muf"
 # DLLs a static build must not need (SDL, the MSVC and MinGW C/C++ runtimes).
-FORBIDDEN_DLLS = re.compile(r"^(sdl2.*|vcruntime.*|msvcp.*|concrt.*|libstdc\+\+.*|libgcc.*|libwinpthread.*)\.dll$",
-                            re.IGNORECASE)
+FORBIDDEN_DLLS = re.compile(
+    r"^(sdl2.*|vcruntime.*|msvcp.*|concrt.*|libstdc\+\+.*|libgcc.*|libwinpthread.*)\.dll$", re.IGNORECASE
+)
 
 
 class Checker:
@@ -139,7 +149,7 @@ def pe_summary(data: bytes) -> Dict[str, object]:
     if data[:2] != b"MZ":
         raise ValueError("not an MZ executable")
     pe = struct.unpack_from("<I", data, 0x3C)[0]
-    if data[pe:pe + 4] != b"PE\0\0":
+    if data[pe : pe + 4] != b"PE\0\0":
         raise ValueError("no PE signature")
     machine, sections, _, _, _, opt_size, _ = struct.unpack_from("<HHIIIHH", data, pe + 4)
     opt = pe + 24
@@ -164,7 +174,7 @@ def pe_summary(data: bytes) -> Dict[str, object]:
         raise ValueError(f"RVA {rva:#x} is in no section")
 
     def c_string(pos: int) -> str:
-        return data[pos:data.index(b"\0", pos)].decode("ascii", "replace")
+        return data[pos : data.index(b"\0", pos)].decode("ascii", "replace")
 
     dlls: List[str] = []
     if import_rva:
@@ -194,13 +204,16 @@ def check_windows_exe(exe: Path, version: str, c: Checker) -> None:
         c.check(False, f"{exe.name} is a valid PE32+ executable", str(exc))
         return
     c.check(pe["machine"] == 0x8664, f"{exe.name} is x64", f"machine {pe['machine']:#x}")
-    c.check(pe["subsystem"] == 2, f"{exe.name} uses the GUI subsystem (no console window)",
-            f"subsystem {pe['subsystem']}")
+    c.check(
+        pe["subsystem"] == 2, f"{exe.name} uses the GUI subsystem (no console window)", f"subsystem {pe['subsystem']}"
+    )
     types = pe["resource_types"]
     c.check(3 in types and 14 in types, f"{exe.name} has an icon resource", f"resource types {types}")
     c.check(16 in types, f"{exe.name} has a version resource", f"resource types {types}")
-    c.check(version.encode("utf-16-le") in data and "ProductVersion".encode("utf-16-le") in data,
-            f"the version resource says {version}")
+    c.check(
+        version.encode("utf-16-le") in data and "ProductVersion".encode("utf-16-le") in data,
+        f"the version resource says {version}",
+    )
     c.check(COPYRIGHT.encode("utf-16-le") in data, f"the version resource has LegalCopyright '{COPYRIGHT}'")
     dlls = sorted(pe["dlls"], key=str.lower)
     print(f"[smoke]   imports: {', '.join(dlls)}")
@@ -221,16 +234,22 @@ def check_macos_app(app: Path, exe: Path, version: str, universal: bool, c: Chec
     plist_path = app / "Contents" / "Info.plist"
     with open(plist_path, "rb") as handle:
         plist = plistlib.load(handle)
-    c.check(plist.get("CFBundleShortVersionString") == version and plist.get("CFBundleVersion") == version,
-            f"Info.plist version {version}", str(plist.get("CFBundleShortVersionString")))
+    c.check(
+        plist.get("CFBundleShortVersionString") == version and plist.get("CFBundleVersion") == version,
+        f"Info.plist version {version}",
+        str(plist.get("CFBundleShortVersionString")),
+    )
     c.check(plist.get("CFBundleIdentifier") == BUNDLE_ID, f"Info.plist bundle id {BUNDLE_ID}")
     c.check(plist.get("NSHighResolutionCapable") is True, "Info.plist NSHighResolutionCapable")
     c.check(plist.get("LSMinimumSystemVersion") == "10.15", "Info.plist LSMinimumSystemVersion 10.15")
     c.check(plist.get("LSApplicationCategoryType") == "public.app-category.games", "Info.plist category games")
     c.check(plist.get("NSHumanReadableCopyright") == COPYRIGHT, f"Info.plist copyright '{COPYRIGHT}'")
     icon = plist.get("CFBundleIconFile", "")
-    c.check(bool(icon) and (app / "Contents" / "Resources" / (icon if icon.endswith(".icns") else icon + ".icns"))
-            .is_file(), "the app icon (.icns) is in Contents/Resources")
+    c.check(
+        bool(icon)
+        and (app / "Contents" / "Resources" / (icon if icon.endswith(".icns") else icon + ".icns")).is_file(),
+        "the app icon (.icns) is in Contents/Resources",
+    )
     if host_os() != "macos":
         print("[smoke]   (codesign, lipo, otool and plutil need macOS: skipped)")
         return
@@ -257,8 +276,17 @@ def check_macos_app(app: Path, exe: Path, version: str, universal: bool, c: Chec
 
 
 # --- Running the game ------------------------------------------------------------------------
-def run_game(exe: Path, cwd: Path, version: str, expected_root: Path, level: int, frames: int, timeout: float,
-             label: str, c: Checker) -> None:
+def run_game(
+    exe: Path,
+    cwd: Path,
+    version: str,
+    expected_root: Path,
+    level: int,
+    frames: int,
+    timeout: float,
+    label: str,
+    c: Checker,
+) -> None:
     env = dict(os.environ)
     env["SDL_VIDEODRIVER"] = "dummy"
     env["SDL_AUDIODRIVER"] = "dummy"
@@ -269,8 +297,7 @@ def run_game(exe: Path, cwd: Path, version: str, expected_root: Path, level: int
         print(f"[smoke] run ({label}): {cmd} in {cwd}")
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as out:
             try:
-                proc = subprocess.run(cmd, cwd=str(cwd), env=env, stdout=out, stderr=subprocess.STDOUT,
-                                      timeout=timeout)
+                proc = subprocess.run(cmd, cwd=str(cwd), env=env, stdout=out, stderr=subprocess.STDOUT, timeout=timeout)
                 code: Optional[int] = proc.returncode
             except subprocess.TimeoutExpired:
                 code = None
@@ -287,8 +314,9 @@ def run_game(exe: Path, cwd: Path, version: str, expected_root: Path, level: int
         assert match is not None
         root = os.path.normcase(os.path.realpath(match.group(1)))
         want = os.path.normcase(os.path.realpath(str(expected_root)))
-        c.check(root == want, f"[{label}] content root is inside the package: {expected_root.name}",
-                f"got {match.group(1)}")
+        c.check(
+            root == want, f"[{label}] content root is inside the package: {expected_root.name}", f"got {match.group(1)}"
+        )
     c.check(f"Neo-Wolf {version} starting" in log, f"[{label}] the log reports version {version}")
     c.check(f"Starting level {level} " in log, f"[{label}] level {level} started")
     c.check(f"Ran {frames} frame" in log, f"[{label}] {frames} frames rendered")
@@ -313,8 +341,11 @@ def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: fl
     sums = archive.parent / "SHA256SUMS"
     if sums.is_file():
         expected = read_sums(sums).get(archive.name)
-        c.check(expected == sha256(archive), "SHA256SUMS matches the archive",
-                "no entry" if expected is None else "checksum differs")
+        c.check(
+            expected == sha256(archive),
+            "SHA256SUMS matches the archive",
+            "no entry" if expected is None else "checksum differs",
+        )
     else:
         print("[smoke]   (no SHA256SUMS next to the archive: checksum not checked)")
 
@@ -346,8 +377,10 @@ def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: fl
         c.check(exe.is_file(), f"the executable is there: {exe.relative_to(top).as_posix()}")
         if pkg_os != "windows" and exe.is_file():
             c.check(os.access(exe, os.X_OK), "the executable kept its execute permission")
-        c.check((expected_root / "game" / "maps").is_dir() and (expected_root / "game" / "defs").is_dir(),
-                f"game/maps and game/defs in {expected_root.relative_to(top).as_posix() or '.'}")
+        c.check(
+            (expected_root / "game" / "maps").is_dir() and (expected_root / "game" / "defs").is_dir(),
+            f"game/maps and game/defs in {expected_root.relative_to(top).as_posix() or '.'}",
+        )
         for rel in REQUIRED_FILES:
             c.check((top / rel).is_file(), rel)
         readme = top / "README.txt"
@@ -358,8 +391,10 @@ def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: fl
         licence = top / "LICENSE.md"
         if licence.is_file():
             text = licence.read_text(encoding="utf-8", errors="replace")
-            c.check(text.startswith("Required Notice: Copyright") and "PolyForm Noncommercial License 1.0.0" in text,
-                    "LICENSE.md has the Required Notice and the PolyForm Noncommercial 1.0.0 terms")
+            c.check(
+                text.startswith("Required Notice: Copyright") and "PolyForm Noncommercial License 1.0.0" in text,
+                "LICENSE.md has the Required Notice and the PolyForm Noncommercial 1.0.0 terms",
+            )
         shipped = [p.relative_to(top).as_posix() for p in top.rglob("*") if p.is_file()]
         bad = [p for p in shipped if p.rsplit("/", 1)[-1].split(".")[0] in FORBIDDEN_EXECUTABLES]
         c.check(not bad, "no test or autoplay executable shipped", ", ".join(bad))
@@ -423,8 +458,10 @@ def main() -> int:
         return 2
 
     for archive in archives:
-        failures += [f"{archive.name}: {f}" for f in
-                     smoke_archive(archive, not args.no_run, args.level, args.frames, args.timeout, args.keep)]
+        failures += [
+            f"{archive.name}: {f}"
+            for f in smoke_archive(archive, not args.no_run, args.level, args.frames, args.timeout, args.keep)
+        ]
     if failures:
         print(f"\n[smoke] FAILED ({len(failures)}):")
         for failure in failures:

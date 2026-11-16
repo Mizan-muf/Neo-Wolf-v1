@@ -24,6 +24,7 @@ anti-aliases the edges.
 Usage:
     python3 tools/devkit/gen_icon.py --iconset build/NeoWolf.iconset --ico build/neowolf.ico
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,10 +52,19 @@ WALL_SEGMENTS = 4  # stone blocks along each wall
 # The wolf's head, in a unit box placed over the far wall (WOLF_BOX).
 WOLF_BOX = (0.335, 0.300, 0.665, 0.615)
 WOLF_HEAD: List[Point] = [
-    (0.16, 0.02), (0.38, 0.27), (0.62, 0.27), (0.84, 0.02),  # ears
-    (0.88, 0.40), (0.98, 0.57), (0.80, 0.62), (0.64, 0.90),  # right cheek and jaw
-    (0.50, 1.00),                                            # muzzle
-    (0.36, 0.90), (0.20, 0.62), (0.02, 0.57), (0.12, 0.40),  # left jaw and cheek
+    (0.16, 0.02),
+    (0.38, 0.27),
+    (0.62, 0.27),
+    (0.84, 0.02),  # ears
+    (0.88, 0.40),
+    (0.98, 0.57),
+    (0.80, 0.62),
+    (0.64, 0.90),  # right cheek and jaw
+    (0.50, 1.00),  # muzzle
+    (0.36, 0.90),
+    (0.20, 0.62),
+    (0.02, 0.57),
+    (0.12, 0.40),  # left jaw and cheek
 ]
 WOLF_EYES: List[List[Point]] = [
     [(0.25, 0.44), (0.43, 0.50), (0.41, 0.56), (0.29, 0.52)],
@@ -74,11 +84,16 @@ EYES: Color = (255, 226, 110)
 
 # Sizes written by --iconset (file name -> pixels) and --ico.
 ICONSET: Dict[str, int] = {
-    "icon_16x16.png": 16, "icon_16x16@2x.png": 32,
-    "icon_32x32.png": 32, "icon_32x32@2x.png": 64,
-    "icon_128x128.png": 128, "icon_128x128@2x.png": 256,
-    "icon_256x256.png": 256, "icon_256x256@2x.png": 512,
-    "icon_512x512.png": 512, "icon_512x512@2x.png": 1024,
+    "icon_16x16.png": 16,
+    "icon_16x16@2x.png": 32,
+    "icon_32x32.png": 32,
+    "icon_32x32@2x.png": 64,
+    "icon_128x128.png": 128,
+    "icon_128x128@2x.png": 256,
+    "icon_256x256.png": 256,
+    "icon_256x256@2x.png": 512,
+    "icon_512x512.png": 512,
+    "icon_512x512@2x.png": 1024,
 }
 ICO_SIZES: Sequence[int] = (16, 24, 32, 48, 64, 128, 256)
 
@@ -151,7 +166,7 @@ def _wall_row(n: int, left: bool) -> bytes:
         phase = ((depth - 1.0) / segment) % 1.0
         if phase < 0.06 or phase > 0.97:
             shade *= 0.55  # mortar seam
-        out[x * 4:x * 4 + 4] = _rgba(_scale(WALL_STONE, shade))
+        out[x * 4 : x * 4 + 4] = _rgba(_scale(WALL_STONE, shade))
     return bytes(out)
 
 
@@ -175,12 +190,12 @@ def render(n: int) -> List[bytearray]:
         def fill(x0: int, x1: int, colour: bytes) -> None:
             x0, x1 = max(x0, b0), min(x1, b1)
             if x1 > x0:
-                row[x0 * 4:x1 * 4] = colour * (x1 - x0)
+                row[x0 * 4 : x1 * 4] = colour * (x1 - x0)
 
         def fill_pattern(x0: int, x1: int, pattern: bytes) -> None:
             x0, x1 = max(x0, b0), min(x1, b1)
             if x1 > x0:
-                row[x0 * 4:x1 * 4] = pattern[x0 * 4:x1 * 4]
+                row[x0 * 4 : x1 * 4] = pattern[x0 * 4 : x1 * 4]
 
         if FAR_Y0 <= y < FAR_Y1:
             f0, f1 = _pixel_range(FAR_X0, FAR_X1, n)
@@ -188,7 +203,7 @@ def render(n: int) -> List[bytearray]:
             fill_pattern(f1, b1, right_wall)
             for x in range(f0, f1):  # radial glow
                 d = math.hypot((x + 0.5) / n - glow_cx, y - glow_cy) / glow_r
-                row[x * 4:x * 4 + 4] = _rgba(_lerp(GLOW_CENTRE, GLOW_EDGE, d * d))
+                row[x * 4 : x * 4 + 4] = _rgba(_lerp(GLOW_CENTRE, GLOW_EDGE, d * d))
             for x0, x1 in _polygon_spans(wolf, y):
                 fill(*_pixel_range(x0, x1, n), _rgba(WOLF))
             for eye in eyes:
@@ -220,7 +235,7 @@ def downsample(rows: List[bytearray], factor: int) -> List[bytearray]:
         acc_g = [0] * n
         acc_b = [0] * n
         acc_a = [0] * n
-        for src in rows[oy * factor:(oy + 1) * factor]:
+        for src in rows[oy * factor : (oy + 1) * factor]:
             for ox in range(n):
                 i = ox * factor * 4
                 for _ in range(factor):
@@ -264,10 +279,12 @@ def encode_png(rows: List[bytearray]) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
     raw = b"".join(b"\x00" + bytes(row) for row in rows)
-    return (b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw, 9))
-            + chunk(b"IEND", b""))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
 
 
 def encode_ico(images: Sequence[Tuple[int, bytes]]) -> bytes:

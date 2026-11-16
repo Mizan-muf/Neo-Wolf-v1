@@ -42,8 +42,18 @@ class CliTest(unittest.TestCase):
 
 class TestCreateMap(CliTest):
     def test_level_stub_registered_and_valid(self) -> None:
-        code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "delta", "--style", "dungeon",
-                            "--register", "--name", "Delta Depot")
+        code, out = run_cli(
+            "--root",
+            str(self.root),
+            "create-map",
+            "--level-id",
+            "delta",
+            "--style",
+            "dungeon",
+            "--register",
+            "--name",
+            "Delta Depot",
+        )
         self.assertEqual(code, 0, out)
         map_path = self.root / "game" / "maps" / "delta.map"
         entities_path = self.root / "game" / "defs" / "delta.entities.json"
@@ -53,8 +63,16 @@ class TestCreateMap(CliTest):
         self.assertEqual([e["type"] for e in stub["entities"]].count("player"), 1)
         self.assertIn("door", [e["type"] for e in stub["entities"]])  # the dungeon template has a 'D'
         campaign = json.loads((self.root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
-        self.assertEqual(campaign["levels"][-1], {"id": "delta", "name": "Delta Depot", "map": "game/maps/delta.map",
-                                                  "entities": "game/defs/delta.entities.json", "theme": "fx"})
+        self.assertEqual(
+            campaign["levels"][-1],
+            {
+                "id": "delta",
+                "name": "Delta Depot",
+                "map": "game/maps/delta.map",
+                "entities": "game/defs/delta.entities.json",
+                "theme": "fx",
+            },
+        )
         report = validate_project(self.root, require_levels=4)
         self.assertEqual((report.errors, report.warnings), ([], []))
 
@@ -62,8 +80,20 @@ class TestCreateMap(CliTest):
         for style in ("box", "arena", "dungeon", "crossroads"):
             with self.subTest(style=style):
                 level_id = f"t_{style}"
-                code, out = run_cli("--root", str(self.root), "create-map", "--level-id", level_id, "--style", style,
-                                    "--width", "14", "--height", "11", "--register")
+                code, out = run_cli(
+                    "--root",
+                    str(self.root),
+                    "create-map",
+                    "--level-id",
+                    level_id,
+                    "--style",
+                    style,
+                    "--width",
+                    "14",
+                    "--height",
+                    "11",
+                    "--register",
+                )
                 self.assertEqual(code, 0, out)
         report = validate_project(self.root, require_levels=7)
         self.assertEqual((report.errors, report.warnings), ([], []))
@@ -86,8 +116,9 @@ class TestCreateMap(CliTest):
     def test_register_errors(self) -> None:
         self.assertEqual(run_cli("--root", str(self.root), "create-map", "--register")[0], 2)
         self.assertEqual(run_cli("--root", str(self.root), "create-map", "--level-id", "Bad Id")[0], 2)
-        code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "alpha2", "--register",
-                            "--theme", "nope")
+        code, out = run_cli(
+            "--root", str(self.root), "create-map", "--level-id", "alpha2", "--register", "--theme", "nope"
+        )
         self.assertEqual(code, 1)
         self.assertIn("theme 'nope' not found", out)
         self.assertFalse((self.root / "game" / "maps" / "alpha2.map").exists())  # nothing written
@@ -97,7 +128,9 @@ class TestCreateMap(CliTest):
         code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "beta", "--register")
         self.assertEqual(code, 1)
         self.assertIn("already has a level 'beta'", out)
-        self.assertEqual(run_cli("--root", str(self.root), "create-map", "--level-id", "beta", "--register", "--force")[0], 0)
+        self.assertEqual(
+            run_cli("--root", str(self.root), "create-map", "--level-id", "beta", "--register", "--force")[0], 0
+        )
         campaign = json.loads((self.root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
         self.assertEqual([lvl["id"] for lvl in campaign["levels"]], ["alpha", "beta", "gamma"])
 
@@ -166,8 +199,9 @@ class TestInspectMap(CliTest):
         code, out = run_cli("--root", str(self.root), "inspect-map", "--level", "alpha")
         self.assertEqual(code, 1)
         self.assertIn("Status: FAILED: Spawn (0.50, 0.50) is in cell (0, 0), inside the solid tile '#'", out)
-        code, out = run_cli("--root", str(self.root), "inspect-map", "--level", "alpha", "--spawn-x", "1.5",
-                            "--spawn-y", "1.5")
+        code, out = run_cli(
+            "--root", str(self.root), "inspect-map", "--level", "alpha", "--spawn-x", "1.5", "--spawn-y", "1.5"
+        )
         self.assertEqual(code, 0, out)  # an explicit spawn overrides the entity
 
     def test_unreachable_exit_fails(self) -> None:
@@ -182,8 +216,17 @@ class TestInspectMap(CliTest):
         code, out = run_cli("--root", str(self.root), "inspect-map", str(map_path), "--no-entities")
         self.assertEqual(code, 1)
         self.assertIn("no spawn", out)
-        code, out = run_cli("--root", str(self.root), "inspect-map", str(map_path), "--no-entities", "--spawn-x",
-                            "1.5", "--spawn-y", "1.5")
+        code, out = run_cli(
+            "--root",
+            str(self.root),
+            "inspect-map",
+            str(map_path),
+            "--no-entities",
+            "--spawn-x",
+            "1.5",
+            "--spawn-y",
+            "1.5",
+        )
         self.assertEqual(code, 0, out)  # every 'D' counts as an openable door
         self.assertEqual(run_cli("--root", str(self.root), "inspect-map", str(map_path), "--spawn-x", "1.5")[0], 2)
         self.assertEqual(run_cli("--root", str(self.root), "inspect-map")[0], 2)
@@ -311,12 +354,21 @@ class FakeEnv:
 
 class TestDoctor(unittest.TestCase):
     def doctor(self, system: str, env: FakeEnv, root: Path = REPO_ROOT, **kwargs):
-        return run_doctor(root, system=system, which=env.which, run=env.run, environ=kwargs.pop("environ", {}),
-                          check_network=kwargs.pop("check_network", False), **kwargs)
+        return run_doctor(
+            root,
+            system=system,
+            which=env.which,
+            run=env.run,
+            environ=kwargs.pop("environ", {}),
+            check_network=kwargs.pop("check_network", False),
+            **kwargs,
+        )
 
     def test_macos_with_everything(self) -> None:
-        env = FakeEnv({"cmake", "ninja", "clang++", "make"},
-                      {"cmake": "cmake version 3.31.6\n", "ninja": "1.12.1\n", "clang++": "Apple clang version 17.0.0\n"})
+        env = FakeEnv(
+            {"cmake", "ninja", "clang++", "make"},
+            {"cmake": "cmake version 3.31.6\n", "ninja": "1.12.1\n", "clang++": "Apple clang version 17.0.0\n"},
+        )
         report = self.doctor("Darwin", env)
         self.assertEqual(report.find("CMake").status, "PASS")
         self.assertEqual(report.find("Ninja").status, "PASS")
@@ -344,16 +396,24 @@ class TestDoctor(unittest.TestCase):
         vswhere = Path(program_files.name) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
         vswhere.parent.mkdir(parents=True)
         vswhere.write_bytes(b"")
-        env = FakeEnv({"cmake"}, {"cmake": "cmake version 3.29.0\n",
-                                  "vswhere displayName": "Visual Studio Community 2022\n",
-                                  "vswhere catalog_productDisplayVersion": "17.10.3\n"})
+        env = FakeEnv(
+            {"cmake"},
+            {
+                "cmake": "cmake version 3.29.0\n",
+                "vswhere displayName": "Visual Studio Community 2022\n",
+                "vswhere catalog_productDisplayVersion": "17.10.3\n",
+            },
+        )
         report = self.doctor("Windows", env, environ={"ProgramFiles(x86)": program_files.name})
         self.assertEqual(report.find("C++ compiler").status, "PASS")
         self.assertIn("Visual Studio Community 2022 17.10.3", report.find("C++ compiler").message)
         self.assertEqual(report.find("Ninja").status, "INFO")  # not needed with the VS generator
         self.assertFalse(report.has_failures)
-        report = self.doctor("Windows", FakeEnv({"cmake"}, {"cmake": "cmake version 3.29.0\n"}),
-                             environ={"ProgramFiles(x86)": str(Path(program_files.name) / "none")})
+        report = self.doctor(
+            "Windows",
+            FakeEnv({"cmake"}, {"cmake": "cmake version 3.29.0\n"}),
+            environ={"ProgramFiles(x86)": str(Path(program_files.name) / "none")},
+        )
         self.assertEqual(report.find("C++ compiler").status, "FAIL")
         self.assertIn("Desktop development with C++", report.find("C++ compiler").remediation)
 
@@ -371,7 +431,9 @@ class TestDoctor(unittest.TestCase):
             'set(NEOWOLF_SDL2_VERSION "2.32.10")\n'
             'set(NEOWOLF_SDL2_URL\n    "https://github.com/libsdl-org/SDL/releases/download/release-${NEOWOLF_SDL2_VERSION}/'
             'SDL2-${NEOWOLF_SDL2_VERSION}.tar.gz")\n'
-            f'set(NEOWOLF_SDL2_SHA256 "{sha}")\n', encoding="utf-8")
+            f'set(NEOWOLF_SDL2_SHA256 "{sha}")\n',
+            encoding="utf-8",
+        )
         env = FakeEnv({"cmake", "ninja", "g++"}, {"cmake": "cmake version 3.28.3", "ninja": "1.11.1", "g++": "g++ 13"})
         sdl = lambda **kw: self.doctor("Linux", env, root=root, **kw).find("SDL2 source")  # noqa: E731
         self.assertEqual(sdl(check_network=False).status, "INFO")
@@ -379,13 +441,24 @@ class TestDoctor(unittest.TestCase):
         offline = sdl(check_network=True, network=lambda: False)
         self.assertEqual(offline.status, "WARN")  # a warning, not a failure: the build may still be offline-ready
         self.assertIn("FETCHCONTENT_SOURCE_DIR_SDL2", offline.remediation)
-        tarball = root / "build" / "linux" / "_deps" / "sdl2-subbuild" / "sdl2-populate-prefix" / "src" / "SDL2-2.32.10.tar.gz"
+        tarball = (
+            root
+            / "build"
+            / "linux"
+            / "_deps"
+            / "sdl2-subbuild"
+            / "sdl2-populate-prefix"
+            / "src"
+            / "SDL2-2.32.10.tar.gz"
+        )
         tarball.parent.mkdir(parents=True)
         tarball.write_bytes(tarball_bytes)
         self.assertEqual(sdl(check_network=True, network=lambda: False).status, "PASS")
         header = root / "build" / "linux" / "_deps" / "sdl2-src" / "include" / "SDL_version.h"
         header.parent.mkdir(parents=True)
-        header.write_text("#define SDL_MAJOR_VERSION   2\n#define SDL_MINOR_VERSION   32\n#define SDL_PATCHLEVEL      10\n")
+        header.write_text(
+            "#define SDL_MAJOR_VERSION   2\n#define SDL_MINOR_VERSION   32\n#define SDL_PATCHLEVEL      10\n"
+        )
         self.assertIn("already extracted", sdl().message)
         tarball.unlink()
         header.unlink()
@@ -428,8 +501,14 @@ class TestRootLaunchersAndColours(unittest.TestCase):
         self.assertIn(b"\r\n", data)
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))  # CRLF only (cmd.exe labels/blocks)
         text = data.decode("ascii")
-        for part in ("setlocal", "endlocal & exit /b %NEO_RC%", 'set "NEO_PY=py -3"', "sys.version_info >= (3, 8)",
-                     'set "NEO_RC=%ERRORLEVEL%"', "%NEO_PY% \"%SCRIPT_DIR%devkit.py\" %*"):
+        for part in (
+            "setlocal",
+            "endlocal & exit /b %NEO_RC%",
+            'set "NEO_PY=py -3"',
+            "sys.version_info >= (3, 8)",
+            'set "NEO_RC=%ERRORLEVEL%"',
+            '%NEO_PY% "%SCRIPT_DIR%devkit.py" %*',
+        ):
             self.assertIn(part, text)
 
     def test_unix_launcher(self) -> None:
@@ -441,13 +520,37 @@ class TestRootLaunchersAndColours(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        ok = subprocess.run([bash, str(DEVKIT_DIR / "neo_devkit"), "--no-color", "validate", "--map",
-                             str(REPO_ROOT / "tests" / "fixtures" / "parity" / "crlf.map")],
-                            cwd=temp.name, env=env, capture_output=True, text=True, timeout=60)
+        ok = subprocess.run(
+            [
+                bash,
+                str(DEVKIT_DIR / "neo_devkit"),
+                "--no-color",
+                "validate",
+                "--map",
+                str(REPO_ROOT / "tests" / "fixtures" / "parity" / "crlf.map"),
+            ],
+            cwd=temp.name,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-        bad = subprocess.run([bash, str(DEVKIT_DIR / "neo_devkit"), "--no-color", "validate", "--map",
-                              str(REPO_ROOT / "tests" / "fixtures" / "parity" / "cr_only.map")],
-                             cwd=temp.name, env=env, capture_output=True, text=True, timeout=60)
+        bad = subprocess.run(
+            [
+                bash,
+                str(DEVKIT_DIR / "neo_devkit"),
+                "--no-color",
+                "validate",
+                "--map",
+                str(REPO_ROOT / "tests" / "fixtures" / "parity" / "cr_only.map"),
+            ],
+            cwd=temp.name,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         self.assertEqual(bad.returncode, 1, bad.stdout + bad.stderr)  # the exit code is passed on
 
     def test_colours_only_on_a_capable_terminal(self) -> None:

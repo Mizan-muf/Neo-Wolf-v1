@@ -75,8 +75,11 @@ class TestCampaignManifest(CampaignRuleTest):
         self.assertTrue(contains(self.validate().errors, "id must use only a-z"))
 
     def test_missing_files_and_theme(self) -> None:
-        write_campaign(self.root, ["alpha", "beta", "gamma"], extra={"beta": {"map": "game/maps/nope.map"},
-                                                                     "gamma": {"theme": "missing"}})
+        write_campaign(
+            self.root,
+            ["alpha", "beta", "gamma"],
+            extra={"beta": {"map": "game/maps/nope.map"}, "gamma": {"theme": "missing"}},
+        )
         errors = self.validate().errors
         self.assertTrue(contains(errors, "(beta)", "map file not found: game/maps/nope.map"))
         self.assertTrue(contains(errors, "(gamma)", "theme 'missing' not found"))
@@ -92,8 +95,11 @@ class TestCampaignManifest(CampaignRuleTest):
         self.assertTrue(contains(self.validate().errors, "invalid JSON"))
 
     def test_unknown_keys_and_long_names_are_warnings(self) -> None:
-        write_campaign(self.root, ["alpha", "beta", "gamma"],
-                       extra={"alpha": {"music": "x.ogg"}, "beta": {"name": "A level name that is far too long to fit"}})
+        write_campaign(
+            self.root,
+            ["alpha", "beta", "gamma"],
+            extra={"alpha": {"music": "x.ogg"}, "beta": {"name": "A level name that is far too long to fit"}},
+        )
         report = self.validate()
         self.assertTrue(report.is_valid, report.errors)
         self.assertTrue(contains(report.warnings, '(alpha): unknown key "music" ignored'))
@@ -107,8 +113,9 @@ class TestCampaignManifest(CampaignRuleTest):
 
     def test_orphan_files_are_warnings_and_fail_strict(self) -> None:
         (self.root / "game" / "maps" / "unused.map").write_text("#####\n#..X#\n#####\n", encoding="utf-8")
-        write_entities(self.root / "game" / "defs" / "unused.entities.json", "unused",
-                       [{"type": "player", "x": 1.5, "y": 1.5}])
+        write_entities(
+            self.root / "game" / "defs" / "unused.entities.json", "unused", [{"type": "player", "x": 1.5, "y": 1.5}]
+        )
         (self.root / "game" / "defs" / "stale.entities.csv").write_text("player,1.5,1.5\n", encoding="utf-8")
         (self.root / "game" / "defs" / "alpha.entities.csv").write_text("player,1.5,1.5\n", encoding="utf-8")
         report = self.validate()
@@ -198,7 +205,9 @@ class TestProgress(CampaignRuleTest):
         ents[4].update(x=8.5)  # the red key behind its own door
         self.set_level("beta", entities=ents)
         errors = self.validate().errors
-        self.assertTrue(contains(errors, "(beta): the red key cannot be reached from the spawn before the door it opens"))
+        self.assertTrue(
+            contains(errors, "(beta): the red key cannot be reached from the spawn before the door it opens")
+        )
         self.assertTrue(contains(errors, "with the keys that can be collected first"))
         self.set_level("beta", entities=self.entities("beta")[:4])  # no red key at all
         self.assertTrue(contains(self.validate().errors, "needs the red key, but the level has no red key"))
@@ -237,13 +246,17 @@ class TestGameplaySchema(CampaignRuleTest):
         self.assertEqual(values["enemies"]["brute"]["health"], 140)
 
     def test_types_ranges_and_cross_fields(self) -> None:
-        report, _ = self.check('{ "weapon": { "damage": "35", "fireRate": -1, "maxAmmo": 3.0 }, '
-                               '"player": { "collisionRadius": 0.5, "turnSpeed": 0 } }')
-        for part in ('weapon.damage must be an integer from 1 to 10000, got "35"',
-                     "weapon.fireRate must be a number >= 0 and <= 60, got -1",
-                     "weapon.maxAmmo must be an integer from 0 to 10000, got 3.0",
-                     "player.collisionRadius must be a number > 0 and < 0.5",
-                     "player.turnSpeed must be a number > 0 and <= 20"):
+        report, _ = self.check(
+            '{ "weapon": { "damage": "35", "fireRate": -1, "maxAmmo": 3.0 }, '
+            '"player": { "collisionRadius": 0.5, "turnSpeed": 0 } }'
+        )
+        for part in (
+            'weapon.damage must be an integer from 1 to 10000, got "35"',
+            "weapon.fireRate must be a number >= 0 and <= 60, got -1",
+            "weapon.maxAmmo must be an integer from 0 to 10000, got 3.0",
+            "player.collisionRadius must be a number > 0 and < 0.5",
+            "player.turnSpeed must be a number > 0 and <= 20",
+        ):
             self.assertTrue(contains(report.errors, part), (part, report.errors))
         report, _ = self.check('{ "player": { "initialHealth": 120, "maxHealth": 100 } }')
         self.assertTrue(contains(report.errors, "player.initialHealth (120) must not exceed player.maxHealth (100)"))
@@ -280,14 +293,18 @@ class TestGameplaySchema(CampaignRuleTest):
 class TestThemesAndConfigFiles(CampaignRuleTest):
     def test_theme_textures_must_exist(self) -> None:
         theme = self.root / "game" / "defs" / "themes" / "fx.cfg"
-        theme.write_text(theme.read_text(encoding="utf-8").replace("exit=game/assets/fx.ppm", "exit=game/assets/gone.ppm"),
-                         encoding="utf-8")
+        theme.write_text(
+            theme.read_text(encoding="utf-8").replace("exit=game/assets/fx.ppm", "exit=game/assets/gone.ppm"),
+            encoding="utf-8",
+        )
         self.assertTrue(contains(self.validate().errors, "themes/fx.cfg references non-existent file for 'exit'"))
 
     def test_theme_syntax_and_keys_like_the_engine(self) -> None:
         theme = self.root / "game" / "defs" / "themes" / "fx.cfg"
         text = theme.read_text(encoding="utf-8")
-        theme.write_text(text.replace("floor=game/assets/fx.ppm\n", "floor=\nceiling game/assets/fx.ppm\n"), encoding="utf-8")
+        theme.write_text(
+            text.replace("floor=game/assets/fx.ppm\n", "floor=\nceiling game/assets/fx.ppm\n"), encoding="utf-8"
+        )
         errors = self.validate().errors
         self.assertTrue(contains(errors, "Empty key or value", "the engine ignores every entry"))
         self.assertTrue(contains(errors, "Missing '=' delimiter"))

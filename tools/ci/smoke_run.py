@@ -24,6 +24,7 @@ Usage:
 Options: --timeout S (frames mode, default 60), --cwd DIR (default: a new temporary
 directory). Unrecognised arguments are forwarded to the game (e.g. --level 1).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,10 +85,12 @@ def run(cmd: list[str], cwd: str, env: dict[str, str], frames_mode: bool, second
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("exe", help="path to the neo_wolf executable")
-    parser.add_argument("--seconds", type=float, default=5.0,
-                        help="stay-up mode: how long the game must keep running (default 5)")
-    parser.add_argument("--timeout", type=float, default=60.0,
-                        help="--frames mode: how long to wait for the game to exit (default 60)")
+    parser.add_argument(
+        "--seconds", type=float, default=5.0, help="stay-up mode: how long the game must keep running (default 5)"
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=60.0, help="--frames mode: how long to wait for the game to exit (default 60)"
+    )
     parser.add_argument("--cwd", help="working directory for the game (default: a new temporary directory)")
     args, game_args = parser.parse_known_args()
 
@@ -103,8 +106,9 @@ def main() -> int:
     env.setdefault("SDL_AUDIODRIVER", "dummy")
     env.pop("SDL_RENDER_DRIVER", None)
 
-    with tempfile.TemporaryDirectory(prefix="neowolf-smoke-") as temp_cwd, \
-            tempfile.TemporaryDirectory(prefix="neowolf-smoke-pref-") as temp_pref:
+    with tempfile.TemporaryDirectory(prefix="neowolf-smoke-") as temp_cwd, tempfile.TemporaryDirectory(
+        prefix="neowolf-smoke-pref-"
+    ) as temp_pref:
         if not any(a == "--pref-dir" or a.startswith("--pref-dir=") for a in game_args):
             game_args = [*game_args, "--pref-dir", temp_pref]
         cmd = [str(exe), *game_args]

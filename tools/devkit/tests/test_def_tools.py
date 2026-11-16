@@ -29,12 +29,7 @@ class TestDefTools(unittest.TestCase):
         csv_file = self.dir_path / "test.entities.csv"
         json_file = self.dir_path / "test.entities.json"
 
-        csv_content = (
-            "# type,x,y,mapX,mapY\n"
-            "player,2.5,2.5\n"
-            "enemy,6.5,2.8\n"
-            "door,8.5,7.5,8,7\n"
-        )
+        csv_content = "# type,x,y,mapX,mapY\nplayer,2.5,2.5\nenemy,6.5,2.8\ndoor,8.5,7.5,8,7\n"
         csv_file.write_text(csv_content, encoding="utf-8")
 
         csv_to_json(csv_file, json_file, level_id="test")
@@ -107,14 +102,17 @@ class TestDefTools(unittest.TestCase):
             sync_entity_definitions(self.dir_path, entities_path=defs / "level03.entities.json")
         with self.assertRaises(ValueError):
             sync_entity_definitions(self.dir_path, entities_path=defs / "level01.map")
-        self.assertEqual(entity_file_pair(defs / "x.entities.csv"),
-                         (defs / "x.entities.json", defs / "x.entities.csv", "x"))
+        self.assertEqual(
+            entity_file_pair(defs / "x.entities.csv"), (defs / "x.entities.json", defs / "x.entities.csv", "x")
+        )
 
     def _defs_with_lights(self) -> Path:
         defs = self.dir_path / "game" / "defs"
         defs.mkdir(parents=True)
         self.lights = [{"x": 1, "y": 1, "w": 3, "h": 2, "level": 0.35}, {"x": 2, "y": 1, "w": 1, "h": 1, "level": 0.2}]
-        save_entity_json("level05", [{"type": "player", "x": 1.5, "y": 1.5}], defs / "level05.entities.json", self.lights)
+        save_entity_json(
+            "level05", [{"type": "player", "x": 1.5, "y": 1.5}], defs / "level05.entities.json", self.lights
+        )
         return defs
 
     def test_json_to_csv_warns_when_lights_are_dropped(self) -> None:
@@ -127,14 +125,18 @@ class TestDefTools(unittest.TestCase):
         csv_text = (defs / "level05.entities.csv").read_text(encoding="utf-8")
         self.assertIn("# lights: 2 light zone(s) in the JSON are not exported", csv_text)
         self.assertEqual(load_entity_csv(defs / "level05.entities.csv"), [{"type": "player", "x": 1.5, "y": 1.5}])
-        self.assertEqual(json.loads((defs / "level05.entities.json").read_text(encoding="utf-8"))["lights"], self.lights)
+        self.assertEqual(
+            json.loads((defs / "level05.entities.json").read_text(encoding="utf-8"))["lights"], self.lights
+        )
 
     def test_csv_to_json_keeps_the_lights(self) -> None:
         defs = self._defs_with_lights()
         (defs / "level05.entities.csv").write_text("player,2.5,2.5\nenemy,3.5,1.5\n", encoding="utf-8")
         synced = sync_entity_definitions(self.dir_path, from_csv=True)
-        self.assertEqual(synced, ["Synced level05.entities.csv -> level05.entities.json "
-                                  "(kept its 2 light zone(s); the CSV has none)"])
+        self.assertEqual(
+            synced,
+            ["Synced level05.entities.csv -> level05.entities.json (kept its 2 light zone(s); the CSV has none)"],
+        )
         document = json.loads((defs / "level05.entities.json").read_text(encoding="utf-8"))
         self.assertEqual(document["lights"], self.lights)
         self.assertEqual([e["type"] for e in document["entities"]], ["player", "enemy"])

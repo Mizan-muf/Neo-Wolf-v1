@@ -20,6 +20,7 @@ Usage:
 
 Standard library only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -76,8 +77,11 @@ class Report(NamedTuple):
 
 def check(assets_dir: Path = ASSETS_DIR) -> Report:
     expected = expected_files()
-    on_disk = sorted(p.relative_to(assets_dir).as_posix() for p in assets_dir.rglob("*")
-                     if p.is_file() and p.name not in IGNORED_NAMES)
+    on_disk = sorted(
+        p.relative_to(assets_dir).as_posix()
+        for p in assets_dir.rglob("*")
+        if p.is_file() and p.name not in IGNORED_NAMES
+    )
     matched: Dict[str, str] = {}
     unknown: List[str] = []
     stale: List[str] = []
@@ -112,8 +116,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     for script in report.matched.values():
         counts[script] = counts.get(script, 0) + 1
     summary = ", ".join(f"{Path(script).name} {count}" for script, count in counts.items())
-    print(f"All {len(report.matched)} files under game/assets are reproduced byte for byte by the generators "
-          f"({summary}).")
+    print(
+        f"All {len(report.matched)} files under game/assets are reproduced byte for byte by the generators ({summary})."
+    )
     return 0
 
 

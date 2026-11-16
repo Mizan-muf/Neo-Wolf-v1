@@ -75,11 +75,32 @@ VALID_TILE_CHARS = {
     "T": "Trigger",
     "X": "Exit",
 }
-THEME_KEYS = {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit", "door_red", "door_blue", "door_gold"}
+THEME_KEYS = {
+    "wall",
+    "wall_alt_a",
+    "wall_alt_b",
+    "door",
+    "floor",
+    "ceiling",
+    "exit",
+    "door_red",
+    "door_blue",
+    "door_gold",
+}
 # sprites.cfg (engine: kSpriteTextureKeys in engine/assets/ContentConfig.h).
 SPRITE_KEYS = {
-    "guard", "brute", "runner", "guard_dead", "brute_dead", "runner_dead",
-    "health", "ammo", "key_red", "key_blue", "key_gold", "decoration",
+    "guard",
+    "brute",
+    "runner",
+    "guard_dead",
+    "brute_dead",
+    "runner_dead",
+    "health",
+    "ammo",
+    "key_red",
+    "key_blue",
+    "key_gold",
+    "decoration",
 }
 RENAMED_SPRITE_KEYS = {"enemy": "guard", "pickup": "health"}  # Phase 6
 AUDIO_REQUIRED_KEYS = {"door_open", "pickup", "enemy_alert"}
@@ -136,7 +157,9 @@ def validate_map(file_path: Path) -> Tuple[ValidationReport, Optional[List[str]]
             )
     for y in range(height):
         if rows[y][0] not in SOLID_TILES:
-            report.add_error(f"Map {file_path}: West perimeter leak at (0, {y}) — found '{rows[y][0]}', expected solid wall")
+            report.add_error(
+                f"Map {file_path}: West perimeter leak at (0, {y}) — found '{rows[y][0]}', expected solid wall"
+            )
         if rows[y][-1] not in SOLID_TILES:
             report.add_error(
                 f"Map {file_path}: East perimeter leak at ({width - 1}, {y}) — found '{rows[y][-1]}', expected solid wall"
@@ -193,9 +216,7 @@ def validate_ppm(file_path: Path, expected_dim: Optional[int] = None) -> Validat
                 f"PPM {file_path}: Found binary P6 PPM format, but Neo-Wolf engine requires ASCII P3 format."
             )
         else:
-            report.add_error(
-                f"PPM {file_path}: Unsupported format '{magic}'. Expected 'P3'."
-            )
+            report.add_error(f"PPM {file_path}: Unsupported format '{magic}'. Expected 'P3'.")
         return report
 
     try:
@@ -220,9 +241,7 @@ def validate_ppm(file_path: Path, expected_dim: Optional[int] = None) -> Validat
 
     # Check power-of-two dimensions (recommended for raycaster wall textures)
     if (width & (width - 1)) != 0 or (height & (height - 1)) != 0:
-        report.add_warning(
-            f"PPM {file_path}: Dimensions {width}x{height} are not power-of-two (64x64 recommended)."
-        )
+        report.add_warning(f"PPM {file_path}: Dimensions {width}x{height} are not power-of-two (64x64 recommended).")
 
     pixel_tokens = tokens[4:]
     expected_token_count = width * height * 3
@@ -238,9 +257,7 @@ def validate_ppm(file_path: Path, expected_dim: Optional[int] = None) -> Validat
         try:
             r, g, b = int(pixel_tokens[i]), int(pixel_tokens[i + 1]), int(pixel_tokens[i + 2])
             if not (0 <= r <= maxval and 0 <= g <= maxval and 0 <= b <= maxval):
-                report.add_error(
-                    f"PPM {file_path}: Pixel value out of bounds [0, {maxval}]: ({r},{g},{b})"
-                )
+                report.add_error(f"PPM {file_path}: Pixel value out of bounds [0, {maxval}]: ({r},{g},{b})")
                 break
         except ValueError:
             report.add_error(f"PPM {file_path}: Non-integer pixel value encountered.")
@@ -331,9 +348,7 @@ def validate_wav(file_path: Path) -> ValidationReport:
         report.add_error(f"WAV {file_path}: Unsupported channel count {num_channels} (must be 1 or 2)")
 
     if bits_per_sample not in (8, 16, 24, 32):
-        report.add_warning(
-            f"WAV {file_path}: Unusual bit depth {bits_per_sample} bits (8 or 16 recommended)."
-        )
+        report.add_warning(f"WAV {file_path}: Unusual bit depth {bits_per_sample} bits (8 or 16 recommended).")
 
     duration_sec = 0.0
     bytes_per_sample = (bits_per_sample // 8) * num_channels
@@ -366,15 +381,18 @@ def validate_cfg(file_path: Path, required_keys: Optional[Set[str]] = None) -> T
 # --- Entity files ------------------------------------------------------------------------------
 
 
-def _check_bounds(entities: List[dict], label: str, map_dimensions: Optional[Tuple[int, int]],
-                  report: ValidationReport) -> None:
+def _check_bounds(
+    entities: List[dict], label: str, map_dimensions: Optional[Tuple[int, int]], report: ValidationReport
+) -> None:
     if not map_dimensions:
         return
     mw, mh = map_dimensions
     for index, ent in enumerate(entities):
         x, y = ent["x"], ent["y"]
         if not (0 <= x < mw and 0 <= y < mh):
-            report.add_error(f"{label} entity {index} ({ent['type']}): position ({x}, {y}) is outside map bounds ({mw}x{mh})")
+            report.add_error(
+                f"{label} entity {index} ({ent['type']}): position ({x}, {y}) is outside map bounds ({mw}x{mh})"
+            )
         if ent["type"] in ("door", "trigger"):
             if not (0 <= ent["mapX"] < mw and 0 <= ent["mapY"] < mh):
                 report.add_error(
@@ -390,8 +408,9 @@ def _check_player_count(entities: List[dict], label: str, report: ValidationRepo
         )
 
 
-def _validate_entity_file(file_path: Path, kind: str, map_dimensions: Optional[Tuple[int, int]]
-                          ) -> Tuple[ValidationReport, List[dict]]:
+def _validate_entity_file(
+    file_path: Path, kind: str, map_dimensions: Optional[Tuple[int, int]]
+) -> Tuple[ValidationReport, List[dict]]:
     report = ValidationReport()
     file_path = Path(file_path)
     if not file_path.exists():
@@ -406,19 +425,23 @@ def _validate_entity_file(file_path: Path, kind: str, map_dimensions: Optional[T
             report.add_error(error)
     if parsed.ok or parsed.count:
         _check_player_count(parsed.entities, f"{kind} {file_path}", report)
-    report.add_info(f"{kind} {file_path.name}: Found {len(parsed.entities)} entity placements"
-                    + (f" and {len(parsed.lights)} light zone(s)." if parsed.lights else "."))
+    report.add_info(
+        f"{kind} {file_path.name}: Found {len(parsed.entities)} entity placements"
+        + (f" and {len(parsed.lights)} light zone(s)." if parsed.lights else ".")
+    )
     return report, parsed.entities
 
 
-def validate_entity_csv(file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
-                        ) -> Tuple[ValidationReport, List[dict]]:
+def validate_entity_csv(
+    file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
+) -> Tuple[ValidationReport, List[dict]]:
     """Validate an entity CSV export (type,x,y,mapX,mapY,kind,value,angle,variant,key,lock)."""
     return _validate_entity_file(file_path, "CSV", map_dimensions)
 
 
-def validate_entity_json(file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
-                         ) -> Tuple[ValidationReport, List[dict]]:
+def validate_entity_json(
+    file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
+) -> Tuple[ValidationReport, List[dict]]:
     """Validate an entity JSON file (level, entities array)."""
     return _validate_entity_file(file_path, "JSON", map_dimensions)
 
@@ -458,10 +481,26 @@ GAMEPLAY_SCHEMA: Dict[str, List[Tuple[str, str, float, float, bool, bool, float]
 }
 _ENEMY_DEFAULTS = {
     "guard": {},
-    "brute": {"health": 140, "damage": 25, "moveSpeed": 1.0, "alertRadius": 5.5, "attackRadius": 1.3,
-              "attackRate": 1.6, "reactionTime": 0.8, "score": 300},
-    "runner": {"health": 25, "damage": 6, "moveSpeed": 2.8, "alertRadius": 8.0, "attackRadius": 1.0,
-               "attackRate": 0.6, "reactionTime": 0.2, "score": 150},
+    "brute": {
+        "health": 140,
+        "damage": 25,
+        "moveSpeed": 1.0,
+        "alertRadius": 5.5,
+        "attackRadius": 1.3,
+        "attackRate": 1.6,
+        "reactionTime": 0.8,
+        "score": 300,
+    },
+    "runner": {
+        "health": 25,
+        "damage": 6,
+        "moveSpeed": 2.8,
+        "alertRadius": 8.0,
+        "attackRadius": 1.0,
+        "attackRate": 0.6,
+        "reactionTime": 0.2,
+        "score": 150,
+    },
 }
 _PICKUP_DEFAULTS = {"health": 25, "ammo": 12}
 
@@ -478,19 +517,23 @@ def _describe(value: Any) -> str:
 
 def json_dump(value: Any) -> str:
     import json
+
     return json.dumps(value)
 
 
 def _format_range(kind: str, lo: float, hi: float, lo_ex: bool, hi_ex: bool) -> str:
     if kind == _INT:
         return f"an integer from {int(lo)} to {int(hi)}"
+
     def fmt(v: float) -> str:
         return f"{v:g}"
+
     return f"a number {'>' if lo_ex else '>='} {fmt(lo)} and {'<' if hi_ex else '<='} {fmt(hi)}"
 
 
-def _read_section(section: dict, path: str, schema: list, defaults: Dict[str, Any], report: ValidationReport,
-                  label: str) -> Dict[str, Any]:
+def _read_section(
+    section: dict, path: str, schema: list, defaults: Dict[str, Any], report: ValidationReport, label: str
+) -> Dict[str, Any]:
     values: Dict[str, Any] = {key: default for key, _, _, _, _, _, default in schema}
     values.update(defaults)
     known = set()
@@ -512,8 +555,10 @@ def _read_section(section: dict, path: str, schema: list, defaults: Dict[str, An
             report.add_error(f"{label}: {name} must be {expected}, got {_describe(value)}")
             continue
         values[key] = value
-    hints = {"pickups.health.maxPlayerHealth": " (moved to player.maxHealth)",
-             "pickups.ammo.maxPlayerAmmo": " (moved to weapon.maxAmmo)"}
+    hints = {
+        "pickups.health.maxPlayerHealth": " (moved to player.maxHealth)",
+        "pickups.ammo.maxPlayerAmmo": " (moved to weapon.maxAmmo)",
+    }
     for key in section:
         if key not in known:
             report.add_warning(f"{label}: unknown key {path}.{key} ignored{hints.get(path + '.' + key, '')}")
@@ -530,8 +575,10 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
     values: Dict[str, Any] = {
         "player": {k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["player"]},
         "weapon": {k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["weapon"]},
-        "enemies": {name: {**{k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["enemy"]}, **over}
-                    for name, over in _ENEMY_DEFAULTS.items()},
+        "enemies": {
+            name: {**{k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["enemy"]}, **over}
+            for name, over in _ENEMY_DEFAULTS.items()
+        },
         "pickups": {name: {"value": v} for name, v in _PICKUP_DEFAULTS.items()},
     }
     if not file_path.is_file():
@@ -550,7 +597,9 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
         if key not in parent:
             return None
         if not isinstance(parent[key], dict):
-            report.add_error(f"{label}: {path + '.' if path else ''}{key} must be an object, got {_describe(parent[key])}")
+            report.add_error(
+                f"{label}: {path + '.' if path else ''}{key} must be an object, got {_describe(parent[key])}"
+            )
             return None
         return parent[key]
 
@@ -561,7 +610,9 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
     legacy = section(document, "", "enemy")
     enemies = section(document, "", "enemies")
     if legacy is not None and enemies is not None:
-        report.add_error(f'{label}: use either "enemies" or the old "enemy" section, not both ("enemy" is now "enemies.guard")')
+        report.add_error(
+            f'{label}: use either "enemies" or the old "enemy" section, not both ("enemy" is now "enemies.guard")'
+        )
     elif legacy is not None:
         report.add_warning(f'{label}: section "enemy" is deprecated: it is read as "enemies.guard" (move it there)')
         values["enemies"]["guard"] = _read_section(legacy, "enemy", GAMEPLAY_SCHEMA["enemy"], {}, report, label)
@@ -569,8 +620,9 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
         for name in ENEMY_VARIANTS:
             sec = section(enemies, "enemies", name)
             if sec is not None:
-                values["enemies"][name] = _read_section(sec, f"enemies.{name}", GAMEPLAY_SCHEMA["enemy"],
-                                                        _ENEMY_DEFAULTS[name], report, label)
+                values["enemies"][name] = _read_section(
+                    sec, f"enemies.{name}", GAMEPLAY_SCHEMA["enemy"], _ENEMY_DEFAULTS[name], report, label
+                )
         for key in enemies:
             if key not in ENEMY_VARIANTS:
                 report.add_warning(f"{label}: unknown key enemies.{key} ignored")
@@ -590,9 +642,13 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
     if report.is_valid:
         player, weapon = values["player"], values["weapon"]
         if player["initialHealth"] > player["maxHealth"]:
-            report.add_error(f"{label}: player.initialHealth ({player['initialHealth']}) must not exceed player.maxHealth ({player['maxHealth']})")
+            report.add_error(
+                f"{label}: player.initialHealth ({player['initialHealth']}) must not exceed player.maxHealth ({player['maxHealth']})"
+            )
         if weapon["initialAmmo"] > weapon["maxAmmo"]:
-            report.add_error(f"{label}: weapon.initialAmmo ({weapon['initialAmmo']}) must not exceed weapon.maxAmmo ({weapon['maxAmmo']})")
+            report.add_error(
+                f"{label}: weapon.initialAmmo ({weapon['initialAmmo']}) must not exceed weapon.maxAmmo ({weapon['maxAmmo']})"
+            )
     if report.is_valid:
         report.add_info(f"gameplay.json: valid ({len(document)} section(s))")
     return report, values
@@ -618,8 +674,13 @@ def _body_overlaps(x: float, y: float, radius: float, solid) -> Optional[Tuple[i
     return None
 
 
-def check_level_layout(rows: List[str], entities: List[dict], label: str, report: ValidationReport,
-                       player_radius: float = DEFAULT_PLAYER_RADIUS) -> None:
+def check_level_layout(
+    rows: List[str],
+    entities: List[dict],
+    label: str,
+    report: ValidationReport,
+    player_radius: float = DEFAULT_PLAYER_RADIUS,
+) -> None:
     """Placement rules of a campaign level (all errors unless noted):
 
     * exactly one player, standing on a floor cell ('.' or 'T') with its body clear of walls;
@@ -657,8 +718,10 @@ def check_level_layout(rows: List[str], entities: List[dict], label: str, report
             target = (ent["mapX"], ent["mapY"])
             wanted = "D" if etype == "door" else "T"
             if tile(*target) != wanted:
-                report.add_error(f"{where}: its cell {target} is '{tile(*target)}' on the map, not '{wanted}' "
-                                 f"(a {etype} must sit on a '{wanted}' cell)")
+                report.add_error(
+                    f"{where}: its cell {target} is '{tile(*target)}' on the map, not '{wanted}' "
+                    f"(a {etype} must sit on a '{wanted}' cell)"
+                )
             if cell != target:
                 report.add_error(f"{where}: the position is in cell {cell}, not in its own cell {target}")
             continue
@@ -670,21 +733,27 @@ def check_level_layout(rows: List[str], entities: List[dict], label: str, report
         if etype == "player":
             blocked = _body_overlaps(ent["x"], ent["y"], player_radius, solid)
             if blocked:
-                report.add_error(f"{where}: the player's body (radius {player_radius}) overlaps the solid cell "
-                                 f"{blocked}, so it cannot move; move it towards the centre of its cell")
+                report.add_error(
+                    f"{where}: the player's body (radius {player_radius}) overlaps the solid cell "
+                    f"{blocked}, so it cannot move; move it towards the centre of its cell"
+                )
         elif etype == "enemy":
             blocked = _body_overlaps(ent["x"], ent["y"], ENEMY_RADIUS, solid)
             if blocked:
-                report.add_warning(f"{where}: the enemy's body (radius {ENEMY_RADIUS}) overlaps the solid cell "
-                                   f"{blocked}; it starts wedged against it")
+                report.add_warning(
+                    f"{where}: the enemy's body (radius {ENEMY_RADIUS}) overlaps the solid cell "
+                    f"{blocked}; it starts wedged against it"
+                )
 
     for y in range(height):
         for x in range(width):
             if tile(x, y) == "D":
                 count = door_cells.get((x, y), 0)
                 if count == 0:
-                    report.add_error(f"{label}: 'D' at ({x}, {y}) has no door entity, so it never opens "
-                                     "(add a door with mapX/mapY, or make it a wall)")
+                    report.add_error(
+                        f"{label}: 'D' at ({x}, {y}) has no door entity, so it never opens "
+                        "(add a door with mapX/mapY, or make it a wall)"
+                    )
                 elif count > 1:
                     report.add_error(f"{label}: 'D' at ({x}, {y}) has {count} door entities; exactly one is allowed")
             elif tile(x, y) == "T" and (x, y) not in trigger_cells:
@@ -697,7 +766,8 @@ def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tup
     progress = analyse_level_progress(
         rows,
         [{"type": "door", "mapX": x, "mapY": y} for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"],
-        spawn_x, spawn_y,
+        spawn_x,
+        spawn_y,
     )
     return progress.total_exits, progress.usable_exits
 
@@ -705,6 +775,7 @@ def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tup
 @dataclass
 class LevelProgress:
     """What analyse_level_progress found for one level."""
+
     total_exits: int = 0
     usable_exits: int = 0
     locks: Dict[Tuple[int, int], str] = field(default_factory=dict)  # door cell -> lock colour
@@ -831,7 +902,9 @@ def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List
     if not isinstance(title, str) or not title:
         report.add_error(f"{label}: 'title' must be a non-empty string")
     elif len(title.encode("utf-8")) > MAX_CAMPAIGN_NAME_BYTES:
-        report.add_warning(f"{label}: title is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen")
+        report.add_warning(
+            f"{label}: title is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen"
+        )
     for key in document:
         if key not in ("title", "levels"):
             report.add_warning(f'{label}: unknown key "{key}" ignored')
@@ -861,12 +934,16 @@ def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List
             ok = False
         seen_ids.add(level["id"])
         if len(level["name"].encode("utf-8")) > MAX_CAMPAIGN_NAME_BYTES:
-            report.add_warning(f"{entry_label}: name is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen")
+            report.add_warning(
+                f"{entry_label}: name is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen"
+            )
         if not _is_content_id(level["theme"]):
             report.add_error(f"{entry_label}: theme must use only a-z, 0-9, '_' and '-', got '{level['theme']}'")
             ok = False
         elif not (root / "game" / "defs" / "themes" / f"{level['theme']}.cfg").is_file():
-            report.add_error(f"{entry_label}: theme '{level['theme']}' not found (game/defs/themes/{level['theme']}.cfg)")
+            report.add_error(
+                f"{entry_label}: theme '{level['theme']}' not found (game/defs/themes/{level['theme']}.cfg)"
+            )
             ok = False
         for key in ("map", "entities"):
             if not (root / level[key]).is_file():
@@ -880,8 +957,9 @@ def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List
     return result
 
 
-def validate_level(project_root: Path, level: CampaignLevelInfo, report: ValidationReport,
-                   player_radius: float = DEFAULT_PLAYER_RADIUS) -> None:
+def validate_level(
+    project_root: Path, level: CampaignLevelInfo, report: ValidationReport, player_radius: float = DEFAULT_PLAYER_RADIUS
+) -> None:
     """Everything one campaign level needs to load and to be completable."""
     root = Path(project_root)
     label = f"campaign.json: levels[{level.index}] ({level.id})"
@@ -892,8 +970,10 @@ def validate_level(project_root: Path, level: CampaignLevelInfo, report: Validat
         return
     parsed = parse_entities(root / level.entities)
     if not parsed.ok:
-        report.add_error(f"{label}: the entity file {level.entities} does not load ({len(parsed.errors)} error(s); "
-                         f"first: {parsed.errors[0]})")
+        report.add_error(
+            f"{label}: the entity file {level.entities} does not load ({len(parsed.errors)} error(s); "
+            f"first: {parsed.errors[0]})"
+        )
         return
     entities = parsed.entities
     bounds = ValidationReport()
@@ -921,17 +1001,23 @@ def validate_level(project_root: Path, level: CampaignLevelInfo, report: Validat
         )
     for index, ent in enumerate(entities):
         if ent["type"] in ("pickup", "enemy") and _cell_of(ent["x"], ent["y"]) not in progress.reached:
-            what = f"{ent.get('kind', '')} pickup" if ent["type"] == "pickup" else f"{ent.get('variant', 'guard')} enemy"
-            report.add_warning(f"{label}: the {what} (entity {index}) at ({ent['x']}, {ent['y']}) cannot be reached "
-                               "from the spawn")
+            what = (
+                f"{ent.get('kind', '')} pickup" if ent["type"] == "pickup" else f"{ent.get('variant', 'guard')} enemy"
+            )
+            report.add_warning(
+                f"{label}: the {what} (entity {index}) at ({ent['x']}, {ent['y']}) cannot be reached from the spawn"
+            )
     if len(report.errors) == before:
         keys = f"; keys in order: {', '.join(progress.key_order)}" if progress.key_order else ""
         lights = f"; {len(parsed.lights)} light zone(s)" if parsed.lights else ""
-        report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}{lights}")
+        report.add_info(
+            f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}{lights}"
+        )
 
 
-def validate_campaign(project_root: Path, require_levels: Optional[int] = None,
-                      player_radius: Optional[float] = None) -> ValidationReport:
+def validate_campaign(
+    project_root: Path, require_levels: Optional[int] = None, player_radius: Optional[float] = None
+) -> ValidationReport:
     """campaign.json like the engine (fields, ids, files, themes), the level count when
     `require_levels` is given, and every level's layout and progress (validate_level)."""
     report = ValidationReport()
@@ -948,7 +1034,9 @@ def validate_campaign(project_root: Path, require_levels: Optional[int] = None,
         return report
     count = _campaign_level_count(root)
     if require_levels is not None and count != require_levels:
-        report.add_error(f"campaign.json: the campaign has {count} level(s); {require_levels} are required (--require-levels)")
+        report.add_error(
+            f"campaign.json: the campaign has {count} level(s); {require_levels} are required (--require-levels)"
+        )
     for level in levels:
         validate_level(root, level, report, player_radius)
     report.add_info(f"Campaign: {count} level(s)")
@@ -1092,8 +1180,11 @@ def validate_project(project_root: Path, require_levels: Optional[int] = None) -
         dims = map_dimensions.get(json_file.name.replace(".entities.json", ""))
         report.merge(validate_entity_json(json_file, dims)[0])
 
-    report.merge(validate_campaign(project_root, require_levels,
-                                   gameplay["player"]["collisionRadius"] if gameplay_report.is_valid else None))
+    report.merge(
+        validate_campaign(
+            project_root, require_levels, gameplay["player"]["collisionRadius"] if gameplay_report.is_valid else None
+        )
+    )
     for orphan in find_orphans(project_root):
         report.add_warning(orphan)
     return report

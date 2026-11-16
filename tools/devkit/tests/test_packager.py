@@ -37,12 +37,22 @@ SMOKE_SCRIPT = REPO_ROOT / "tools" / "ci" / "package_smoke.py"
 
 def package_info(os_name: str = "linux", version: str = "0.9.0", fmt: str = "tar.gz") -> dict:
     platform = {"linux": "linux-x86_64", "windows": "windows-x64", "macos": "macos-universal"}[os_name]
-    executable = {"linux": "neo_wolf", "windows": "neo_wolf.exe",
-                  "macos": "NeoWolf.app/Contents/MacOS/NeoWolf"}[os_name]
+    executable = {"linux": "neo_wolf", "windows": "neo_wolf.exe", "macos": "NeoWolf.app/Contents/MacOS/NeoWolf"}[
+        os_name
+    ]
     content_root = "NeoWolf.app/Contents/Resources" if os_name == "macos" else "."
-    return {"schema": 1, "version": version, "os": os_name, "platform": platform,
-            "package": f"neo-wolf-{version}-{platform}", "format": fmt, "executable": executable,
-            "content_root": content_root, "compiler": "Fake", "multi_config": False}
+    return {
+        "schema": 1,
+        "version": version,
+        "os": os_name,
+        "platform": platform,
+        "package": f"neo-wolf-{version}-{platform}",
+        "format": fmt,
+        "executable": executable,
+        "content_root": content_root,
+        "compiler": "Fake",
+        "multi_config": False,
+    }
 
 
 def write_tree(prefix: Path, info: dict, with_exe: bool = True, extra: Sequence[str] = ()) -> None:
@@ -57,8 +67,9 @@ def write_tree(prefix: Path, info: dict, with_exe: bool = True, extra: Sequence[
     if info["os"] == "macos":
         with open(prefix / "NeoWolf.app" / "Contents" / "Info.plist", "wb") as handle:
             plistlib.dump({"CFBundleExecutable": "NeoWolf", "CFBundleShortVersionString": info["version"]}, handle)
-    (prefix / "README.txt").write_text(f"Neo-Wolf {info['version']}\nFree for noncommercial use; see LICENSE.md.\n",
-                                       encoding="utf-8")
+    (prefix / "README.txt").write_text(
+        f"Neo-Wolf {info['version']}\nFree for noncommercial use; see LICENSE.md.\n", encoding="utf-8"
+    )
     shutil.copy2(REPO_ROOT / "LICENSE.md", prefix / "LICENSE.md")
     (prefix / "docs").mkdir(parents=True, exist_ok=True)
     for doc in ("CONTROLS.md", "TROUBLESHOOTING.md"):
@@ -67,8 +78,9 @@ def write_tree(prefix: Path, info: dict, with_exe: bool = True, extra: Sequence[
     (prefix / "LICENSES" / "SDL2-LICENSE.txt").write_text("zlib licence\n", encoding="utf-8")
     (prefix / "LICENSES" / "SDL2-hidapi-LICENSE-bsd.txt").write_text("BSD licence\n", encoding="utf-8")
     (prefix / "LICENSES" / "SDL2-yuv2rgb-LICENSE.txt").write_text("BSD licence\n", encoding="utf-8")
-    shutil.copy2(REPO_ROOT / "third_party" / "nlohmann" / "LICENSE.MIT",
-                 prefix / "LICENSES" / "nlohmann-json-LICENSE.MIT.txt")
+    shutil.copy2(
+        REPO_ROOT / "third_party" / "nlohmann" / "LICENSE.MIT", prefix / "LICENSES" / "nlohmann-json-LICENSE.MIT.txt"
+    )
     shutil.copy2(REPO_ROOT / "docs" / "THIRD_PARTY_LICENSES.md", prefix / "LICENSES" / "THIRD_PARTY_LICENSES.md")
     for rel in extra:
         path = prefix / rel
@@ -153,8 +165,9 @@ class TestPackagerFailures(PackagerTestCase):
                 self.assertEqual(list(self.out.glob("neo-wolf-*")), [])
 
     def test_refuses_test_and_autoplay_executables(self) -> None:
-        res = self.package(FakeCMake(package_info("windows", fmt="zip"),
-                                     extra=("neo_wolf_autoplay.exe", "bin/neo_wolf_tests.exe")))
+        res = self.package(
+            FakeCMake(package_info("windows", fmt="zip"), extra=("neo_wolf_autoplay.exe", "bin/neo_wolf_tests.exe"))
+        )
         self.assertFalse(res.success)
         joined = "\n".join(res.errors)
         self.assertIn("neo_wolf_autoplay.exe must not be shipped", joined)
@@ -218,8 +231,9 @@ class TestPackagerFailures(PackagerTestCase):
         (bad_root / "game" / "maps").mkdir(parents=True)
         (bad_root / "game" / "defs").mkdir(parents=True)
         fake = FakeCMake(package_info("linux"))
-        res = create_release_package(bad_root, self.out, build_dir=self.build_dir(fake.info), cmake="cmake",
-                                     runner=fake, system="linux")
+        res = create_release_package(
+            bad_root, self.out, build_dir=self.build_dir(fake.info), cmake="cmake", runner=fake, system="linux"
+        )
         self.assertFalse(res.success)
         self.assertIn("content validation failed", res.errors[-1])
         self.assertEqual(fake.commands, [])
@@ -297,7 +311,7 @@ class TestPackagerSuccess(PackagerTestCase):
         info = package_info("macos", fmt="zip")
         preset = "package-macos"
         root = self.base / "project"
-        build = (root / "build" / preset)
+        build = root / "build" / preset
         build.mkdir(parents=True)
         (build / packager.INFO_FILE).write_text(json.dumps(info), encoding="utf-8")
         fake = FakeCMake(info)
@@ -311,8 +325,10 @@ class TestPackagerSuccess(PackagerTestCase):
         self.assertEqual(len(fake.commands), 4)
 
     def test_default_presets_per_os(self) -> None:
-        self.assertEqual(packager.PACKAGE_PRESETS,
-                         {"darwin": "package-macos", "windows": "package-windows-msvc", "linux": "package-linux"})
+        self.assertEqual(
+            packager.PACKAGE_PRESETS,
+            {"darwin": "package-macos", "windows": "package-windows-msvc", "linux": "package-linux"},
+        )
         presets = json.loads((REPO_ROOT / "CMakePresets.json").read_text(encoding="utf-8"))
         configure = {p["name"] for p in presets["configurePresets"]}
         build = {p["name"] for p in presets["buildPresets"]}
@@ -324,15 +340,17 @@ class TestPackagerSuccess(PackagerTestCase):
         """tools/ci/package_smoke.py --no-run accepts what the packager writes, and notices tampering."""
         res = self.package(FakeCMake(package_info("linux")))
         self.assertTrue(res.success, res.errors)
-        done = subprocess.run([sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"],
-                              capture_output=True, text=True, timeout=120)
+        done = subprocess.run(
+            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"], capture_output=True, text=True, timeout=120
+        )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn("PASS: 1 package(s)", done.stdout)
         assert res.archive is not None
         with open(res.archive, "ab") as handle:
             handle.write(b"tampered")
-        done = subprocess.run([sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"],
-                              capture_output=True, text=True, timeout=120)
+        done = subprocess.run(
+            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"], capture_output=True, text=True, timeout=120
+        )
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertIn("FAIL: SHA256SUMS matches the archive", done.stdout)
 
@@ -348,9 +366,14 @@ class TestFindCMakeAndLaunchers(unittest.TestCase):
         data = (REPO_ROOT / "package.cmd").read_bytes()
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))  # CRLF only (cmd.exe labels/blocks)
         text = data.decode("ascii")
-        for part in ("setlocal", 'set "NEO_PY=py -3"', "sys.version_info >= (3, 8)",
-                     '%NEO_PY% "%SCRIPT_DIR%tools\\devkit\\devkit.py" package %*',
-                     'set "NEO_RC=%ERRORLEVEL%"', "endlocal & exit /b %NEO_RC%"):
+        for part in (
+            "setlocal",
+            'set "NEO_PY=py -3"',
+            "sys.version_info >= (3, 8)",
+            '%NEO_PY% "%SCRIPT_DIR%tools\\devkit\\devkit.py" package %*',
+            'set "NEO_RC=%ERRORLEVEL%"',
+            "endlocal & exit /b %NEO_RC%",
+        ):
             self.assertIn(part, text)
 
     def test_package_ps1(self) -> None:
