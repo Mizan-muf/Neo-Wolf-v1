@@ -20,8 +20,10 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <shellapi.h>
 #include <windows.h>
+// shellapi.h needs the types windows.h declares, so it must come after it (and in its own
+// include block, so clang-format does not sort it first).
+#include <shellapi.h>
 
 #include <cstdio>
 #endif
