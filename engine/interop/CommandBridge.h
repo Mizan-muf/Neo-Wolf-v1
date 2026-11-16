@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -7,6 +8,23 @@
 #include <string>
 
 class Engine;
+
+// Copies a NUL-terminated string into a fixed-size buffer, truncating if needed.
+// The result is always NUL-terminated. Portable replacement for strncpy, which
+// MSVC flags as unsafe (C4996).
+inline void CopyBoundedString(char* dest, std::size_t destSize, const char* src) {
+    if (dest == nullptr || destSize == 0) {
+        return;
+    }
+    std::size_t len = 0;
+    if (src != nullptr) {
+        while (len + 1 < destSize && src[len] != '\0') {
+            ++len;
+        }
+        std::memcpy(dest, src, len);
+    }
+    dest[len] = '\0';
+}
 
 enum class InteropCommandType : std::int32_t {
     None = 0,
@@ -41,8 +59,7 @@ struct InteropCommand {
             strArg[0] = '\0';
             return;
         }
-        std::strncpy(strArg, str, sizeof(strArg) - 1);
-        strArg[sizeof(strArg) - 1] = '\0';
+        CopyBoundedString(strArg, sizeof(strArg), str);
     }
 };
 
@@ -75,8 +92,7 @@ struct InteropEvent {
             strArg[0] = '\0';
             return;
         }
-        std::strncpy(strArg, str, sizeof(strArg) - 1);
-        strArg[sizeof(strArg) - 1] = '\0';
+        CopyBoundedString(strArg, sizeof(strArg), str);
     }
 };
 

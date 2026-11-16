@@ -1,82 +1,65 @@
-CXX ?= g++
-CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -I. -I/home/mizan/deps/usr/include/SDL2 -I/home/mizan/deps/usr/include
-LDFLAGS ?= -L/home/mizan/deps/usr/lib/x86_64-linux-gnu -L/home/mizan/deps/usr/lib
+# Neo-Wolf Makefile: a thin convenience wrapper around the CMake presets (macOS and Linux).
+# The real build lives in CMakeLists.txt / CMakePresets.json; see docs/BUILD_MACOS.md.
+#
+#   make            configure + build game and tests (Release)
+#   make check      build, then run every test with CTest (native, DevKit, content validation)
+#   make CONFIG=Debug check
+#   make PRESET=ci-macos check     (any preset name from CMakePresets.json)
+
 PYTHON ?= python3
+CONFIG ?= Release
 
-SRC_COMMON = \
-    engine/core/App.cpp \
-    engine/core/Log.cpp \
-    engine/core/Engine.Core.cpp \
-    engine/core/Engine.Init.cpp \
-    engine/core/Engine.Update.cpp \
-    engine/core/Engine.Render.cpp \
-    engine/core/Engine.Shutdown.cpp \
-    engine/assets/AssetManager.cpp \
-    engine/assets/AudioConfig.cpp \
-    engine/assets/ContentConfig.cpp \
-    engine/assets/Texture.cpp \
-    engine/assets/TextureLoader.cpp \
-    engine/audio/AudioSystem.cpp \
-    engine/interop/CommandBridge.cpp \
-    engine/interop/EngineInterop.cpp \
-    engine/platform/PlatformSDL.cpp \
-    engine/particles/Particle.cpp \
-    engine/render/Framebuffer.cpp \
-    engine/render/ParticleRenderer.cpp \
-    engine/render/Raycaster.cpp \
-    engine/render/SpriteRenderer.cpp \
-    engine/ui/UiRenderer.cpp \
-    engine/world/Entity.cpp \
-    engine/world/EntityPlacementLoader.cpp \
-    engine/world/InteractionRules.cpp \
-    engine/world/MapLoader.cpp \
-    engine/world/Map.cpp \
-    engine/world/MovementRules.cpp
+UNAME_S := $(shell uname -s)
+ifeq ($(CONFIG),Debug)
+  PRESET_SUFFIX := -debug
+else
+  PRESET_SUFFIX :=
+endif
+ifeq ($(UNAME_S),Darwin)
+  PRESET ?= macos$(PRESET_SUFFIX)
+else ifeq ($(UNAME_S),Linux)
+  PRESET ?= linux$(PRESET_SUFFIX)
+else
+  $(error Unsupported OS '$(UNAME_S)'. On Windows use build.cmd or build.ps1)
+endif
 
-SRC_GAME = src/main.cpp $(SRC_COMMON)
-SRC_TESTS = tests/LogicTests.cpp $(SRC_COMMON)
+BUILD_DIR := build/$(PRESET)
 
-SDL_LIBS := -lSDL2
+.PHONY: all configure game tests check test validate validate-strict doctor package clean
 
-.PHONY: all game tests check test validate validate-strict doctor package clean
+all: configure
+	cmake --build --preset $(PRESET)
 
-all: game tests
+# Re-running configure is cheap once the cache exists; cmake --build also re-configures
+# automatically when CMakeLists.txt changes.
+configure:
+	cmake --preset $(PRESET)
 
-game: neo_wolf
+game: configure
+	cmake --build --preset $(PRESET) --target neo_wolf
 
-neo_wolf: $(SRC_GAME)
-	@echo "Compiling neo_wolf executable..."
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(SDL_LIBS)
+tests: configure
+	cmake --build --preset $(PRESET) --target neo_wolf_tests
 
-tests: neo_wolf_tests
+check: all
+	ctest --preset $(PRESET)
 
-neo_wolf_tests: $(SRC_TESTS)
-	@echo "Compiling neo_wolf_tests executable..."
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(SDL_LIBS)
-
-check: test
-
-test: neo_wolf_tests
-	@echo "=== Running Native Engine Tests ==="
-	./neo_wolf_tests
-	@echo "=== Running DevKit Automated Tests ==="
-	$(PYTHON) tools/devkit/devkit.py test
+test: check
 
 validate:
-	@echo "=== Running Content & Asset Validation ==="
 	$(PYTHON) tools/devkit/devkit.py validate
 
 validate-strict:
-	@echo "=== Running Content & Asset Validation (Strict) ==="
 	$(PYTHON) tools/devkit/devkit.py validate --strict
 
 doctor:
-	@echo "=== Running System & Project Diagnostics ==="
 	$(PYTHON) tools/devkit/devkit.py doctor
 
-package:
-	@echo "=== Building Release Package ==="
+# Packaging is reworked in Roadmap Phase 9. For now the packager picks up the binary from
+# build/<preset>/, so build the game first.
+package: game
 	$(PYTHON) tools/devkit/devkit.py package --version 1.0.0 --out-dir release
 
+# Also removes binaries left in the repository root by the pre-CMake Makefile.
 clean:
-	rm -rf neo_wolf neo_wolf_tests build release *.zip *.tar.gz *.o *.log
+	rm -rf build release neo_wolf neo_wolf_tests *.zip *.tar.gz *.o *.log

@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <unordered_map>

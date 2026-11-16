@@ -102,7 +102,7 @@ def run_doctor(project_root: Path, color: bool = True) -> DoctorReport:
             "CMake",
             "WARN",
             "CMake not found on PATH.",
-            "Install CMake 3.21+ to build via CMakeLists.txt (or use Makefile/g++).",
+            "Install CMake 3.25+ (required by CMakeLists.txt and CMakePresets.json).",
         )
 
     if make_found:

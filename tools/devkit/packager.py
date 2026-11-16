@@ -43,6 +43,14 @@ def find_or_build_executable(project_root: Path, build_if_missing: bool = True) 
     system = platform.system().lower()
 
     possible_binaries = [
+        # CMake preset build directories (CMakePresets.json: build/<preset>/).
+        project_root / "build" / "macos" / "neo_wolf",
+        project_root / "build" / "linux" / "neo_wolf",
+        project_root / "build" / "windows-msvc" / "Release" / "neo_wolf.exe",
+        project_root / "build" / "ci-macos" / "neo_wolf",
+        project_root / "build" / "ci-linux" / "neo_wolf",
+        project_root / "build" / "ci-windows-msvc" / "Release" / "neo_wolf.exe",
+        # Legacy locations.
         project_root / "build" / "neo_wolf",
         project_root / "build" / "Release" / "neo_wolf.exe",
         project_root / "build" / "neo_wolf.exe",

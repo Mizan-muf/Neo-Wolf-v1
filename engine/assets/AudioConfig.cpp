@@ -1,6 +1,7 @@
 #include "engine/assets/AudioConfig.h"
 
 #include <cctype>
+#include <cstddef>
 #include <fstream>
 #include <string>
 #include <unordered_map>

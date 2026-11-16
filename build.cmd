@@ -1,42 +1,28 @@
 @echo off
+rem Neo-Wolf Windows build: configure, build and test with Visual Studio 2022 or newer.
+rem Usage: build.cmd [Release^|Debug]
+rem All the work is done by build.ps1 (vswhere lookup, CMake presets, CTest). This wrapper
+rem lets the build be started from cmd.exe; run it from a console window.
 setlocal
 
 set "CONFIG=%~1"
 if "%CONFIG%"=="" set "CONFIG=Release"
-
-set "VS_VARS="
-for %%E in (Professional Community Enterprise BuildTools) do (
-  if not defined VS_VARS (
-    if exist "C:\Program Files\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat" (
-      set "VS_VARS=C:\Program Files\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat"
-    )
-  )
-)
-set "TOOLCHAIN=%~dp0vcpkg\scripts\buildsystems\vcpkg.cmake"
-
-if not exist "%VS_VARS%" (
-  echo Missing vcvars64.bat at: %VS_VARS%
-  exit /b 1
+if /I "%CONFIG%"=="release" set "CONFIG=Release"
+if /I "%CONFIG%"=="debug" set "CONFIG=Debug"
+if not "%CONFIG%"=="Release" if not "%CONFIG%"=="Debug" (
+  echo error: unknown configuration "%CONFIG%" ^(expected Release or Debug^)
+  exit /b 2
 )
 
-if not exist "%TOOLCHAIN%" (
-  echo Missing vcpkg toolchain at: %TOOLCHAIN%
-  exit /b 1
-)
-
-call "%VS_VARS%" || exit /b 1
-
-cmake -S . -B build -G "NMake Makefiles" -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN%" -DCMAKE_BUILD_TYPE=%CONFIG%
+where powershell.exe >nul 2>nul
 if errorlevel 1 (
-  if exist build\CMakeCache.txt (
-    echo Detected incompatible CMake cache in build\. Removing and retrying configure...
-    rmdir /s /q build
-    cmake -S . -B build -G "NMake Makefiles" -DCMAKE_TOOLCHAIN_FILE="%TOOLCHAIN%" -DCMAKE_BUILD_TYPE=%CONFIG% || exit /b 1
-  ) else (
-    exit /b 1
-  )
+  echo error: powershell.exe was not found on PATH.
+  exit /b 1
 )
-cmake --build build || exit /b 1
 
-echo Build completed: %CONFIG%
-endlocal
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" -Config %CONFIG%
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" (
+  echo error: build failed with exit code %RESULT%.
+)
+endlocal & exit /b %RESULT%

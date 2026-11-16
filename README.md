@@ -17,43 +17,65 @@ A high-performance **2.5D software-rendered raycasting game engine** written in 
 - **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite configuration files (`.cfg`, `.json`), gameplay definitions (`gameplay.json`), and entity placement definitions (`.csv`, `.json`).
 - **DevKit CLI Toolchain**: Complete developer toolkit (`tools/devkit/`) for map inspection, reachability analysis, asset verification, procedural generation, CSV/JSON sync, system doctor diagnostics, and release packaging.
 - **Dual-Engine Test Suite**: 100% automated test coverage across native C++ logic/asset loaders and Python DevKit validation suite.
-- **Cross-Platform**: First-class build and release support for Linux and Windows.
+- **Cross-Platform**: macOS (primary, verified), Windows (presets and scripts written, not yet verified), Linux (best effort).
+
+---
+
+## Quick Start (macOS)
+
+Needs the Xcode Command Line Tools, `brew install cmake ninja`, and Python 3. SDL2 is downloaded
+and linked statically by CMake, so there is nothing else to install. Details: [docs/BUILD_MACOS.md](docs/BUILD_MACOS.md).
+
+### 1. Build and Run Tests
+```bash
+./build.sh          # configure + build + run all tests (or: make check)
+```
+
+### 2. Launch Game
+```bash
+# Run from the repository root (content is found relative to the working directory for now)
+./build/macos/neo_wolf
+```
 
 ---
 
 ## Quick Start (Linux)
 
+**Not yet run on Linux** (best effort; Linux CI is written but has not run yet). Needs a C++17
+compiler, CMake 3.25+, Ninja and Python 3. Ubuntu 22.04's packaged CMake (3.22) is too old for
+the presets: get a newer CMake (for example `pip install cmake`, or Kitware's apt repository).
+SDL2 is built from source by CMake (no `libsdl2-dev` needed), but that needs the X11/Wayland and
+audio development packages SDL builds against; see [docs/BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md).
+
 ### 1. Build and Run Tests
 ```bash
-# Build engine and run native test suite + DevKit tests
-make check
+./build.sh          # configure + build + run all tests (or: make check)
 ```
 
 ### 2. Launch Game
 ```bash
-# Build game executable
-make game
-
-# Run Neo-Wolf
-./neo_wolf
+./build/linux/neo_wolf
 ```
 
 ---
 
 ## Quick Start (Windows)
 
-### 1. First-Time Setup
-```powershell
-git clone https://github.com/microsoft/vcpkg.git
-.\vcpkg\bootstrap-vcpkg.bat
-.\vcpkg\vcpkg.exe install sdl2:x64-windows
-```
+Needs Visual Studio 2022 or newer (any edition) with the *Desktop development with C++* workload,
+and Python 3. No vcpkg or SDL2 install is needed. Details: [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md)
+(**not yet built or tested on Windows**; Windows CI is written but has not run yet).
 
-### 2. Build and Run
+### 1. Build and Run Tests
 ```cmd
 build.cmd Release
-build\neo_wolf.exe
 ```
+
+### 2. Launch Game
+```cmd
+build\windows-msvc\Release\neo_wolf.exe
+```
+
+Running a single test, test labels and adding tests: [docs/TESTING.md](docs/TESTING.md).
 
 ---
 
@@ -96,7 +118,7 @@ Neo-Wolf maintains two complementary automated test suites:
 
 | Test Suite | Implementation | Target | Coverage |
 | :--- | :--- | :--- | :--- |
-| **Native Engine Tests** | C++17 (`tests/LogicTests.cpp`) | `./neo_wolf_tests` | Math helpers, raycaster DDA, collision sliding, entity interactions, PPM/WAV asset loaders, map perimeter enclosure, reachability flood-fill |
+| **Native Engine Tests** | C++17 (`tests/LogicTests.cpp`) | `build/macos/neo_wolf_tests` (Windows: `build\windows-msvc\Release\neo_wolf_tests.exe`) | Math helpers, raycaster DDA, collision sliding, entity interactions, PPM/WAV asset loaders, map perimeter enclosure, reachability flood-fill |
 | **DevKit Test Suite** | Python 3 (`tools/devkit/tests/`) | `neo_devkit test` | Map parser, reachability BFS, PPM token parser, WAV RIFF headers, CSV/JSON synchronizer, release packager |
 
 Run both test suites with one command:

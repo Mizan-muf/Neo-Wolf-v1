@@ -1,0 +1,103 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "NEOWOLF_SYSTEM_SDL2": "OFF"
+      }
+    },
+    {
+      "name": "macos",
+      "displayName": "macOS (Release, universal arm64+x86_64)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "10.15"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-debug",
+      "displayName": "macOS (Debug, universal arm64+x86_64)",
+      "inherits": "macos",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC (Visual Studio generator, x64; Debug and Release)",
+      "description": "Multi-config: one configure for both configurations; pick one with the windows-msvc (Release) or windows-msvc-debug (Debug) build/test presets. Uses CMake's default Visual Studio generator (newest installed VS) unless -G is given, so no Developer prompt is needed.",
+      "inherits": "base",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (Ninja, Release)",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux (Ninja, Debug)",
+      "inherits": "linux",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "ci-macos",
+      "displayName": "CI: macOS, warnings as errors",
+      "inherits": "macos",
+      "cacheVariables": { "NEOWOLF_WERROR": "ON" }
+    },
+    {
+      "name": "ci-windows-msvc",
+      "displayName": "CI: Windows MSVC, warnings as errors",
+      "inherits": "windows-msvc",
+      "cacheVariables": { "NEOWOLF_WERROR": "ON" }
+    },
+    {
+      "name": "ci-linux",
+      "displayName": "CI: Linux, warnings as errors",
+      "inherits": "linux",
+      "cacheVariables": { "NEOWOLF_WERROR": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "macos", "configurePreset": "macos" },
+    { "name": "macos-debug", "configurePreset": "macos-debug" },
+    { "name": "windows-msvc", "configurePreset": "windows-msvc", "configuration": "Release" },
+    { "name": "windows-msvc-debug", "configurePreset": "windows-msvc", "configuration": "Debug" },
+    { "name": "linux", "configurePreset": "linux" },
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "ci-macos", "configurePreset": "ci-macos" },
+    { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" },
+    { "name": "ci-linux", "configurePreset": "ci-linux" }
+  ],
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    { "name": "macos", "inherits": "test-base", "configurePreset": "macos" },
+    { "name": "macos-debug", "inherits": "test-base", "configurePreset": "macos-debug" },
+    { "name": "windows-msvc", "inherits": "test-base", "configurePreset": "windows-msvc", "configuration": "Release" },
+    { "name": "windows-msvc-debug", "inherits": "test-base", "configurePreset": "windows-msvc", "configuration": "Debug" },
+    { "name": "linux", "inherits": "test-base", "configurePreset": "linux" },
+    { "name": "linux-debug", "inherits": "test-base", "configurePreset": "linux-debug" },
+    { "name": "ci-macos", "inherits": "test-base", "configurePreset": "ci-macos" },
+    { "name": "ci-windows-msvc", "inherits": "test-base", "configurePreset": "ci-windows-msvc", "configuration": "Release" },
+    { "name": "ci-linux", "inherits": "test-base", "configurePreset": "ci-linux" }
+  ]
+}

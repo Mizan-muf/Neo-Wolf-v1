@@ -9,7 +9,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 
 | # | Decision | Choice | Status |
 |---|---|---|---|
-| 1 | Where work happens | Branch `completion/v1`, one commit per phase. Pushing to GitHub requires owner approval. | push pending |
+| 1 | Where work happens | Branch `completion/v1`, one commit per phase, pushed to `origin` (owner approved pushing on 2026-11-16, after Phase 1). | decided |
 | 2 | Windows verification | GitHub Actions `windows-latest` (build, tests, bot over all levels, package), plus a manual play-through on a real Windows PC by the owner. | pending push |
 | 3 | SDL dependency | SDL2 built from a pinned source release and linked statically on all platforms. `NEOWOLF_SYSTEM_SDL2=ON` uses an installed SDL2 instead. | decided |
 | 4 | macOS architectures | Universal binary (arm64 + x86_64). Minimum macOS 10.15. | decided |
@@ -29,17 +29,18 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] Docs: [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and this roadmap
 
 ## Phase 1 — Portable build system
-- [ ] CMake: a `neowolf_engine` static library linked by the game and the tests; each source listed once
-- [ ] Remove `/home/mizan` paths and `-lpthread -ldl -lm`
-- [ ] SDL2 from a pinned source release via FetchContent, linked statically; `NEOWOLF_SYSTEM_SDL2` option
-- [ ] `CMakePresets.json` with `macos`, `windows-msvc` and `linux` presets in debug and release
-- [ ] Per-compiler warning flags, warnings-as-errors in CI, MSVC portability fixes
-- [ ] Test harness: failures are recorded instead of aborting; non-zero exit on failure; one CTest entry per test; fixed repo root
-- [ ] `build.sh` (macOS/Linux) and `build.cmd`/`build.ps1` (vswhere, any VS edition); no `|| true`; Makefile becomes a thin wrapper
-- [ ] Docs: `BUILD_MACOS.md`, `BUILD_WINDOWS.md`, `TESTING.md`
+- [x] CMake: a `neowolf_engine` static library linked by the game and the tests; each source listed once
+- [x] Remove `/home/mizan` paths and `-lpthread -ldl -lm`
+- [x] SDL2 from a pinned source release via FetchContent, linked statically; `NEOWOLF_SYSTEM_SDL2` option (official SDL2 2.32.10 source tarball, SHA-256 pinned, no Git needed; a wrong hash fails configure; both modes verified on macOS)
+- [ ] `CMakePresets.json` with `macos`, `windows-msvc` and `linux` presets in debug and release (written; `macos`, `macos-debug`, `ci-macos` verified; Windows Debug is the `windows-msvc-debug` build/test preset on the multi-config `windows-msvc` configure; Windows and Linux presets not yet run)
+- [ ] Per-compiler warning flags, warnings-as-errors in CI, MSVC portability fixes (in place; `ci-macos` builds with `-Werror`; a MinGW cross-compile on macOS has 0 warnings; MSVC flags not yet compiled, needs Phase 2 CI)
+- [x] Test harness: failures are recorded instead of aborting; non-zero exit on failure; one CTest entry per test; fixed repo root
+- [ ] `build.sh` (macOS/Linux) and `build.cmd`/`build.ps1` (vswhere, any VS edition); no `|| true`; Makefile becomes a thin wrapper (written; `build.sh` and `make check` verified on macOS; Windows scripts not yet run; CI job `windows-scripts` will run them)
+- [x] Docs: `BUILD_MACOS.md`, `BUILD_WINDOWS.md`, `TESTING.md`
 - **Done when:** a fresh clone passes `cmake --preset macos && cmake --build --preset macos && ctest --preset macos`
 
 ## Phase 2 — CI (macOS + Windows)
+> Note: the GitHub Actions workflow is written (`.github/workflows/ci.yml`: macOS `ci-macos`, Windows `ci-windows-msvc`, Linux `ci-linux`; configure, build, ctest, 5-second headless smoke run via `tools/ci/smoke_run.py`) and the CI section of `TESTING.md` describes it, but it has **not run yet**. The items below stay unticked until the jobs pass.
 - [ ] GitHub Actions on `macos-14` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run
 - [ ] Later phases add the bot over all levels and package artifacts
 - [ ] Docs: CI section in `TESTING.md`, badge in README
@@ -126,4 +127,24 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [ ] Fresh clone on macOS: build, all tests, bot completes 10/10, manual full play-through
 - [ ] Windows CI: build, tests, bot completes 10/10, package
 - [ ] Owner: manual play-through on a real Windows PC
+- **Done when:** all of the above pass (the release tag waits for Phase 12)
+
+## Phase 12 — Clean-code review
+Checks the finished code against clean-code principles and fixes what falls short. Runs last so it reviews the final code; behaviour must not change, and every test, the bot run and CI must still pass after each fix.
+- [ ] Agree the review criteria and record them in `docs/CODING_STANDARDS.md`:
+  - meaningful names
+  - small functions with one responsibility
+  - no duplication (DRY)
+  - no dead or commented-out code
+  - no magic numbers
+  - const-correctness
+  - RAII and clear ownership (no raw `new`/`delete`)
+  - consistent error handling
+  - comments that explain *why*
+  - clear module boundaries and dependencies (no SDL leaking out of the platform layer)
+- [ ] Automated checks: `.clang-format` and `clang-tidy` (readability, modernize, bugprone, cppcoreguidelines subsets) for C++, `ruff` for the Python DevKit; all three added to CI
+- [ ] Manual review of every module (core, platform, render, world, assets, audio, ui, interop, DevKit), with findings recorded in `docs/CLEAN_CODE_REVIEW.md` (finding → principle → fix → status)
+- [ ] Fix every finding, or record why it was kept; one commit per module
+- [ ] Re-run the full verification from Phase 11 (macOS + Windows CI, bot 10/10)
 - [ ] Tag `v1.0.0`
+- **Done when:** formatting, clang-tidy and ruff checks pass in CI; every review finding is fixed or justified; Phase 11 verification passes again

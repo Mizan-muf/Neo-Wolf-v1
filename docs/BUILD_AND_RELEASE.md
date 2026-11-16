@@ -1,107 +1,67 @@
 # Neo-Wolf Build & Release Engineering Guide
 
-## Build Prerequisites
+## 1. Building
 
-### Linux (Ubuntu / Debian / Fedora / Arch)
-- **C++ Compiler**: `g++` or `clang++` supporting C++17
-- **Build Tools**: `make` (GNU Make 4.0+) or `cmake` (3.21+)
-- **Libraries**: `libsdl2-dev` (SDL2 development headers and runtime)
-- **Python**: `python3` (3.8+) for DevKit CLI toolchain
+The build uses CMake presets (`CMakePresets.json`, CMake 3.25 or newer). SDL2 is downloaded as
+a pinned source tarball (SHA-256 checked) and linked statically, so no SDL2 install, vcpkg, Git
+or hardcoded library paths are needed.
+
+| Platform | Status | Guide | One command |
+|---|---|---|---|
+| macOS (universal arm64 + x86_64) | verified | [BUILD_MACOS.md](BUILD_MACOS.md) | `./build.sh` |
+| Windows (Visual Studio 2022+) | (not yet run) | [BUILD_WINDOWS.md](BUILD_WINDOWS.md) | `build.cmd` |
+| Linux | (not yet run) | see below | `./build.sh` |
+
+**Linux** (best effort, not yet run): install a C++17 compiler, CMake 3.25+, Ninja and Python 3,
+plus the development packages SDL builds against for X11/Wayland video and audio. On
+Debian/Ubuntu that is for example `libx11-dev libxext-dev libxrandr-dev libxcursor-dev
+libxfixes-dev libxi-dev libxss-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev`
+(a subset of the full list in SDL's `docs/README-linux.md`, which is in
+`build/<preset>/_deps/sdl2-src/docs/` after the first configure). `libsdl2-dev` is **not**
+needed: SDL2 is built from source. Ubuntu 22.04's packaged CMake (3.22) is too old; install a
+newer one (for example `pip install cmake`, or Kitware's apt repository). Then run `./build.sh`
+or the `linux` presets below.
+
+The underlying commands are the same on every platform:
 
 ```bash
-# Ubuntu / Debian
-sudo apt-get install build-essential libsdl2-dev python3
+cmake --preset <macos|windows-msvc|linux>
+cmake --build --preset <macos|windows-msvc|linux>
+ctest --preset <macos|windows-msvc|linux>
 ```
 
-### Windows
-- **Compiler & IDE**: Visual Studio 2022 (with "Desktop development with C++" workload)
-- **Package Manager**: `vcpkg` for SDL2 dynamic libraries (`vcpkg install sdl2:x64-windows`)
-- **Python**: Python 3.8+ on system `PATH`
+Builds go to `build/<preset>/` (on Windows `build\<preset>\<Config>\`, e.g.
+`build\windows-msvc\Release\`). `make` on macOS and Linux is a thin wrapper around these
+presets (`make`, `make check`, `make game`, `make tests`, `make clean`). `make clean` removes
+`build/` (including the downloaded SDL source, so the next configure downloads it again) and
+`release/`.
 
 ---
 
-## 1. Building on Linux
+## 2. Running Automated Tests
 
-### Quick Build with Makefile
-```bash
-# Build test suite and game executable
-make all
-
-# Build only game executable
-make game
-
-# Build only unit test suite
-make tests
-```
-
-### Using Build Script
-```bash
-./build.sh Release
-```
-
-### Using CMake
-```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
+See [TESTING.md](TESTING.md). In short, `ctest --preset <preset>` runs the native C++ tests
+(one CTest entry per test case), the DevKit Python tests and strict content validation.
+`make check` does the same on macOS and Linux.
 
 ---
 
-## 2. Building on Windows
-
-### Using Windows Batch Script
-```cmd
-build.cmd Release
-```
-
-### Using PowerShell
-```powershell
-.\build.ps1 -Config Release
-```
-
----
-
-## 3. Running Automated Tests
-
-Neo-Wolf maintains two comprehensive test suites:
-
-### Native C++ Test Suite (`neo_wolf_tests`)
-Validates math helpers, input transitions, raycast geometry, sprite depth sorting, collision sliding, entity interactions, PPM/WAV asset loaders, and map perimeter integrity.
-
-```bash
-# Build and run native test runner
-make test
-# Or directly:
-./neo_wolf_tests
-```
-
-### DevKit Python Test Suite
-Validates map syntax, reachability flood-fill, PPM token counts, WAV headers, CSV/JSON synchronizer, and packaging integrity.
-
-```bash
-./tools/devkit/neo_devkit test
-```
-
-### Unified Test Command
-```bash
-make check
-```
-
----
-
-## 4. Content & Asset Validation
+## 3. Content & Asset Validation
 
 Before packaging or committing content, run the automated validator:
 
 ```bash
-make validate
+make validate-strict
 # Or:
 ./tools/devkit/neo_devkit validate --strict
 ```
 
+On Windows: `tools\devkit\neo_devkit.cmd validate --strict`. (`make validate` runs the same
+checks without `--strict`, so warnings do not fail it.)
+
 ---
 
-## 5. Release Packaging (Phase 26)
+## 4. Release Packaging (Phase 26)
 
 Neo-Wolf provides automated packaging tools that create completely self-contained, standalone distribution bundles.
 

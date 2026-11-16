@@ -1,6 +1,8 @@
 #include "engine/render/Framebuffer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <utility>
 
 Framebuffer::Framebuffer(int width, int height) {
     Resize(width, height);

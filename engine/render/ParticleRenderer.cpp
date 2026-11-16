@@ -1,6 +1,8 @@
 #include "engine/render/ParticleRenderer.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #include "engine/core/MathUtils.h"
 #include "engine/render/Framebuffer.h"

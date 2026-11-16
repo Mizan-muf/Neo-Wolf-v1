@@ -1,11 +1,14 @@
 #include <algorithm>
-#include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -35,27 +38,52 @@
 #include "engine/world/Player.h"
 #include "engine/world/Sprite.h"
 
-#define TEST_ASSERT(expr)                                                                      \
-    do {                                                                                        \
-        if (!(expr)) {                                                                          \
-            std::cerr << "Assertion failed: " << #expr << " at " << __FILE__ << ":" << __LINE__ \
-                      << '\n';                                                                 \
-            std::abort();                                                                       \
-        }                                                                                       \
+// Test harness
+// ------------
+// A failed assertion records file:line and the expression, then throws TestFailure so the
+// current test case stops and the runner moves on to the next one. The process exits
+// non-zero if any test case failed.
+namespace {
+struct TestFailure {
+    std::string message;
+};
+
+[[noreturn]] void FailTest(const char* file, int line, const std::string& what) {
+    std::ostringstream out;
+    out << file << ":" << line << ": " << what;
+    throw TestFailure{out.str()};
+}
+} // namespace
+
+#define TEST_ASSERT(expr)                                                \
+    do {                                                                 \
+        if (!(expr)) {                                                   \
+            FailTest(__FILE__, __LINE__, "TEST_ASSERT(" #expr ") failed"); \
+        }                                                                \
     } while (false)
 
-#define TEST_ASSERT_NEAR(a, b, eps)                                                            \
-    do {                                                                                        \
-        if (std::fabs((a) - (b)) > (eps)) {                                                     \
-            std::cerr << "Assertion failed: |" << #a << " - " << #b << "| <= " << #eps          \
-                      << " (" << (a) << " vs " << (b) << ") at " << __FILE__ << ":"            \
-                      << __LINE__ << '\n';                                                     \
-            std::abort();                                                                       \
-        }                                                                                       \
+#define TEST_ASSERT_NEAR(a, b, eps)                                                        \
+    do {                                                                                   \
+        const auto nwActualA = (a);                                                        \
+        const auto nwActualB = (b);                                                        \
+        if (!(std::fabs(nwActualA - nwActualB) <= (eps))) {                                \
+            std::ostringstream nwDetail;                                                   \
+            nwDetail << "TEST_ASSERT_NEAR(" #a ", " #b ", " #eps ") failed: " << nwActualA \
+                     << " vs " << nwActualB;                                               \
+            FailTest(__FILE__, __LINE__, nwDetail.str());                                  \
+        }                                                                                  \
     } while (false)
 
 namespace {
+// Resolves a repository-relative path. NW_SOURCE_DIR is set by CMake to the repo root, so
+// the tests work from any working directory; the cwd and its parent are fallbacks.
 std::string ResolveRepoPath(const std::string& relativePath) {
+#ifdef NW_SOURCE_DIR
+    const std::filesystem::path fromSourceDir = std::filesystem::path(NW_SOURCE_DIR) / relativePath;
+    if (std::filesystem::exists(fromSourceDir)) {
+        return fromSourceDir.string();
+    }
+#endif
     if (std::filesystem::exists(relativePath)) {
         return relativePath;
     }
@@ -832,48 +860,137 @@ void TestEngineInteropC_API() {
 
     nw_engine_destroy(handle);
 }
+struct TestCase {
+    const char* id;    // used on the command line and as the CTest name (native.<id>)
+    const char* name;  // human-readable description
+    void (*fn)();
+};
+
+// Keep in sync with NEOWOLF_NATIVE_TESTS in CMakeLists.txt.
+const TestCase kTests[] = {
+    {"vec2_math_helpers", "Vec2 and math helpers", &TestVec2AndMathHelpers},
+    {"input_state_transitions", "InputState transitions", &TestInputStateTransitions},
+    {"map_queries", "Map queries", &TestMapQueries},
+    {"raycast_hit_distance", "Raycast hit distance", &TestRaycastHitDistance},
+    {"texture_loader_fallback", "Texture loader and fallback", &TestTextureLoaderAndFallback},
+    {"entity_manager_basics", "Entity manager basics", &TestEntityManagerBasics},
+    {"player_collision_rules", "Player collision rules", &TestPlayerCollisionRules},
+    {"sprite_distance_sorting", "Sprite distance sorting", &TestSpriteDistanceSorting},
+    {"entity_interaction_rules", "Entity interaction rules", &TestEntityInteractionRules},
+    {"content_file_loaders", "Content file loaders", &TestContentFileLoaders},
+    {"audio_config_loader", "Audio config loader", &TestAudioConfigLoader},
+    {"asset_manager_fallback_load", "Asset manager fallback load", &TestAssetManagerFallbackLoad},
+    {"game_state_transitions", "GameState transitions", &TestGameStateTransitions},
+    {"player_combat_shooting", "Player combat and shooting", &TestPlayerCombatAndShooting},
+    {"enemy_ai_behavior", "Enemy AI behavior", &TestEnemyAiBehavior},
+    {"pickup_collection", "Pickup collection", &TestPickupCollection},
+    {"command_bridge_events", "Command bridge and events", &TestCommandBridgeAndEvents},
+    {"file_logging", "File logging", &TestLogFile},
+    {"level_reset_dynamic_load", "Level reset and dynamic load", &TestLevelResetAndDynamicLoad},
+    {"vertical_slice_simulation", "Playable vertical slice simulation", &TestPlayableVerticalSliceSimulation},
+    {"map_perimeter_reachability", "Map perimeter and reachability validation",
+     &TestMapPerimeterAndReachabilityValidation},
+    {"asset_inventory_resilience", "Asset inventory and error resilience", &TestAssetInventoryAndErrorResilience},
+    {"engine_interop_c_api", "Engine Interop C API", &TestEngineInteropC_API},
+};
+
+void PrintUsage(const char* program) {
+    std::cout << "Usage: " << program << " [--list] [--help] [TEST...]\n"
+              << "  --list   print the id of every test case, one per line\n"
+              << "  TEST     run only matching test cases: an exact id, otherwise every test whose\n"
+              << "           id or description contains TEST (case-sensitive)\n"
+              << "With no TEST arguments every test case runs. Exit code 0 means all selected tests\n"
+              << "passed; 1 means a test failed or a filter matched nothing; 2 means bad usage.\n";
+}
+
+bool Matches(const TestCase& test, const std::string& filter) {
+    return std::string(test.id).find(filter) != std::string::npos ||
+           std::string(test.name).find(filter) != std::string::npos;
+}
 } // namespace
 
-int main() {
-    struct TestCase {
-        const char* name;
-        void (*fn)();
-    };
-
-    const std::vector<TestCase> tests{
-        {"Vec2 and math helpers", &TestVec2AndMathHelpers},
-        {"InputState transitions", &TestInputStateTransitions},
-        {"Map queries", &TestMapQueries},
-        {"Raycast hit distance", &TestRaycastHitDistance},
-        {"Texture loader and fallback", &TestTextureLoaderAndFallback},
-        {"Entity manager basics", &TestEntityManagerBasics},
-        {"Player collision rules", &TestPlayerCollisionRules},
-        {"Sprite distance sorting", &TestSpriteDistanceSorting},
-        {"Entity interaction rules", &TestEntityInteractionRules},
-        {"Content file loaders", &TestContentFileLoaders},
-        {"Audio config loader", &TestAudioConfigLoader},
-        {"Asset manager fallback load", &TestAssetManagerFallbackLoad},
-        {"GameState transitions", &TestGameStateTransitions},
-        {"Player combat and shooting", &TestPlayerCombatAndShooting},
-        {"Enemy AI behavior", &TestEnemyAiBehavior},
-        {"Pickup collection", &TestPickupCollection},
-        {"Command bridge and events", &TestCommandBridgeAndEvents},
-        {"File logging", &TestLogFile},
-        {"Level reset and dynamic load", &TestLevelResetAndDynamicLoad},
-        {"Playable vertical slice simulation", &TestPlayableVerticalSliceSimulation},
-        {"Map perimeter and reachability validation", &TestMapPerimeterAndReachabilityValidation},
-        {"Asset inventory and error resilience", &TestAssetInventoryAndErrorResilience},
-        {"Engine Interop C API", &TestEngineInteropC_API},
-    };
-
-    int passed = 0;
-    for (const auto& test : tests) {
-        std::cout << "[RUN ] " << test.name << '\n';
-        test.fn();
-        std::cout << "[PASS] " << test.name << '\n';
-        ++passed;
+int main(int argc, char* argv[]) {
+    std::vector<std::string> filters;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--list") {
+            for (const TestCase& test : kTests) {
+                std::cout << test.id << '\n';
+            }
+            return 0;
+        }
+        if (arg == "--help" || arg == "-h") {
+            PrintUsage(argv[0]);
+            return 0;
+        }
+        if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "Unknown option: " << arg << '\n';
+            PrintUsage(argv[0]);
+            return 2;
+        }
+        filters.push_back(arg);
     }
 
-    std::cout << "All " << passed << " test cases passed.\n";
-    return 0;
+    std::vector<const TestCase*> selected;
+    for (const std::string& filter : filters) {
+        std::vector<const TestCase*> matches;
+        for (const TestCase& test : kTests) {
+            if (filter == test.id) {
+                matches = {&test};
+                break;
+            }
+            if (Matches(test, filter)) {
+                matches.push_back(&test);
+            }
+        }
+        if (matches.empty()) {
+            std::cerr << "No test case matches '" << filter << "' (use --list to see test ids).\n";
+            return 1;
+        }
+        for (const TestCase* match : matches) {
+            if (std::find(selected.begin(), selected.end(), match) == selected.end()) {
+                selected.push_back(match);
+            }
+        }
+    }
+    if (filters.empty()) {
+        for (const TestCase& test : kTests) {
+            selected.push_back(&test);
+        }
+    }
+
+    int passed = 0;
+    std::vector<std::string> failures;
+    for (const TestCase* test : selected) {
+        std::cout << "[RUN ] " << test->id << " (" << test->name << ")\n" << std::flush;
+        std::string error;
+        try {
+            test->fn();
+        } catch (const TestFailure& failure) {
+            error = failure.message;
+        } catch (const std::exception& ex) {
+            error = std::string("unexpected exception: ") + ex.what();
+        } catch (...) {
+            error = "unexpected non-standard exception";
+        }
+        if (error.empty()) {
+            std::cout << "[PASS] " << test->id << '\n';
+            ++passed;
+        } else {
+            std::cout << "[FAIL] " << test->id << '\n' << std::flush;
+            std::cerr << "       " << error << '\n' << std::flush;
+            failures.push_back(std::string(test->id) + ": " + error);
+        }
+    }
+
+    std::cout << "\n" << passed << " of " << selected.size() << " test case(s) passed";
+    if (failures.empty()) {
+        std::cout << ".\n";
+        return 0;
+    }
+    std::cout << "; " << failures.size() << " failed:\n";
+    for (const std::string& failure : failures) {
+        std::cout << "  " << failure << '\n';
+    }
+    return 1;
 }

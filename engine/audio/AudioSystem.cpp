@@ -3,6 +3,8 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <utility>
 
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"

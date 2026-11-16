@@ -9,6 +9,11 @@ if "%OUT_DIR%"=="" set "OUT_DIR=release"
 
 echo Packaging Neo-Wolf v%VERSION% to %OUT_DIR%...
 python tools\devkit\devkit.py package --out-dir "%OUT_DIR%" --version "%VERSION%"
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" (
+  echo error: packaging failed with exit code %RESULT%.
+  endlocal & exit /b %RESULT%
+)
 
 echo Package generation finished.
-endlocal
+endlocal & exit /b 0
