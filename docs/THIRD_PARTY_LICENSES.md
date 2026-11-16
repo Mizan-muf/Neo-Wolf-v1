@@ -1,5 +1,8 @@
 # Third-party licences
 
+(In a release package, links to repository files other than `../LICENSE.md` point at the source
+repository.)
+
 Neo-Wolf itself is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE.md](../LICENSE.md));
 SDL2 (zlib) and nlohmann/json (MIT) are permissive licences compatible with distributing the game
 under it, provided their notices below ship with it (every release package does, in `LICENSES/`).
@@ -60,8 +63,9 @@ Not audited: the **Windows** executable (the MSVC build compiles SDL's Windows b
 by source inspection these are SDL's zlib code plus the same HIDAPI and yuv2rgb components, so
 the same notices apply, but no Windows binary was inspected) and the **Linux** package (best
 effort, known issue B12). Using a system SDL2 (`NEOWOLF_SYSTEM_SDL2=ON`) links SDL as built by
-someone else; its notices then come with that SDL, and the install step warns that
-`LICENSES/SDL2-LICENSE.txt` and the bundled notices are missing.
+someone else; its notices then come with that SDL: configure warns that `LICENSES/SDL2-LICENSE.txt` cannot be
+installed, the HIDAPI and yuv2rgb notices are not installed either, and DevKit `package` /
+`package_smoke.py` reject such a package (they require all five files in `LICENSES/`).
 
 The C++ standard library and the C runtime are the platform's (Apple's libc++ and system
 libraries, linked dynamically; on Windows the Microsoft C runtime, linked statically). We are

@@ -121,7 +121,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 
 | Type | Cell | Where |
 |---|---|---|
-| guard | (14, 22) | Bay 1, just inside the doorway |
+| guard | (14, 22) | Bay 1, north-east corner, 3 cells from the doorway |
 | guard | (12, 22) | Bay 1 |
 | guard | (27, 23) | Bay 2 |
 | guard | (29, 27) | Bay 2 |
@@ -188,7 +188,7 @@ None (full light everywhere).
 ## Walkthrough (critical path)
 
 1. North from the dock (ammo in the neck); the runner in the lower spine comes at once.
-2. **Bay 1** (west): two guards wait just inside the doorway, a runner by the blue key in the nook at the back.
+2. **Bay 1** (west): two guards wait in the corner north of the doorway, a runner by the blue key in the nook at the back.
    **Bay 2** (east) is optional: 2 guards, health, ammo.
 3. **Db**. Ammo in front of D3. Inside **Bay 3** the brute stands just beside the door (round the frame), the
    two guards behind it. Health in front of the red key nook. **Bay 4** (west) is optional.

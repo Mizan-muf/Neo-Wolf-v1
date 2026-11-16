@@ -120,7 +120,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 | guard | (18, 1) | R4 east alcove (pincer) |
 | guard | (25, 2) | R5, 3 cells behind D5 |
 | brute | (23, 2) at x 23.7, y 2.5 | R5 (ambush 2): 1.2 cells behind D5, in reach when it opens |
-| brute | (26, 20) | R6, 7.6 cells from Dg in the open |
+| brute | (26, 20) | R6, 7.6 cells from the first cell behind Dg (8.1 from Dg itself), in the open |
 | runner | (9, 9) | R3 |
 | runner | (19, 5) | R3 |
 | runner | (2, 8) | duct |

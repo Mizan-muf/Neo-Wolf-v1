@@ -101,6 +101,20 @@ class TestCreateMap(CliTest):
         campaign = json.loads((self.root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
         self.assertEqual([lvl["id"] for lvl in campaign["levels"]], ["alpha", "beta", "gamma"])
 
+    def test_register_reports_the_campaign_position(self) -> None:
+        # --force on an existing id names that entry's own position, not the last one's.
+        code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "alpha", "--register", "--force")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Updated level alpha as level 1 ", out)
+        code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "beta", "--register", "--force")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Updated level beta as level 2 ", out)
+        code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "delta", "--register")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Registered level delta as level 4 ", out)
+        campaign = json.loads((self.root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
+        self.assertEqual([lvl["id"] for lvl in campaign["levels"]], ["alpha", "beta", "gamma", "delta"])
+
 
 class TestInspectMap(CliTest):
     def test_every_shipped_campaign_level(self) -> None:

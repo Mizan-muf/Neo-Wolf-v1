@@ -97,8 +97,10 @@ The loader reads the file line by line:
   coordinates (column, row among the grid rows), not file line numbers.
 
 The engine has **no** minimum size and does **not** require a closed outer wall. Outside the
-grid, the engine treats every cell as solid wall (`Map::GetCell`, `Map::IsWall`), so rays and
-movement cannot leave the map even if an edge is open. There is no maximum size either; the
+grid, `Map::IsWall` treats every cell as solid, so movement cannot leave the map. Rays are
+different: a ray that leaves the grid ends without a hit (`Raycaster::CastRay`). Through an open
+edge no wall is drawn in that column (only the background floor/ceiling fill, and no sprites),
+and shots fly to their full range. Close the outer wall (the DevKit requires it). There is no maximum size either; the
 minimap scales small maps to its panel and follows the player on big ones.
 
 ## Coordinates
@@ -143,7 +145,10 @@ python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --entities game
 
 # A new level from a template (styles: box, arena, dungeon, crossroads): the map with an exit
 # switch X in the middle of the east wall, a stub entity file, and an entry in campaign.json
-python3 tools/devkit/devkit.py create-map --level-id level04 --width 16 --height 12 --style arena --register
+# (use an id that is not in the campaign yet; --force replaces an existing one). With an 11th level,
+# CTest content_validation_campaign_size fails until NEOWOLF_REQUIRED_CAMPAIGN_LEVELS is raised
+# (LEVEL_AUTHORING.md, step 9).
+python3 tools/devkit/devkit.py create-map --level-id level11 --width 16 --height 12 --style arena --register
 
 # Validate all content (maps, assets, definitions, entity files)
 python3 tools/devkit/devkit.py validate --strict

@@ -49,8 +49,7 @@ This page describes what the code does today, including its gaps.
 
 ## Threading
 
-- The command queue and the event queue are each guarded by one `std::mutex`
-  (`CommandBridge`), so `nw_engine_send_command`, `nw_engine_poll_event`,
+- The command queue and the event queue share one `std::mutex` (`CommandBridge`), so `nw_engine_send_command`, `nw_engine_poll_event`,
   `nw_engine_has_pending_events` and `nw_engine_clear_bridge` may be called from another
   thread while the engine runs.
 - **Every other function reads or writes engine state without locking.** Call them on the
@@ -87,7 +86,7 @@ getters and setters work on the default-constructed state before `init` (the tes
 |---|---|---|---|
 | `void* nw_engine_create()` | none | a new engine handle (never null in practice: `new Engine()`) | Nothing is loaded and no window is opened. |
 | `void nw_engine_destroy(void* handle)` | handle (may be null) | none | Deletes the engine; its destructor calls `Shutdown`. |
-| `int nw_engine_init(void* handle)` | handle | 1 on success, 0 on failure | `Engine::Init` with default `EngineOptions`: automatic content-root search (`NEOWOLF_DATA_DIR` is honoured, then the executable's folder and up to 3 parents, `<exe>/../Resources`, the working directory and its parent; [ARCHITECTURE.md](ARCHITECTURE.md#content-loading-and-the-content-root)), `game/defs/gameplay.json` and `campaign.json` (invalid files fail), **opens a window and the audio device** (there is no headless option in the C API; use `SDL_VIDEODRIVER=dummy` for an invisible run), main menu with level 1 loaded behind it, **error message boxes enabled**, and no per-user folder, so `progress.json` is neither read nor written. Afterwards the state is `Menu` (0). On failure the reason is logged. Calling it a second time (or again after `shutdown`) has not been tested. |
+| `int nw_engine_init(void* handle)` | handle | 1 on success, 0 on failure | `Engine::Init` with default `EngineOptions`: automatic content-root search (`NEOWOLF_DATA_DIR` if set, and then it is the only place searched; otherwise the executable's folder and up to 3 parents, `<exe>/../Resources`, the working directory and its parent; [ARCHITECTURE.md](ARCHITECTURE.md#content-loading-and-the-content-root)), `game/defs/gameplay.json` and `campaign.json` (invalid files fail), **opens a window and the audio device** (there is no headless option in the C API; use `SDL_VIDEODRIVER=dummy` for an invisible run), main menu with level 1 loaded behind it, **error message boxes enabled**, and no per-user folder, so `progress.json` is neither read nor written. Afterwards the state is `Menu` (0). On failure the reason is logged. Calling it a second time (or again after `shutdown`) has not been tested. |
 | `void nw_engine_update(void* handle, double deltaSeconds)` | handle; frame time in seconds | none | One frame: runs the queued commands, reads window events, then menus or gameplay. `deltaSeconds` is used as given (the game's own loop clamps it to 0.1 s; this function does not). No-op unless running. |
 | `void nw_engine_render(void* handle)` | handle | none | Draws the 320×240 frame and presents it in the window. No-op unless running. |
 | `void nw_engine_shutdown(void* handle)` | handle | none | Closes audio and the window and resets the engine. Safe to call more than once. Does not clear the command or event queues. |
@@ -100,7 +99,7 @@ getters and setters work on the default-constructed state before `init` (the tes
 | `int nw_engine_get_state(const void* handle)` | handle | a [`GameState`](#gamestate) value; 0 for a null handle | |
 | `void nw_engine_set_state(void* handle, int state)` | handle; a `GameState` value | none | Values outside 0–6 are ignored. 4 (`Victory`, deprecated) selects 5 (`LevelComplete`). 0 (`Menu`) returns to the main page of the menu. Forces the state (`GameFlow::ForceState`) without loading anything, and pushes a `StateChanged` event if the state changed. |
 | `void nw_engine_reset_level(void* handle)` | handle | none | Restarts the current level from its files: a campaign level with its level-entry health and ammo, a level loaded by path with the `gameplay.json` initial values. The state becomes `Gameplay`. If the reload fails, the current level state is kept (logged). |
-| `int nw_engine_load_level(void* handle, const char* mapPath, const char* entitiesPath)` | handle; map and entity file paths, **relative to the content root** (before `init`: relative to the working directory) | 1 if the level was loaded, 0 on any error or a null argument | Loads and builds the level with the current gameplay values; on failure the current level stays (errors logged). Health and ammo are set to the `gameplay.json` initial values and keys are cleared. The engine treats it as "loaded by path" (`LevelCompleted` reports level 0; `nw_engine_reset_level` reloads these files), but the game flow keeps its own campaign position, so what follows its level-complete screen is decided as if the last campaign level were still loaded (not tested). The state is **not** changed. Pushes `LevelLoaded`. |
+| `int nw_engine_load_level(void* handle, const char* mapPath, const char* entitiesPath)` | handle; map and entity file paths, **relative to the content root** (before `init`: relative to the working directory) | 1 if the level was loaded, 0 on any error or a null argument | Loads and builds the level with the current gameplay values; on failure the current level stays (errors logged). Health and ammo are set to the `gameplay.json` initial values and keys are cleared. The engine treats it as "loaded by path" (`LevelCompleted` reports level 0; `nw_engine_reset_level` reloads these files), but the game flow keeps its own campaign position: after a level was started through the menus, Enter on the level-complete screen loads the campaign level after *that* one; if no campaign level was started yet (straight after `nw_engine_init`), Enter goes to `CampaignComplete` (credits). The state is **not** changed. Pushes `LevelLoaded`. |
 
 ### Player
 
@@ -110,7 +109,7 @@ getters and setters work on the default-constructed state before `init` (the tes
 | `void nw_engine_set_player_pos(void* handle, float x, float y, float angle)` | handle; position in cells; angle in radians | none | Sets the camera directly: **no collision check** (a position inside a wall is accepted). |
 | `void nw_engine_get_player_stats(const void* handle, int* outHealth, int* outAmmo)` | handle; out: health, ammo | none | |
 | `void nw_engine_set_player_stats(void* handle, int health, int ammo)` | handle; health, ammo | none | **Not clamped or validated**: negative values and values above the maxima are stored as given. Health 0 does not end the level by itself. |
-| `void nw_engine_player_attack(void* handle)` | handle | none | Fires the weapon as if the fire key was pressed: respects the fire-rate cooldown, uses one ammo, may hit the nearest enemy in line, plays the sound and pushes `PlayerAttacked` (and `EnemyDamaged` / `EnemyDied`). Works in any state. With no ammo it only shows "Out of Ammo!". |
+| `void nw_engine_player_attack(void* handle)` | handle | none | Fires the weapon as if the fire key was pressed: respects the fire-rate cooldown, uses one ammo, may hit the nearest enemy in line, plays the sound and pushes `PlayerAttacked` (and `EnemyDamaged` / `EnemyDied`). Works in any state. With no ammo it only shows the message "Out of Ammo!" (the HUD draws messages in capitals). |
 
 ### Entities
 
@@ -127,7 +126,7 @@ getters and setters work on the default-constructed state before `init` (the tes
 |---|---|---|---|
 | `void nw_engine_play_sound(void* handle, const char* soundId)` | handle; one of `door_open`, `pickup`, `enemy_alert`, `weapon_fire` (`game/defs/audio.cfg`) | none | Unknown ids, a null string, or no audio device: nothing happens. Sounds are queued on the device one after another (`SDL_QueueAudio`), not mixed. |
 | `void nw_engine_spawn_particle(void* handle, float x, float y, float vx, float vy, float life, uint32_t color)` | handle; position and velocity in cells and cells/s; lifetime in seconds; colour `0xAARRGGBB` | none | `life` ≤ 0 becomes 0.5 s; colour 0 becomes `0xFFFFC266`; size 0.06 cells. At most 512 particles exist at once. Particles only move during gameplay updates. |
-| `void nw_engine_show_message(void* handle, const char* message, float duration)` | handle; text; seconds | none | Replaces the HUD message (shown during gameplay only). A null message is ignored. |
+| `void nw_engine_show_message(void* handle, const char* message, float duration)` | handle; text; seconds | none | Replaces the HUD message (shown during gameplay only). A null message is ignored. A `duration` ≤ 0 keeps the message until another message replaces it or a level loads (unlike the `ShowMessage` command, which turns ≤ 0 into 2 s). |
 
 ### Command bridge
 
@@ -206,7 +205,7 @@ Commands do **not** push events of their own, except where noted.
 | 3 | `LoadLevel` | `strArg` = `"<map>;<entities>"` or `"<map>,<entities>"`, or only `"<map>"` | As `nw_engine_load_level` (content-relative paths; the result is not reported, only logged). With only a map path the entity file is derived: for `dir/name.map` it is `game/defs/name.entities.json` (the directory is not used); for `name.map` without a slash it is `name.entities.json`. Both paths together must fit in 127 bytes. |
 | 4 | `SpawnEntity` | `intArg1` = `EntityType`, `floatArg1`/`floatArg2` = x, y | As `nw_engine_spawn_entity`, but the new id is not reported. |
 | 5 | `DestroyEntity` | `intArg1` = entity id | As `nw_engine_destroy_entity`. |
-| 6 | `DamagePlayer` | `intArg1` = amount | Health −amount, not below 0. At 0 the state is forced to `GameOver` (no `PlayerDied` event). |
+| 6 | `DamagePlayer` | `intArg1` = amount | Health −amount, not below 0. The sign is not checked: a negative amount adds health with no cap. At 0 the state is forced to `GameOver` (pushes `StateChanged`, no `PlayerDied`), in any state, including `Menu`. |
 | 7 | `HealPlayer` | `intArg1` = amount | Health +amount, capped at the maximum health. The sign is not checked: a negative amount lowers health, below 0 if large enough. |
 | 8 | `AddAmmo` | `intArg1` = amount | Ammo +amount, capped at the maximum ammo. The sign is not checked. |
 | 9 | `PlayerAttack` | | As `nw_engine_player_attack` (pushes the attack events). |
@@ -223,23 +222,24 @@ Unknown command values are ignored.
 
 `InteropEventType` (`int32_t`) in `CommandBridge.h`. An `InteropEvent` has the same layout as
 `InteropCommand`. Unused fields are 0 or empty. Events are pushed by the engine itself
-(`Engine.Core.cpp`, `Engine.Update.cpp`); gameplay events are only pushed during `Gameplay`
-updates.
+(`Engine.Core.cpp`, `Engine.Update.cpp`); gameplay events are pushed during `Gameplay`
+updates, except the attack events from `nw_engine_player_attack` / `PlayerAttack`, which work in
+any state.
 
 | Value | Event | Pushed when | Arguments |
 |---|---|---|---|
 | 0 | `None` | never | |
-| 1 | `StateChanged` | the state differs from the last reported one (checked after every update, and on `nw_engine_set_state`, `ResetLevel` and `init`) | `intArg1` = new `GameState` |
+| 1 | `StateChanged` | the state differs from the last reported one: checked after every update (not one that quits, or a frozen preview), on `nw_engine_set_state`/`SetGameState`, `nw_engine_reset_level`/`ResetLevel`, and when the `DamagePlayer` command reaches 0 health. `nw_engine_init` pushes none (the state starts as `Menu`). | `intArg1` = new `GameState` |
 | 2 | `PlayerDamaged` | an enemy hit the player | `intArg1` = damage |
 | 3 | `PlayerDied` | an enemy hit brought health to 0 | |
 | 4 | `PlayerAttacked` | a shot was fired (keyboard, `nw_engine_player_attack` or the command) | |
-| 5 | `EnemyAlerted` | the enemy AI raised the alert and the alert sound played (at most once per 2 s, `kEnemyAlertSoundCooldown`; alerts caused by the player's own shot do not push it) | |
+| 5 | `EnemyAlerted` | the enemy AI raised the alert and the alert sound played (at most once per 2 s, `kEnemyAlertSoundCooldown`; alerts caused by the player's shot *hitting* an enemy do not push it and start the 2 s cooldown; alerts from hearing a shot do push it) | |
 | 6 | `EnemyDamaged` | the player's shot hit an enemy | `intArg1` = enemy id, `intArg2` = damage, `floatArg1`/`floatArg2` = hit point |
 | 7 | `EnemyDied` | that shot killed it | `intArg1` = enemy id |
-| 8 | `PickupCollected` | the player walked over a pickup | `intArg1` = `PickupType`, `intArg2` = value (health or ammo amount) |
+| 8 | `PickupCollected` | the player walked over a pickup | `intArg1` = `PickupType`, `intArg2` = the pickup's value (not reduced by the cap; 0 for a key card) |
 | 9 | `DoorToggled` | `E` opened or closed a door | `intArg1`/`intArg2` = door cell x, y (whether it opened or closed is not reported; if one press toggles two doors, only one event is pushed) |
 | 10 | `TriggerActivated` | the player first came within 0.8 cells of a trigger | `intArg1` = trigger entity id |
-| 11 | `LevelLoaded` | any level load succeeded (start, next level, restart, `nw_engine_load_level`) | `strArg` = the map path as passed (content-relative) |
+| 11 | `LevelLoaded` | any level load succeeded (`nw_engine_init` with level 1 behind the menu, start, next level, restart, `nw_engine_load_level`) | `strArg` = the map path as passed (content-relative) |
 | 12 | `LevelCompleted` | the exit switch was used | `intArg1` = campaign level number (1-based; 0 for a level loaded by path), `intArg2` = health, `floatArg1` = seconds played on the level |
 
 ## Tests

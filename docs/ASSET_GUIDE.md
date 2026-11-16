@@ -95,14 +95,17 @@ the average colour and how many pixels are the magenta colour key (transparent).
 ### Generating Procedural Assets
 ```bash
 # Generate a 64x64 checkerboard texture (one-off assets; the theme textures come from gen_textures.py, section 4)
-./tools/devkit/neo_devkit create-asset game/assets/wall_test.ppm --type checker --width 64 --height 64
+./tools/devkit/neo_devkit create-asset /tmp/wall_test.ppm --type checker --width 64 --height 64
 
 # Generate a 64x64 brick texture
-./tools/devkit/neo_devkit create-asset game/assets/wall_brick.ppm --type brick --width 64 --height 64
+./tools/devkit/neo_devkit create-asset /tmp/wall_brick.ppm --type brick --width 64 --height 64
 
 # Generate a 440 Hz test tone WAV audio file
-./tools/devkit/neo_devkit create-asset game/assets/sfx_test.wav --type beep
+./tools/devkit/neo_devkit create-asset /tmp/sfx_test.wav --type beep
 ```
+
+Write test assets outside `game/assets/`: every file there must come from a generator
+(`test_asset_provenance`).
 
 ---
 
@@ -131,7 +134,7 @@ python3 tools/devkit/gen_textures.py --out /tmp/themes   # write somewhere else
   process and is not used). Running the script again, on any OS or Python 3 version, writes the
   same bytes; files are written with `\n` line endings.
 - **Output:** 32×32 plain-text PPM (`P3`, max value 255) with a comment line naming the theme,
-  the slot and the seed; 40 files, about 12 KB each.
+  the slot and the seed; 40 files, 9–12 KB each.
 - The exit switch has the same layout in every theme (an "EXIT" label, a lever box, a green
   lamp) so it is recognisable by its shape, not only its colour.
 - **Locked doors** (Phase 6) are the theme's own `door` texture (drawn from the same seed, so
@@ -191,14 +194,14 @@ images:
 
 | Slot (`sprites.cfg` key) | File | Look |
 |---|---|---|
-| `guard` | `sprites/guard.ppm` | upright olive soldier with helmet and rifle, 29 rows tall |
+| `guard` | `sprites/guard.ppm` | upright olive soldier with helmet and rifle, 31 rows tall with its outline |
 | `brute` | `sprites/brute.ppm` | fills the whole frame: dark red armour, wide metal shoulders, yellow visor |
-| `runner` | `sprites/runner.ppm` | small (23 rows), slim, mid-stride; cyan suit, orange visor, blade |
-| `guard_dead`, `brute_dead`, `runner_dead` | `sprites/<slot>.ppm` | the body lying in a pool of blood, in the lower third of the frame |
+| `runner` | `sprites/runner.ppm` | small (24 rows), slim, mid-stride; cyan suit, orange visor, blade |
+| `guard_dead`, `brute_dead`, `runner_dead` | `sprites/<slot>.ppm` | the body lying in a pool of blood, in the lower half of the frame |
 | `health` | `sprites/health.ppm` | white medkit with a red cross |
 | `ammo` | `sprites/ammo.ppm` | olive ammo box with brass cartridges |
 | `key_red`, `key_blue`, `key_gold` | `sprites/<slot>.ppm` | a key card in its colour with its initial (R, B, G), floating over a shadow |
-| `decoration` | `sprites/decoration.ppm` | a blue-and-white porcelain floor vase, 25 rows tall (the level landmark, [levels/README.md](levels/README.md) rule 13) |
+| `decoration` | `sprites/decoration.ppm` | a blue-and-white porcelain floor vase, 26 rows tall (the level landmark, [levels/README.md](levels/README.md) rule 13) |
 
 The enemies are told apart at 320×240 by **silhouette** (size and outline) as well as colour,
 and every figure has a dark 1-pixel outline so it stands out against any wall. The key cards
@@ -228,8 +231,6 @@ screenshots of every level's start view and the dim crypt (level 5) and chapel (
 the reference images in `docs/images/` were regenerated. To change a sprite, edit its drawing function, run the
 script, check it in the game (`neo_wolf --preview enemies --frames 5 --screenshot out.bmp`, or
 `--preview items`), and commit the script and the regenerated files.
-
----
 
 ---
 
@@ -265,7 +266,7 @@ every file `audio.cfg` names is generated, the format, the peak levels (between 
 dBFS), silent first and last samples, no DC offset, the lengths (0.1–0.3 s, gunshot shorter
 than `fireRate`), that the effects differ in character (the gunshot's energy at its start, the
 door's in its middle, the chime high, the alert low) and that the committed files match
-(`--check`). `neo_wolf` (not headless) logs `Sound effects loaded: 4`.
+(`--check`). `neo_wolf` logs `Sound effects loaded: 4` (also in headless runs with the `dummy` audio driver).
 
 To change a sound, edit its function in the script, run it, listen to it in the game, and
 commit the script and the regenerated `.wav` files.

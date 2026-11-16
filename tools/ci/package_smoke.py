@@ -16,7 +16,8 @@ For each archive (neo-wolf-<version>-<platform>.zip or .tar.gz):
      The Windows checks read the file, so they also run on another OS (a MinGW cross-build);
   5. on the package's own OS: runs the game headless (SDL dummy drivers) with
      `--level 10 --frames 300 --pref-dir <temporary folder>`, once from the extracted folder and
-     once with the working directory set to the file-system root (/ or C:\\), and requires exit
+     once with the working directory set to the file-system root (/, or the current drive's
+     root such as C:\\ on Windows), and requires exit
      code 0 and a log whose content root is the bundle's Contents/Resources (macOS) or the
      executable's folder (Windows, Linux); plus `--version`.
 

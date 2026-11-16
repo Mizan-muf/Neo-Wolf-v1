@@ -14,7 +14,7 @@ Licences are summarised in [docs/THIRD_PARTY_LICENSES.md](../docs/THIRD_PARTY_LI
 | Downloaded from | <https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp> |
 | SHA-256 | `aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63` |
 | Licence | MIT, `nlohmann/LICENSE.MIT` (from <https://raw.githubusercontent.com/nlohmann/json/v3.12.0/LICENSE.MIT>, SHA-256 `46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603`) |
-| Used by | `engine/assets/ContentConfig.cpp` (`gameplay.json`) and `engine/world/EntityPlacementLoader.cpp` (`*.entities.json`) |
+| Used by | `engine/core/JsonDocument.h/.cpp` (shared parser), used by `engine/assets/GameplayConfig.cpp` (`gameplay.json`), `engine/assets/CampaignConfig.cpp` (`campaign.json`), `engine/world/EntityPlacementLoader.cpp` (`*.entities.json`) and `engine/core/Progress.cpp` (`progress.json`); also `engine/autoplay/AutoplayReport.cpp` (`--json` report) and `tests/LogicTests.cpp` |
 
 The release asset is byte-identical to `single_include/nlohmann/json.hpp` at the `v3.12.0` tag
 (checked when it was vendored). Both files use LF line endings, so the checksum also matches a
@@ -22,8 +22,8 @@ Git checkout on Windows.
 
 CMake adds `third_party/` as a **SYSTEM** include directory through the `neowolf_json`
 interface target (see `CMakeLists.txt`), so warnings inside the header never trigger the
-project's warning flags or `-Werror` / `/WX`. Include it as `#include <nlohmann/json.hpp>`, and
-only from `.cpp` files: the header is large and slows down every file that includes it.
+project's warning flags or `-Werror` / `/WX`. Include it as `#include <nlohmann/json.hpp>` (or through
+`engine/core/JsonDocument.h`), and only from `.cpp` files: the header is large and slows down every file that includes it.
 
 To check the file:
 

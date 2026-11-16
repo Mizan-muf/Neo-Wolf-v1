@@ -124,10 +124,10 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 | guard | (28, 9) | E1 |
 | guard | (24, 20) | E2 |
 | guard | (29, 17) | E2 |
-| guard | (12, 2) | exit hall, 5 cells from Dg |
+| guard | (12, 2) | exit hall, 4.2 cells from Dg |
 | guard | (18, 1) | exit hall, 5 cells from Dg |
 | brute | (2, 5) | west key room, 1.4 cells round the corner from its doorway |
-| brute | (25, 2) | east key room, seen across the room (7.8 cells) from its doorway |
+| brute | (25, 2) | east key room, seen across the room (7.1 cells) from its doorway (30, 7) |
 | runner | (3, 13) | W1 |
 | runner | (8, 17) | W2 |
 | runner | (26, 11) | E1 |

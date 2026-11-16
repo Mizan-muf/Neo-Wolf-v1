@@ -1,6 +1,7 @@
 # Building Neo-Wolf on macOS
 
-This guide covers building the game and running the tests on macOS (Apple Silicon or Intel).
+This guide covers building the game and running the tests on macOS (Apple Silicon or Intel; the
+Intel slice has only been run under Rosetta).
 For Windows see [BUILD_WINDOWS.md](BUILD_WINDOWS.md); for the test suites see [TESTING.md](TESTING.md).
 
 ## Prerequisites
@@ -44,7 +45,7 @@ make CONFIG=Debug check
 
 ```bash
 cmake --preset macos            # configure into build/macos/
-cmake --build --preset macos    # build neo_wolf and neo_wolf_tests
+cmake --build --preset macos    # build neo_wolf, neo_wolf_tests, neo_wolf_autoplay and NeoWolf.app
 ctest --preset macos            # run all tests
 ```
 
@@ -53,6 +54,7 @@ ctest --preset macos            # run all tests
 | `macos` | Release, universal binary (arm64 + x86_64), Ninja |
 | `macos-debug` | Debug, universal binary, Ninja |
 | `ci-macos` | `macos` with `NEOWOLF_WERROR=ON` (warnings are errors). Used by CI. |
+| `package-macos` | Release package build used by `./package.sh` (no tests, warnings as errors) ([RELEASE.md](RELEASE.md)) |
 
 Each preset builds into `build/<preset-name>/`. List all presets with `cmake --list-presets`.
 Presets for other operating systems are hidden on macOS.
@@ -94,8 +96,9 @@ folder that contains `game/maps` and `game/defs`) in this order and logs the one
 
 **The app bundle.** The build also makes `build/<preset>/NeoWolf.app` (target `neo_wolf_app`,
 same `main.cpp`, with `Info.plist` and the generated icon; `-DNEOWOLF_MACOS_APP=OFF` skips it).
-The bundle in the build folder has no `game/` inside, so starting it reports "Game content not
-found"; use `build/macos/neo_wolf` for development, and `./package.sh` for a complete, signed
+The bundle in the build folder has no `game/` inside, so opening it from Finder reports "Game
+content not found" (from a terminal in the repository root it falls back to the working
+directory's `game/`); use `build/macos/neo_wolf` for development, and `./package.sh` for a complete, signed
 app (`cmake --install` copies `game/` into `Contents/Resources` and signs it ad hoc;
 [RELEASE.md](RELEASE.md)). Inside a complete app SDL reports `Contents/Resources` as the base
 path, and the log says `Content root: .../NeoWolf.app/Contents/Resources (app bundle Resources)`.

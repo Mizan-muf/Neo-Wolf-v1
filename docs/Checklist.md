@@ -687,12 +687,12 @@ Make it runnable outside your dev machine.
 - [ ] Copy SDL2 runtime — **no longer applies**: SDL2 is linked statically ([ROADMAP.md, decision 3](ROADMAP.md#decisions)), so there is no runtime to copy
 - [ ] Copy native DLLs / binaries — **no longer applies**: no DLLs (static SDL2 and C runtime)
 - [x] Copy assets/maps/config files *(replaced by [Phase 9 of ROADMAP](ROADMAP.md#phase-9--packaging))*
-- [x] Test on a clean standalone package directory — **partial**: `package_smoke.py` passes for the macOS package; the Windows package waits for CI (D5, [Phase 9 of ROADMAP](ROADMAP.md#phase-9--packaging))
+- [x] Test on a clean standalone package directory *(replaced by [Phase 9 of ROADMAP](ROADMAP.md#phase-9--packaging): `package_smoke.py` passes for the macOS and Windows x64 packages, locally and in CI run 43864756039, from a path with spaces)*
 - [x] Confirm relative asset paths work *(content-root search since [Phase 3 of ROADMAP](ROADMAP.md#phase-3--runtime-robustness))*
-- [x] Confirm game launches without IDE *(headless from a package on macOS; Finder and Explorer launches by hand are open, D5)*
+- [x] Confirm game launches without IDE *(headless from the macOS and Windows x64 packages, CI run 43864756039; Finder and Explorer launches by hand are open, D5)*
 
 ### Done When
-- [x] Game runs from packaged folder — **partial**: macOS package verified headless; Windows pending ([Phase 9 of ROADMAP](ROADMAP.md#phase-9--packaging))
+- [x] Game runs from packaged folder — **partial**: verified headless for the macOS and Windows x64 packages (CI run 43864756039); not yet launched by hand from Finder or Explorer (D5, [Phase 11 of ROADMAP](ROADMAP.md#phase-11--final-sign-off))
 
 ---
 

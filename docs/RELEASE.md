@@ -6,7 +6,7 @@ source for development: [BUILD_MACOS.md](BUILD_MACOS.md), [BUILD_WINDOWS.md](BUI
 
 | Package | Built on | File |
 |---|---|---|
-| macOS, universal (Apple silicon + Intel), macOS 10.15+ | a Mac | `neo-wolf-<version>-macos-universal.zip` |
+| macOS, universal (Apple silicon + Intel; Intel tested under Rosetta only), macOS 10.15+ | a Mac | `neo-wolf-<version>-macos-universal.zip` |
 | Windows x64, Windows 10/11 | Windows with Visual Studio 2022+ | `neo-wolf-<version>-windows-x64.zip` |
 | Linux x86_64 (best effort, not tested on a desktop) | Linux | `neo-wolf-<version>-linux-x86_64.tar.gz` |
 
@@ -159,7 +159,8 @@ The checksums prove the download is the file CI built; they are not a signature.
    checks read the file, so they also run on a MinGW cross-build on macOS);
 5. on the package's own OS: `--version`, then runs the game headless (SDL dummy drivers)
    with `--level 10 --frames 300 --pref-dir <temporary folder>`, once from the extracted folder
-   and once with the working directory `/` (or `C:\`); each run must exit 0 and its log must
+   and once with the working directory at the file-system root (`/`, or the current drive's root
+   such as `C:\` on Windows); each run must exit 0 and its log must
    name the content root inside the package.
 
 It never opens a window. `--no-run` keeps only the static checks (used by the DevKit test

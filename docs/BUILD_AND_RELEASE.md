@@ -8,7 +8,7 @@ or hardcoded library paths are needed.
 
 | Platform | Status | Guide | One command |
 |---|---|---|---|
-| macOS (universal arm64 + x86_64) | verified | [BUILD_MACOS.md](BUILD_MACOS.md) | `./build.sh` |
+| macOS (universal arm64 + x86_64; x86_64 run under Rosetta only) | builds and passes all tests; not yet played by hand (C13) | [BUILD_MACOS.md](BUILD_MACOS.md) | `./build.sh` |
 | Windows (Visual Studio 2022+) | built and tested headless in CI; not yet run on a Windows PC | [BUILD_WINDOWS.md](BUILD_WINDOWS.md) | `build.cmd` |
 | Linux | best effort: built and tested headless in CI (without desktop backends); not run on a desktop | see below | `./build.sh` |
 
@@ -40,8 +40,9 @@ presets (`make`, `make check`, `make game`, `make tests`, `make clean`). `make c
 
 ## 2. Running Automated Tests
 
-See [TESTING.md](TESTING.md). In short, `ctest --preset <preset>` runs the native C++ tests
-(one CTest entry per test case), the DevKit Python tests and strict content validation.
+See [TESTING.md](TESTING.md). In short, `ctest --preset <preset>` runs all 110 tests: the native C++
+tests (one CTest entry per test case), headless game runs, the autoplay bot on every level and
+the campaign, the DevKit Python tests and strict content validation.
 `make check` does the same on macOS and Linux.
 
 ---

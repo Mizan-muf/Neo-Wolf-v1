@@ -6,11 +6,11 @@
 
 ![Start view of level03](../images/levels/level03.png)
 
-*Start view: looking east along the 2-wide south ring; the vase pair at the server-room door Ds in the distance.*
+*Start view: looking east along the 2-wide south ring; the near vase of the pair at the server-room door Ds stands dead ahead, hiding its twin and the ammo crate behind it.*
 
 ## Idea
 
-A 2-wide ring corridor runs round a closed server room. The player starts in a short loading stub at the ring's south-west corner. The server room's door Ds (south side, vase pair, ammo in its approach) hides two guards and the red key; while it is shut they sleep through any fight in the ring. In the north-east of the ring a guard stands in the north corridor and a second waits in a small L-shaped server closet off the east corridor: the first shot at one wakes the other, and it comes from the other direction (round the corner, out of the closet). The red door Dr in the ring's north-east corner leads to the `B`-walled exit wing, with a checkpoint trigger just inside it.
+A 2-wide ring corridor runs round a closed server room. The player starts in a short loading stub at the ring's south-west corner. The server room's door Ds (south side, vase pair, ammo in its approach) hides two guards and the red key; while it is shut they sleep through any fight in the ring. In the north-east of the ring a guard stands in the north corridor and a second waits in a small L-shaped server closet off the east corridor: the first shot at one wakes the other, and it comes from the other direction (round the corner, out of the closet). The red door Dr in the ring's north-east corner leads to the exit wing (its exit room `B`-walled), with a checkpoint trigger just inside it.
 
 ## Map
 
@@ -73,7 +73,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 | Ring | outer (4, 2)–(19, 14), 2 wide | south ring y 13–14, north ring y 2–3, west x 4–5, east x 18–19; health alcove (12, 1) off the north ring |
 | Server closet | (20, 4), (21, 4), (21, 5) | L-shaped closet off the east ring, one guard, invisible from the ring |
 | R3 server room | (7, 5)–(16, 11) | closed by Ds; `A` server racks (9–10, 7), (13–14, 7); two guards, ammo, red key at the back |
-| R5 exit wing | passage (21, 2)–(24, 2), corridor (23, 3)–(24, 8), exit room (21, 9)–(24, 15), `B` walls | checkpoint trigger at (21, 2), two guards, health, vase line, exit switch |
+| R5 exit wing | passage (21, 2)–(24, 2), corridor (23, 3)–(24, 8), exit room (21, 9)–(24, 15), exit room `B`-walled | checkpoint trigger at (21, 2), two guards, health, vase line, exit switch |
 
 ## Enemies
 
@@ -107,7 +107,7 @@ Total: 2 health (50 HP), 2 ammo (24 rounds); all at the default values.
 | door (unlocked) | (11, 12) | Ds, server room south wall, vase pair, ammo in front |
 | trigger (checkpoint) | (21, 2) | just inside Dr: `CHECKPOINT REACHED` |
 | red key card | (11, 5) | at the back of the server room |
-| exit switch `X` | (22, 16), south outer wall of the exit wing | end of the exit wing, south wall, framed by `B` (the whole wing is `B`); vase line on the west wall |
+| exit switch `X` | (22, 16), south outer wall of the exit wing | end of the exit wing, south wall, framed by `B` (the exit room is `B`-walled); vase line on the west wall |
 
 Order: red key (server room) → Dr → exit. `inspect-map` keys: `red`.
 

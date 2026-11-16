@@ -56,7 +56,7 @@ Window keys, handled by the platform layer and never passed to the game:
 |---|---|
 | `W`/`S`, Up/Down | Move forward / back |
 | `A`/`D` | Strafe left / right |
-| Left/Right, `Q` | Turn |
+| Left / Right arrow; `Q` also turns left | Turn |
 | `Space`, `F`, `Ctrl` | Fire |
 | `E` | Use an exit switch within 1.1 cells that you face; otherwise open/close a door within reach (a locked door needs its key card; a door does not close on you or an enemy) |
 | `P` or `Esc` | Pause |
@@ -102,8 +102,9 @@ its window loses focus.
 `Ctrl` is a fire key, and `Cmd+Ctrl+F` is the macOS fullscreen shortcut. Since Phase 5:
 
 - `Ctrl` pressed while `Cmd` (or the Windows key) is already held does not fire;
-- pressing `Cmd` while `Ctrl` is held, and the chord itself, cancel a fire press made in the
-  same frame (`InputState::CancelAction`).
+- pressing `Cmd` (or the Windows key) cancels a fire press made in the same frame and releases
+  a held fire key, whichever fire key it is; the chord itself does the same
+  (`InputState::CancelAction`).
 
 If you press `Ctrl` first and wait before adding `Cmd`, that `Ctrl` press is an ordinary shot:
 the game cannot know a chord is coming. Press `Cmd` first, or use `F11`, to avoid it.

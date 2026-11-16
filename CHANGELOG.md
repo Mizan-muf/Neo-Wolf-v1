@@ -13,13 +13,16 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 ## [Unreleased]
 
 The completion work toward 1.0.0 (Roadmap Phases 0–10, [docs/ROADMAP.md](docs/ROADMAP.md)),
-commits `224e237` … `87681e1` plus the Phase 10 documentation pass. Builds from this branch
+commits `eb14c78` … `38c9573` and the Phase 10 audit fixes. Builds from this branch
 report version 0.9.0; Roadmap Phase 12 sets 1.0.0 and tags it.
 
 Verification status: everything below builds and passes its tests on macOS, and the build, the
-tests and the autoplay bot over all 10 levels pass headless in Windows and Linux CI (run
-43861234139 at `f76875a`). Not yet done: a play-through by hand (known issue C13), a run on a
-real Windows PC, and opening the packages by hand from Finder and Explorer (known issue D5). Open problems are
+tests and the autoplay bot over all 10 levels pass headless in Windows and Linux CI, and CI
+builds and smoke-tests the macOS and Windows packages (CI run 43866272111, all six jobs green;
+the first all-green run with the package jobs was 43864756039). The macOS package's Intel slice
+has only been run under Rosetta. Not yet done: a play-through by hand on any OS (known issue
+C13), a run on a real Windows PC, and opening the packages by hand from Finder and Explorer
+(known issue D5). Open problems are
 listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
 ### Added
@@ -43,7 +46,8 @@ listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 - **Light zones**: optional `"lights"` rectangles in a level's entity file for dim and dark
   areas (Phase 8, known issue C21).
 - **Texture themes** `bunker`, `stone`, `tech` and a 32×32 `classic` theme, and the sprites,
-  all drawn by deterministic generators in `tools/devkit/` (Phases 5, 6 and 8).
+  all drawn by deterministic generators in `tools/devkit/` (Phases 5, 6 and 8); since Phase 10
+  also the four sound effects (`gen_sounds.py`) and the decoration sprite (a floor vase).
 - **Autoplay bot** `neo_wolf_autoplay` (Phase 7): plays the real engine headless with simulated
   input and reports per level; `--trace` writes an event log (Phase 8). CTest runs it on every
   level and on the whole campaign.
@@ -67,12 +71,19 @@ listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 - **DevKit** additions: campaign validation rules (Phase 7), engine/DevKit parsing parity
   fixtures, `create-map --level-id`, `sync-entities --level`, a rewritten `doctor`,
   `level_docs.py` (level pages match the shipped maps), the `package` command driving CMake,
-  and a Markdown link checker (`doc_links.py`, Phase 10).
+  and, in Phase 10, a Markdown link checker (`doc_links.py`) and `asset_provenance.py` (every
+  file under `game/assets` must be reproduced byte for byte by a generator).
 - **Licence** (Phase 9): PolyForm Noncommercial 1.0.0 in `LICENSE.md` (source-available, not
-  OSI open source).
+  OSI open source). Phase 10 audited the SDL code actually linked
+  ([docs/THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md)): the packages also ship SDL's
+  HIDAPI and yuv2rgb notices; asset provenance is recorded in
+  [docs/ASSET_CREDITS.md](docs/ASSET_CREDITS.md).
 - **Documentation**: build guides for macOS and Windows, testing, troubleshooting, gameplay,
   controls, level authoring, release, the campaign design, `CONTRIBUTING.md`, this changelog,
   and an in-process C API reference (`docs/C_API.md`, Phase 10).
+- **Documentation accuracy audit** (Phase 10): every claim in the documentation checked against
+  the code, the files and CI runs; the corrections are listed under Fixed, and claims that could
+  not be checked are marked as unverified in the docs.
 
 ### Changed
 
@@ -104,6 +115,8 @@ listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 - Hardcoded `/home/mizan/...` SDL paths and `-lpthread -ldl -lm` from the build (Phase 1).
 - The packager's raw `g++` fallback and the old launch scripts (Phase 9).
 - The original 8×8 textures (Phase 8).
+- `game/assets/sprite_decor.ppm` and the four sound files of unknown origin, replaced by
+  generated ones (Phase 10).
 - `docs/GAMEPLAY_API.md`, replaced by `docs/C_API.md` and `docs/GAMEPLAY.md` (Phase 10).
 
 ### Fixed
@@ -126,6 +139,16 @@ Known-issue numbers refer to [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) ("Reso
 - DevKit: packager reported success without an executable (D1); missing campaign validation
   (D2); `inspect-map` crash and exit codes (D3); `doctor` did not check SDL2 (D4).
 - Documentation: wrong controls (X2), no macOS build guide (X3), no licence file (X4).
+- Assets: four sounds and a sprite of unrecorded origin (X5, Phase 10).
+- CI and packaging: packager tests stored the game executable without its exec bit when a macOS
+  or Linux archive was assembled on the Windows runner; executables are now always stored as
+  0755 (commit `781fd42`). The Windows package-scripts step ended with exit code 2 although
+  every check passed (cmd's `echo` does not reset `ERRORLEVEL`); it now ends with `exit /b 0`
+  (commit `3cf95a8`).
+- Phase 10 audit: over 100 documentation corrections (stale CI status, Windows behaviour stated
+  as fact before it was verified, outdated messages and examples, level-page distances and
+  captions, the level-authoring steps for a new campaign level); DevKit `create-map --register
+  --force` reported the wrong campaign position for a replaced level.
 
 ## [0.4.0] - 2026-08-26 (back-filled)
 

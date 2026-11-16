@@ -1,6 +1,7 @@
 # Neo-Wolf DevKit Guide
 
-The DevKit (`tools/devkit/`, Python 3.8 or newer, standard library only) checks and builds game
+The DevKit (`tools/devkit/`, Python 3.8 or newer (the tests pass on 3.9 and newer; 3.8 itself has not
+been run), standard library only) checks and builds game
 content: it validates maps, entity files, assets and the campaign with the engine's own rules
 (plus stricter level rules), shows maps with their reachability, creates level stubs, checks the
 build environment and packages releases. Every command and flag is listed below; `neo_devkit
@@ -52,7 +53,8 @@ Global options come **before** the command: `neo_devkit --root tests/fixtures/un
 
 `0` success; `1` the check failed (validation errors, an unreachable exit, a failing doctor
 check, a file that would be overwritten, ...); `2` usage error (unknown option, missing
-argument, contradicting options).
+argument, contradicting options such as `--register` without `--level-id` or only one of
+`--spawn-x`/`--spawn-y`). `validate --map` and `--asset` together are accepted: `--map` wins.
 
 ---
 
@@ -106,7 +108,8 @@ Statuses: `PASS`, `INFO` (optional or informative), `WARN` (works, look at it), 
 | `--map FILE` | Validate one `.map` file only (engine rules plus the DevKit map rules below). |
 | `--asset FILE` | Validate one `.ppm` or `.wav` file only. |
 
-Output: `[INFO]`, `[WARN]` and `[FAIL]` lines, then `Validation PASSED` or `FAILED`.
+Output: `[INFO]`, `[WARN]` and `[FAIL]` lines, then `Validation PASSED: …`, `Validation FAILED: N error(s) detected.` or, with `--strict`
+and only warnings, `Validation failed due to strict mode (N warning(s)).`
 
 **Engine rules** (a file that fails these fails to load in the game). The DevKit reads every file
 exactly like the engine (`tools/devkit/engine_formats.py`):
@@ -237,7 +240,7 @@ not fail. Exit code `2` for usage errors.
 | `--theme THEME` | The theme for `--register` (default: the last campaign level's theme); `game/defs/themes/<THEME>.cfg` must exist. |
 | `--force` | Overwrite an existing map or entity file; replace an existing campaign entry. Without it nothing is overwritten (exit 1). |
 | `--width W`, `--height H` | Size in cells (default 16×12, at least 4×4). |
-| `--style S` | `arena` (default: open hall, four pillars, a free-standing door and a trigger), `dungeon` (two halves joined by a door, a trigger), `crossroads` (cross-shaped corridors, a trigger in the middle), `box` (an empty room). |
+| `--style S` | `arena` (default: open hall, four pillars, a free-standing door and a trigger), `dungeon` (two halves joined by a door, a trigger; at 4×4 there is no room for the door), `crossroads` (cross-shaped corridors, a trigger in the middle), `box` (an empty room). |
 
 Every template has a closed outer wall and an exit switch `X` in the middle of the east wall with
 a floor cell in front of it. A stub made with `--level-id --register` passes `validate --strict`
@@ -249,15 +252,18 @@ the new files are orphans (a warning) until you add the level to `campaign.json`
 ### `create-asset` — procedural test assets
 
 ```bash
-./tools/devkit/neo_devkit create-asset game/assets/test_checker.ppm --type checker --width 64 --height 64
-./tools/devkit/neo_devkit create-asset game/assets/test_brick.ppm --type brick
-./tools/devkit/neo_devkit create-asset game/assets/sfx_test.wav --type beep --duration 0.2
+./tools/devkit/neo_devkit create-asset /tmp/test_checker.ppm --type checker --width 64 --height 64
+./tools/devkit/neo_devkit create-asset /tmp/test_brick.ppm --type brick
+./tools/devkit/neo_devkit create-asset /tmp/sfx_test.wav --type beep --duration 0.2
 ```
+
+Write test assets outside `game/assets/`: every file there must come from a generator
+(`test_asset_provenance`).
 
 | Option | Meaning |
 |---|---|
 | `OUTPUT` | The file to write (overwritten). |
-| `--type` | `checker` (default), `brick`, `solid` (PPM textures) or `beep` (a 440 Hz WAV tone). |
+| `--type` | `checker` (default), `brick`, `solid` (PPM textures) or `beep` (a 440 Hz tone; 16-bit mono WAV at 22,050 Hz). |
 | `--width`, `--height` | Texture size (default 64×64). |
 | `--duration` | Tone length in seconds (default 0.25). |
 
@@ -353,6 +359,7 @@ Runs every `tools/devkit/tests/test_*.py` (`unittest`); CTest runs it as `devkit
 | `level_docs.py` | Level pages: checks that `docs/levels/levelNN.md` shows the shipped map byte for byte and regenerates its annotated entity grid (`python3 -m tools.devkit.level_docs [--write]`; [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#8-document-it)) |
 | `packager.py` | `package`: drives CMake, checks the staged package, writes the archive and `SHA256SUMS` |
 | `gen_icon.py` | The application icon (macOS `.iconset` for `iconutil`, Windows `.ico`, PNG); run by the build |
+| `doc_links.py` | Checks every relative link and anchor in the repository's Markdown (`python3 tools/devkit/doc_links.py`; DevKit test `test_doc_links`) |
 | `release_readme.py` | The package `README.txt` per OS, its controls converted from `docs/CONTROLS.md`; run by the build |
 | `tests/` | Unit tests; `fixture_builder.py` builds the multi-level fixture campaigns they use |
 

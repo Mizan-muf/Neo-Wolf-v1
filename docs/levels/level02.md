@@ -6,11 +6,11 @@
 
 ![Start view of level02](../images/levels/level02.png)
 
-*Start view: the entry corridor C1 with the blue door Db and its vase pair straight ahead at the far end of the hall.*
+*Start view: the entry corridor C1 with the blue door Db straight ahead at the far end of the hall; one vase of its pair shows to the left of it (the other is hidden behind the pillar (12, 9)).*
 
 ## Idea
 
-Teach keys by showing the lock first. From the spawn the player looks straight down C1, across the vaulted hall, at the blue door Db framed by a vase pair. Walking up and pressing `E` gives `NEED BLUE KEY`; turning round, the unlocked door D2 in the hall's north wall is in view. Behind it a long cellar narrows into a 1-wide passage (ammo on the way) and ends at a small mossy (`A`) key cellar with the blue key and one guard. The player comes back through the hall and opens Db into the exit vault.
+Teach keys by showing the lock first. From the spawn the player looks straight down C1, across the vaulted hall, at the blue door Db, with one vase of its pair beside it (the second is behind the hall's south pillar). Walking up and pressing `E` gives `NEED BLUE KEY`; turning round, the unlocked door D2 in the hall's north wall is in view. Behind it a long cellar narrows into a 1-wide passage (ammo on the way) and ends at a small mossy (`A`) key cellar with the blue key and one guard. The player comes back through the hall and opens Db into the exit vault.
 
 ## Map
 
@@ -74,7 +74,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 | Type | Cell | Where and why |
 |---|---|---|
 | guard | (3, 2) | key cellar, next to the key: seen straight down the 1-wide passage from 6 cells; 10 cells from D2 |
-| guard | (15, 5) | hall, north-east corner: 6.3 cells from the hall entrance, hidden from the spawn and from the entrance by the pillar (12, 6) |
+| guard | (15, 5) | hall, north-east corner: 6.7 cells from the hall entrance, hidden from the spawn and from the entrance by the pillar (12, 6) |
 | guard | (21, 5) | exit vault, north end: 4.2 cells from Db's far side (18, 8) |
 | guard | (15, 10) | hall, south-east corner: as above, behind the pillar (12, 9) |
 
@@ -93,7 +93,7 @@ Total: 1 health (25 HP), 1 ammo (12 rounds); all at the default values.
 
 | Thing | Cell | Notes |
 |---|---|---|
-| door (unlocked) | (13, 4) | D2, hall's north wall, visible from Db (rule 10: 5 cells from Db) |
+| door (unlocked) | (13, 4) | D2, hall's north wall, visible from Db (rule 10: about 5.7 cells from Db) |
 | door locked blue | (17, 8) | Db, hall's east wall, straight ahead of the hall entrance, vase pair |
 | blue key card | (2, 2) | far end of the key cellar; reachable without passing Db |
 | exit switch `X` | (23, 11), east outer wall | framed by `B`; the vault is `B`-walled; the vase line along the south wall leads to it |

@@ -34,8 +34,8 @@ neo_devkit create-map --level-id levelNN --style dungeon --width 24 --height 16 
       overwrite existing files (`--force` to replace).
 - [ ] The stub already passes `neo_devkit validate --strict`; check that before editing.
 - [ ] The campaign order is the play order: move the new entry in `campaign.json` if it is not
-      the last level. Ids must be unique and use `a-z 0-9 _ -`; names longer than 32 characters
-      are shortened on screen.
+      the last level. Ids must be unique and use `a-z 0-9 _ -`; names longer than 32 bytes (UTF-8)
+      get a warning and are shortened on screen.
 
 ## 3. Draw the map (`game/maps/levelNN.map`)
 
@@ -153,12 +153,18 @@ neo_devkit inspect-map --level levelNN       # the grid with the entities, reach
       reachable, light zones (range, fields, inside the map), no orphan files, `gameplay.json`,
       `campaign.json`, the theme's textures. It does not judge whether a dark area is fair.
 - [ ] `inspect-map --level levelNN` exits 0 and the key order is the intended one.
-- [ ] When the campaign is complete: `neo_devkit validate --strict --require-levels 10`.
+- [ ] The campaign size check: CTest `content_validation_campaign_size` runs
+      `validate --strict --require-levels N` with N = the CMake cache variable
+      `NEOWOLF_REQUIRED_CAMPAIGN_LEVELS` (`CMakeLists.txt`, default 10). When the level adds to
+      the campaign, raise that default in `CMakeLists.txt` (for fresh build folders and CI) **and**
+      set it in your existing build folder, whose cache keeps the old value:
+      `cmake --preset macos -DNEOWOLF_REQUIRED_CAMPAIGN_LEVELS=<new count>`. Then check
+      `neo_devkit validate --strict --require-levels <new count>`.
 
 ## 6. Prove it can be finished: the autoplay bot
 
 ```bash
-cmake --build --preset macos                 # re-runs configure: campaign.json changed
+cmake --build --preset macos                 # needs a configured build (`cmake --preset macos` once); re-runs configure because campaign.json changed
 build/macos/neo_wolf_autoplay --level N --json /tmp/levelNN.json
 build/macos/neo_wolf_autoplay --all          # the whole campaign, with carry-over
 ctest --preset macos -L autoplay             # autoplay.level.1 ... N and autoplay.campaign
@@ -250,8 +256,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --level N --fra
 ```
 
 - [ ] The start screenshot shows the intended view (textures of the theme, nothing missing as a
-      checkerboard, the level banner). Headless runs never pause on focus loss (the `dummy` and
-      `offscreen` video drivers ignore focus events), so the screenshot shows gameplay.
+      checkerboard, the level banner). Headless runs never pause on focus loss (the engine ignores
+      focus loss under the `dummy` and `offscreen` video drivers), so the screenshot shows
+      gameplay. Convert it for the level page:
+      `sips -s format png /tmp/levelNN/start.bmp --out docs/images/levels/levelNN.png`.
 - [ ] Play it by hand in a window (`build/macos/neo_wolf --level N`): the minimap (`M`) shows the
       layout, doors open, keys work, the exit switch reads `EXIT`.
 
@@ -265,6 +273,13 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --level N --fra
       and campaign rows against the README targets, where the bot takes its damage from
       `--trace`, the robustness check) and **Deviations and exceptions** (anything that breaks a
       design rule on purpose, and why).
+- [ ] Create the page first: copy `docs/levels/level10.md` to `docs/levels/levelNN.md`, replace
+      the first ```` ```text ```` block of `## Map` with the new `.map` file byte for byte, and
+      leave the second block (it may be empty). `level_docs` never creates a page: until it
+      exists, both commands below and DevKit test `test_level_docs` fail with
+      `docs/levels/levelNN.md: missing`. Then rewrite the rest of the page for the new level:
+      replace or remove the copied page's extra images (`level10-*.png`), and run
+      `python3 tools/devkit/doc_links.py` (also DevKit test `test_doc_links`).
 - [ ] Generate the annotated grid and check both map blocks:
 
 ```bash
@@ -280,7 +295,8 @@ python3 -m tools.devkit.level_docs           # check: exit 1 if a page's map dif
 
 ## 9. Before committing
 
-- [ ] `ctest --preset macos` is green (`content_validation`, `devkit_tests`, `autoplay.*`,
-      `game_smoke_level_N`).
+- [ ] `ctest --preset macos` is green (`content_validation`, `content_validation_campaign_size`
+      with the raised count from step 5, `devkit_tests`, `autoplay.*`, `game_smoke_level_N`).
 - [ ] New files are added: the map, the entity JSON (and CSV export), `campaign.json`, the level
-      page.
+      page and its start image `docs/images/levels/levelNN.png`, and `CMakeLists.txt`
+      (`NEOWOLF_REQUIRED_CAMPAIGN_LEVELS`) when the level count changed.

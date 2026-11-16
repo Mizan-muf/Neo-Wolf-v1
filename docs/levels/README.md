@@ -25,7 +25,8 @@ reactor, and finally into the castle at its heart, the Wolf's Den.
 
 Enemies are `G/B/R` = guard / brute / runner. Pickups are `H/A` = health / ammo pickups at
 the default values (+25 HP, +12 ammo). A key "→" a door means the key opens that locked door.
-Sizes are the grid size in cells (width × height), ±2 cells.
+Sizes are the design grid size in cells (width × height); a built level may differ by ±2 cells
+(built: level 1 20×13, level 2 24×14, level 3 26×17, level 8 34×34; the others as listed).
 
 | # | Id | Name | Theme | Size | Enemies G/B/R | Pickups H/A | Keys and locks | New mechanic or idea | Difficulty (1–10) | Human time |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -37,7 +38,7 @@ Sizes are the grid size in cells (width × height), ±2 cells.
 | 6 | `level06` | Relay Station | `tech` | 30×26 | 8/2/4 | 3/4 | blue key → blue door; gold key (behind blue) → gold door | Ambush rooms behind closed doors; an optional maintenance loop with extra supplies | 6 | 6–8 min |
 | 7 | `level07` | Blackout Barracks | `bunker` | 32×28 | 8/2/6 | 4/4 | red and gold keys, either order; the exit wing is behind a red door, then a gold door | Dark wings (light zones); two keys collected in parallel | 7 | 7–9 min |
 | 8 | `level08` | Reactor Spine | `tech` | 34×32 | 10/3/6 | 4/5 | blue → red → gold, a chain (each key behind the previous door) | Three keys; mixed squads (brute with guards, runner pairs) along a long spine with side bays | 8 | 8–11 min |
-| 9 | `level09` | Sunken Archive | `stone` | 38×36 | 12/4/8 | 5/6 | red and blue keys, either order; gold key behind the blue door; exit behind gold | A non-linear hub with three wings, crossed several times; an optional sealed vault in the hub (a squad and a supply cache) | 9 | 10–13 min |
+| 9 | `level09` | Sunken Archive | `stone` | 38×36 | 12/4/8 | 5/6 | red and blue keys, either order; gold key behind the blue door; exit behind the red door, then the gold door | A non-linear hub with three wings, crossed several times; an optional sealed vault in the hub (a squad and a supply cache) | 9 | 10–13 min |
 | 10 | `level10` | Wolf's Den | `classic` | 40×40 | 12/5/8 | 6/7 | red → blue → gold, a chain | Finale: a gauntlet of the earlier ideas, a supply room with a checkpoint, then a final arena with a brute squad in front of the exit | 10 | 12–15 min |
 | | | **Total** | | | **74/18/36 = 128** | **31/35** | | | | **≈ 60–80 min** |
 
@@ -88,7 +89,8 @@ for the finale, so the last level looks unlike the rest.
 The autoplay bot is an excellent shot and a poor tactician (V1): it fires only when the shot
 will hit (shots used = exactly 2 per guard, 4 per brute, 1 per runner) but never retreats or
 dodges. It only takes damage when enemies reach melee range. Measured on macOS with this build
-(2026-11-16; scratch levels in `/tmp`, not committed; runs are deterministic per build):
+(2026-11-16; scratch levels in `/tmp`, not committed, so this table cannot be re-checked from the
+repository; runs are deterministic per build):
 
 | Situation (fresh start) | Bot damage |
 |---|---|
@@ -152,8 +154,8 @@ walks over or what it fetches when low: health ≤ 40, ammo ≤ 6):
    at the very start (it would be wasted at full health). The rest of the health goes in side
    rooms or alcoves within 6 cells of the route.
 4. **One health pickup within 6 cells before every designated ambush or arena door.**
-5. Pickups may carry a custom `value` only for a deliberate reward (e.g. a 50-HP "medkit" in
-   level 10's supply room); record it in the level page and count it in the table above.
+5. Pickups may carry a custom `value` only for a deliberate reward (e.g. a 50-HP "medkit"; no
+   shipped level uses one); record it in the level page and count it in the table above.
 
 ## Bot difficulty targets
 
@@ -205,8 +207,8 @@ Measured 2026-11-16 by the integrator on macOS with `neo_wolf_autoplay` (fixed 1
 300 s limit per level). **Every value is inside its target.** The JSON reports are
 byte-identical for the arm64 and x86_64 (Rosetta) slices of the universal `build/macos` binary
 and for the `ci-macos` (`-Werror`) build, both slices. On Windows MSVC x64
-(CI run 43861234139 at `f76875a`) every level's frames, damage, HP and ammo are identical to
-macOS; the Linux CI job completes all 10 levels too (known issue V2).
+(CI run 43861234139) every level's frames, damage, HP and ammo are identical to
+macOS; the Linux CI job's results are identical too (CI runs 43861234139 and 43866272111; known issue V2).
 
 | # | Level | Fresh: time s | Fresh: damage (target) | Fresh: HP at exit | Fresh: kills | Campaign: start HP / ammo | Campaign: time s | Campaign: damage | Campaign: HP at exit | Campaign: ammo at exit | Jitter: damage range |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -226,7 +228,8 @@ Campaign: `Carry-over: OK`, `Result: PASS (10 of 10 level(s) completed, campaign
 where each hit comes from (from `--trace`), are in the level pages.
 
 "Jitter" is a robustness check, not a target: every enemy of the level moved by up to ±0.15
-cells in 8 seeded scratch copies, so that a result that only holds by a few hundredths of a
+cells in 8 seeded scratch copies (the seeds were not recorded, so the jitter ranges on this page
+and in the level pages cannot be reproduced exactly; unverified), so that a result that only holds by a few hundredths of a
 second shows up (how: [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md#is-the-result-luck-a-robustness-check)).
 All 80 variants complete.
 
@@ -252,7 +255,8 @@ All 80 variants complete.
   but whose shot grazed the alcove's corner. The bot now gives up on such an enemy after 2 s
   and walks on for 3 s (`engine/autoplay/AutoplayBot.cpp`, CTest `autoplay.fixture_aim_blocked`).
   Levels 1–9 are byte-identical with the fix; the shipped level 10 also had one such wait and
-  now finishes about 5–7 s sooner with the same damage, kills and health.
+  now finishes about 5–7 s sooner with the same damage, kills and health (measured once at the
+  time; the bot without the fix is not kept, so this is not re-checkable).
 
 ## Design rules (every level)
 

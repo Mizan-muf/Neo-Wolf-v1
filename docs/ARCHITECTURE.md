@@ -94,7 +94,7 @@ Edges worth knowing:
 - **`ui` → `core`** only for `GameFlow.h` (menu items) and the colour helpers.
 
 **Where SDL is used.** SDL is linked into `neowolf_engine` (`neowolf_sdl2`, a public
-dependency), and five files include `<SDL.h>`:
+dependency), and five engine files (and the test runner) include `<SDL.h>`:
 
 | File | Why |
 |---|---|
@@ -175,7 +175,7 @@ audio), 10 or 11 is fatal (logged, an error box unless `--frames` is used, exit 
 3. Load `game/defs/campaign.json` (invalid = fatal); check `--level N` against it.
 4. Load saved progress, if there is a per-user folder.
 5. Unless headless: create the window and renderer (`PlatformSDL::Init`: 1024×768 resizable
-   window, HiDPI, accelerated renderer with vsync, else the software renderer; logical size
+   window (shrunk to fit 90% of the usable desktop), HiDPI, accelerated renderer with vsync, else the software renderer; logical size
    320×240, letterboxed, nearest-neighbour scaling).
 6. Allocate the 320×240 framebuffer; unless headless, open the audio device (failure only
    means no sound).

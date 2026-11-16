@@ -37,7 +37,8 @@ game/
 
 `--level N` starts **campaign level N** (1-based index into `campaign.json`) directly, skipping
 the menu and the unlocked-level check; it is meant for development and tests. A number larger
-than the campaign is a startup error (exit code 1). Without `--level` the game starts on the
+than the campaign is a startup error (exit code 1); a value outside 1–99 is a command-line error
+(exit code 2). Without `--level` the game starts on the
 main menu ([GAMEPLAY.md](GAMEPLAY.md)).
 
 Every loader accepts LF and CRLF line endings. The JSON loaders and the entity CSV loader also
@@ -80,8 +81,8 @@ cells (one cell = one map character), turn speed in radians per second, times in
 | `player.maxHealth` | integer | 1–10000 | 100 | Cap for health pickups, the command bridge's `HealPlayer` and the health carried to the next level (`UpdateEntityInteractions`, `CommandBridge`, `GameFlow`) |
 | `player.moveSpeed` | number | > 0, ≤ 20 (cells/s) | 3.0 | Walking and strafing speed (`Player::moveSpeed`, set by `BuildLevelFromPlacements`) |
 | `player.turnSpeed` | number | > 0, ≤ 20 (rad/s) | 1.8 | Turning speed (`Player::turnSpeedRadians`) |
-| `player.collisionRadius` | number | > 0, < 0.5 (cells) | 0.22 | Player collision with walls and closed doors (`MoveWithSliding`); a door does not close while the player overlaps its cell |
-| `weapon.damage` | integer | 1–10000 | 35 | Health removed from an enemy per hit (`Engine::PlayerAttack` → `PerformPlayerAttack`); shown in "Hit enemy! (-N HP)" |
+| `player.collisionRadius` | number | > 0, < 0.5 (cells) | 0.22 | Player collision with walls, closed doors and living enemies (`MoveWithSlidingAndBodies`, bodies kept `radius + 0.25` apart); a door does not close while the player overlaps its cell |
+| `weapon.damage` | integer | 1–10000 | 35 | Health removed from an enemy per hit (`Engine::PlayerAttack` → `PerformPlayerAttack`); shown as "HIT ENEMY! (-N HP)" (the HUD shows messages in capitals) |
 | `weapon.fireRate` | number | 0–60 (s) | 0.25 | **Seconds between two shots** (a cooldown, not shots per second) |
 | `weapon.range` | number | > 0, ≤ 1000 (cells) | 12.0 | Maximum hitscan distance; a wall stops the shot earlier |
 | `weapon.initialAmmo` | integer | 0–10000, ≤ `weapon.maxAmmo` | 24 | Ammo for New Game, Continue, Level Select and `--level` (later levels inherit the previous level's ammo), and for levels loaded by path |
@@ -89,7 +90,7 @@ cells (one cell = one map character), turn speed in radians per second, times in
 | `weapon.noiseRadius` | number | 0–1000 (cells) | 10.0 | Enemies hear a shot when the path from the shooter to them through open cells is at most this long; closed doors block sound ([GAMEPLAY.md](GAMEPLAY.md#enemy-ai)) |
 | `enemies.<type>.health` | integer | 1–10000 | guard 50, brute 140, runner 25 | Health (and maximum health) of every enemy of that type (`ApplyEnemyArchetype`) |
 | `enemies.<type>.damage` | integer | 0–10000 | 12, 25, 6 | Health removed from the player per attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
-| `enemies.<type>.moveSpeed` | number | 0–20 (cells/s) | 1.6, 1.0, 2.8 | Chase speed (0 = the enemy never moves) |
+| `enemies.<type>.moveSpeed` | number | 0–20 (cells/s) | 1.6, 1.0, 2.8 | Chase and search speed (0 = the enemy never moves) |
 | `enemies.<type>.alertRadius` | number | 0–1000 (cells) | 6.5, 5.5, 8.0 | An idle enemy notices the player within this distance **with line of sight**; once alerted it sees up to twice as far |
 | `enemies.<type>.attackRadius` | number | 0–1000 (cells) | 1.1, 1.3, 1.0 | The enemy attacks when the player is this close and in sight |
 | `enemies.<type>.attackRate` | number | > 0, ≤ 60 (s) | 1.0, 1.6, 0.6 | **Seconds between two attacks** of one enemy |
@@ -120,7 +121,8 @@ window opens, when:
 - `player.initialHealth` > `player.maxHealth`, or `weapon.initialAmmo` > `weapon.maxAmmo`;
 - both `enemies` and the old `enemy` section are present.
 
-All problems are collected, not only the first. Each message starts with the file path. The
+All problems are collected, not only the first (the initial-versus-maximum checks only once
+every value is valid). Messages name the file path. The
 log lists all of them; the error box shows the first three.
 
 **Unknown keys** (a typo, or a key from a newer version) are warnings: they are logged and
@@ -148,9 +150,11 @@ Where the player starts and where the enemies, pickups, doors, the exit and the 
 are. The JSON file is **canonical**: it is what the game loads. The map's tiles define the
 walls; this file defines everything else.
 
+An illustration (not one of the shipped levels; their files are `game/defs/levelNN.entities.json`):
+
 ```json
 {
-  "level": "level01",
+  "level": "example",
   "entities": [
     { "type": "player", "x": 2.5, "y": 2.5, "angle": 0 },
     { "type": "enemy", "x": 6.5, "y": 2.7, "variant": "guard" },
@@ -163,7 +167,7 @@ walls; this file defines everything else.
 }
 ```
 
-A key card and the door it opens (level 2):
+A key card and the door it opens (illustrative):
 
 ```json
     { "type": "pickup", "x": 7.5, "y": 5.3, "kind": "key", "key": "blue" },
@@ -237,8 +241,8 @@ built-in fallback layout** any more (it hid known issue C1).
 Every message names the file, the entity and the field, for example:
 
 ```text
-.../level01.entities.json: entities[2] (pickup): field "kind" is required ("health" or "ammo")
-.../level01.entities.json: entities[4] (door): map cell (20, 6) is outside the 20x13 map
+.../level01.entities.json: entities[4] (pickup): field "kind" is required ("health", "ammo" or "key")
+.../level01.entities.json: entities[1] (door): map cell (20, 6) is outside the 20x13 map
 .../level01.entities.csv:5 (entity 3) (door): fields "mapX" and "mapY" are required (...)
 .../level03.entities.json: entities[7] (enemy): field "variant" must be "guard", "brute" or "runner", got "ninja"
 .../level02.entities.json: entities[6] (pickup): field "key" must be "red", "blue" or "gold", got "green"
@@ -255,7 +259,7 @@ and particles drawn there (`Map::GetLightLevel`). A level sets it with an option
 
 ```json
 {
-  "level": "level05",
+  "level": "example",
   "entities": [ ... ],
   "lights": [
     { "x": 3, "y": 12, "w": 7, "h": 6, "level": 0.5 },
@@ -276,8 +280,9 @@ and particles drawn there (`Map::GetLightLevel`). A level sets it with an option
 - A **wall face** is lit like the floor cell in front of it (the one the viewer looks from),
   so a zone only needs to cover the floor cells of an area: a wall between a lit room and a
   dark room is lit on one side and dark on the other. The light of solid cells does not matter.
-- What the levels look like: the renderer never draws anything darker than a minimum (walls
-  0.18, floor and ceiling 0.20, **sprites 0.35**, after distance shading), so an enemy in a
+- What the levels look like: the renderer never draws walls, floor, ceiling or sprites darker
+  than a minimum (walls 0.18, floor and ceiling 0.20, **sprites 0.35**, after distance shading;
+  particles have no minimum and fade out), so an enemy in a
   0.2 zone is still clearly visible. The HUD, the minimap and the menus are never darkened.
   Below about 0.4 the difference shows mostly close to the player. Comparison (1.0, 0.7, 0.4
   and 0.2, a guard four cells away; the same room, `--preview minimap`):
@@ -304,7 +309,9 @@ lists a level's zones. How to design dark areas fairly:
 
 A table in the pre-Phase 4 format, kept for backward compatibility. The engine reads a CSV when
 the entity path ends in `.csv` (e.g. through the C API `nw_engine_load_level`), with the same
-rules and messages as for JSON. The game itself always loads the `.json` file.
+rules and messages as for JSON. The shipped campaign names the `.json` files, and packages
+leave the CSVs out. If `campaign.json` names a `.csv`, the engine loads it (fully lit).
+The example below is illustrative, like the JSON one above.
 
 ```text
 # type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
@@ -322,8 +329,8 @@ door,9.5,3.5,9,3,,,,,,blue
 - Lines starting with `#` (after leading spaces) and blank lines are skipped. Columns after
   the eleventh are ignored with a warning.
 - There is no quoting: values cannot contain commas.
-- **The CSV is a lossy export: it cannot hold light zones.** A level loaded from its CSV (only
-  possible through the C API) is fully lit.
+- **The CSV is a lossy export: it cannot hold light zones.** A level loaded from its CSV (a campaign
+  entry that names the `.csv`, or the C API) is fully lit.
 
 Generate the CSV from the JSON with the DevKit. JSON → CSV is the default direction, and it
 overwrites the CSV:
@@ -402,7 +409,7 @@ warning that names the new key, and `validate` reports them as errors. Transpare
 
 Required: `door_open`, `pickup`, `enemy_alert`. Optional: `weapon_fire`, and `master_volume`
 (a number, clamped to 0.0–1.0; default 0.85). If a required key is missing or `master_volume`
-is not a number, the master volume is not applied, but the sounds that are named still load.
+is not a number, the master volume is not applied (sounds play at full volume, 1.0), but the sounds that are named still load.
 Without an audio device no sound is loaded.
 
 ```ini

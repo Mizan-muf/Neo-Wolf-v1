@@ -332,15 +332,18 @@ def cmd_create_map(args: argparse.Namespace) -> int:
             "entities": entities_path.resolve().relative_to(root.resolve()).as_posix(),
             "theme": args.theme,
         }
-        replaced = False
+        position = None  # 1-based campaign position of the entry
         for index, lvl in enumerate(campaign["levels"]):
             if isinstance(lvl, dict) and lvl.get("id") == level_id:
                 campaign["levels"][index] = entry
-                replaced = True
+                position = index + 1
+                break
+        replaced = position is not None
         if not replaced:
             campaign["levels"].append(entry)
+            position = len(campaign["levels"])
         campaign_path.write_text(json.dumps(campaign, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"{'Updated' if replaced else 'Registered'} level {level_id} as level {len(campaign['levels']) if not replaced else index + 1} "
+        print(f"{'Updated' if replaced else 'Registered'} level {level_id} as level {position} "
               f"in {campaign_path} (theme {args.theme}).")
     if level_id:
         print("Next: place enemies, pickups and keys (docs/LEVEL_AUTHORING.md), then run "

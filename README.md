@@ -41,20 +41,22 @@ that every level can be finished.
 There are no published releases yet: the first GitHub release comes with the `v1.0.0` tag
 (Roadmap Phase 12). Until then, packages are built by the CI job `package` as the artifacts
 `neo-wolf-package-macOS` and `neo-wolf-package-Windows` of a workflow run (open a run under
-the repository's Actions tab). The job was added in Phase 9; what has and has not been checked
-about the packages is in [known issue D5](docs/KNOWN_ISSUES.md). You can also build a package
+the repository's Actions tab). The job was added in Phase 9 and is green (since run 43864756039); the packages
+have not yet been opened by hand from Finder or Explorer ([known issue D5](docs/KNOWN_ISSUES.md)). You can also build a package
 yourself ([RELEASE.md](docs/RELEASE.md)).
 
 Each zip holds one folder with the game, `README.txt`, `LICENSE.md`, `docs/` and `LICENSES/`.
 Check a download against `SHA256SUMS` first ([RELEASE.md](docs/RELEASE.md#checksums)).
 
-- **macOS 10.15+**, Apple silicon and Intel (`neo-wolf-<version>-macos-universal.zip`): unzip
+- **macOS 10.15+**, Apple silicon and Intel (Intel tested under Rosetta only;
+  `neo-wolf-<version>-macos-universal.zip`): unzip
   and open `NeoWolf.app`. The app is signed ad hoc but not notarized, so Gatekeeper blocks the
   first start of a downloaded copy. On macOS 14 and older: Control-click the app → Open → Open.
   On macOS 15 and newer: try to open it once, then System Settings → Privacy & Security →
   Open Anyway. Or run `xattr -dr com.apple.quarantine NeoWolf.app`.
 - **Windows 10/11 x64** (`neo-wolf-<version>-windows-x64.zip`): extract the whole zip and run
-  `neo_wolf.exe`; no installer and no runtime to install. The exe is not code-signed, so
+  `neo_wolf.exe`; no installer and no runtime to install (the exe imports no SDL or C/C++
+  runtime DLL, checked in CI; not yet tried on a clean PC). The exe is not code-signed, so
   SmartScreen may say "Windows protected your PC": More info → Run anyway (or Properties →
   Unblock on the zip before extracting).
 
@@ -148,9 +150,11 @@ level's map and walkthrough: [docs/levels/README.md](docs/levels/README.md).
 ## Project status
 
 Work toward v1.0 follows [docs/ROADMAP.md](docs/ROADMAP.md). The build, CI, runtime fixes, data
-pipeline, campaign flow, AI, bot, all ten levels and packaging (Phases 1–9) are implemented;
-they are verified on macOS and headless in Windows and Linux CI, with the remaining gaps listed
-per phase in the roadmap. Still open: the documentation audit (Phase 10), a play-through by hand
+pipeline, campaign flow, AI, bot, all ten levels, packaging and the documentation pass with its
+accuracy audit (Phases 1–10) are done;
+they build and pass all tests on macOS and headless in Windows and Linux CI (nothing has been
+played by hand yet, known issue C13), with the remaining gaps listed
+per phase in the roadmap. Still open: a play-through by hand
 and on a real Windows PC (Phase 11), and the clean-code review and `v1.0.0` tag (Phase 12). Known defects and
 unverified areas are listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md); changes in
 [CHANGELOG.md](CHANGELOG.md).

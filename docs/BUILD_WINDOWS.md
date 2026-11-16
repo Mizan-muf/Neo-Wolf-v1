@@ -1,11 +1,12 @@
 # Building Neo-Wolf on Windows
 
 > **Status: built and tested headless in CI; not yet played interactively on a Windows PC.**
-> GitHub Actions (`windows-latest`, run 43820751721 at commit `65c26b0`) builds with the
-> `ci-windows-msvc` preset (`/W4 /WX`), passes every CTest test, runs `neo_wolf.exe --frames 300`
-> headless (exit code 0), and runs `build.cmd` and `build.ps1 -Config Debug` (job
-> `windows-scripts`). Not covered by CI: a run on a desktop (window, input, sound, HiDPI, the
-> error box); see KNOWN_ISSUES B14. Please report any problem you hit.
+> GitHub Actions (`windows-latest`, Visual Studio 2026; latest CI run 43866272111) builds with the `ci-windows-msvc` preset (`/W4 /WX`), passes all 110 CTest tests,
+> runs `neo_wolf.exe --frames 300` headless (exit code 0), runs `build.cmd` and
+> `build.ps1 -Config Debug` (job `windows-scripts`), and builds and smoke-tests the release zip
+> with `package.cmd` (job `package`, green since run 43864756039). Not covered by
+> CI: a run on a desktop (window, input, sound, HiDPI, the error box, console output); see
+> KNOWN_ISSUES B14. Please report any problem you hit.
 
 For macOS see [BUILD_MACOS.md](BUILD_MACOS.md); for the test suites see [TESTING.md](TESTING.md).
 
@@ -22,9 +23,10 @@ itself). CMake downloads the official SDL2 2.32.10 source tarball, checks its SH
 SDL2 statically. Internet access is needed the first time a build directory is configured.
 
 **No runtime installers should be needed for players.** The build is configured to link SDL2 and
-the Microsoft C/C++ runtime statically (`/MT`), so `neo_wolf.exe` should need neither `SDL2.dll`
-nor the Visual C++ Redistributable. CI builds with these settings, but its machines have the
-redistributable installed, so this is not yet confirmed on a clean PC (Roadmap Phases 9 and 11).
+the Microsoft C/C++ runtime statically (`/MT`), so `neo_wolf.exe` needs neither `SDL2.dll`
+nor the Visual C++ Redistributable: CI's package smoke test confirms that its import table names
+only Windows system DLLs. It has not yet been started on a clean PC without the redistributable
+(Roadmap Phase 11).
 
 ## Quick start
 
@@ -117,13 +119,17 @@ rem or, after a Debug build:
 build\windows-msvc\Debug\neo_wolf.exe
 ```
 
-The game works from **any working directory** and when double-clicked in Explorer: it looks for
+The game works from **any working directory** (checked in CI, which runs the packaged exe from
+the drive root); double-clicking it in Explorer should work the same way but has not been tried on
+a Windows PC yet. It looks for
 `game\` in `--data <dir>` (or `NEOWOLF_DATA_DIR`), else next to the executable and up to 3
 folders above it (so `build\windows-msvc\Release\neo_wolf.exe` finds the repository's `game\`),
 else in the working directory and its parent. If no content is found it shows an error box and
 exits with code 1. The options (`--data`, `--pref-dir`, `--level`, `--frames`, `--windowed`, `--fullscreen`,
 `--preview`, `--screenshot`, `--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
-with non-ASCII characters are supported (the command line is read as UTF-16 and converted).
+with non-ASCII characters should work (the command line is read as UTF-16 and converted;
+content-root resolution with a non-ASCII path is unit-tested), but this has not been tried on
+Windows yet (KNOWN_ISSUES B14).
 
 **Icon and version resource.** `neo_wolf.exe` contains an icon and a version resource
 (Explorer → Properties → Details: version, product name, copyright), compiled from
@@ -139,8 +145,9 @@ a console window. Consequences for a Release build:
 
 - The log is always written to `%APPDATA%\NeoWolf\NeoWolf\neowolf.log` (see
   [TROUBLESHOOTING.md](TROUBLESHOOTING.md)); it is not shown in a console.
-- `neo_wolf.exe --help` / `--version` / a bad option attach to the console of the Command Prompt
-  or PowerShell that started them and print there. Because Windows does not wait for GUI
+- `neo_wolf.exe --help` / `--version` / a bad option are designed to attach to the console of
+  the Command Prompt or PowerShell that started them and print there (not yet verified on a
+  Windows PC, B14). Because Windows does not wait for GUI
   programs, the text can appear after the next prompt; press Enter to get a clean prompt.
   Redirected output works normally (`neo_wolf.exe --version > version.txt`,
   `neo_wolf.exe --version | more`), as do CTest and CI, which capture the output through pipes.
@@ -163,8 +170,8 @@ build\windows-msvc\Release\neo_wolf.exe --frames 120
   (static CRT, `/MT` or `/MTd`) for every target, SDL included (`SDL_FORCE_STATIC_VCRT=ON`,
   `SDL_LIBC=ON`; SDL 2.32.10 enables policy CMP0091 itself, so it honours this setting). A value
   passed with `-DCMAKE_MSVC_RUNTIME_LIBRARY=...` takes precedence. CI builds and runs with this
-  setting; the executable's DLL dependencies have not been inspected yet (for example with
-  `dumpbin /dependents`).
+  setting, and the package smoke test reads the import table of the packaged `neo_wolf.exe`: it
+  imports only Windows system DLLs (no `SDL2.dll`, no `VCRUNTIME140.dll`/`MSVCP140.dll`).
 - SDL is added as a `SYSTEM` dependency, so its headers do not trigger our warning flags.
 - `SDL_MAIN_HANDLED` is defined, so `<SDL.h>` never renames `main`, and `SDL2main` is not used.
 

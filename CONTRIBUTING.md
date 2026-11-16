@@ -18,7 +18,7 @@ changed. The plan and its status are in [docs/ROADMAP.md](docs/ROADMAP.md), open
 Details and troubleshooting: [BUILD_MACOS.md](docs/BUILD_MACOS.md),
 [BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md). The first configure needs internet access for the
 SDL2 download ([offline builds](docs/BUILD_MACOS.md#offline-builds)). The Python DevKit uses
-the standard library only (Python 3.8+); nothing needs `pip install`.
+the standard library only (Python 3.8+; tested on 3.9 and newer, 3.8 itself not run); nothing needs `pip install`.
 
 ## Build and test
 
@@ -127,14 +127,15 @@ then, match the surrounding code:
 - **Values exposed through the C API** (`GameState`, `EntityType`, the interop enums) are
   append-only ([C_API.md](docs/C_API.md)).
 - **Comments** explain why, not what.
-- **Python (DevKit):** standard library only, Python 3.8+, type hints, `unittest`.
+- **Python (DevKit):** standard library only, Python 3.8+ (no 3.9+ APIs; 3.8 itself is not tested), type hints, `unittest`.
 - **Docs:** describe what the code does now and how it was verified; update the docs that a
   change affects in the same commit. `python3 tools/devkit/doc_links.py` (also a DevKit test)
   checks every relative link and anchor.
 
 ## Commit messages
 
-The commits on `completion/v1` use one commit per roadmap phase, in this form:
+The commits on `completion/v1` are mostly one per roadmap phase (larger phases are split, e.g.
+8a/8b/8c; follow-up fixes get their own commit), in this form:
 
 ```text
 feat: phase 6 - enemy AI, archetypes, key cards and locked doors
@@ -165,7 +166,7 @@ requests and on demand ([TESTING.md](docs/TESTING.md#continuous-integration)):
 - `windows-scripts`: `build.cmd` and `build.ps1 -Config Debug`, and the exit codes of the
   package scripts;
 - `package` (macOS and Windows): builds, smoke-tests and uploads the release packages (added in
-  Phase 9; status in [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md), D5).
+  Phase 9; green since run 43864756039; what is still unchecked: [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md), D5).
 
 A change is ready when all jobs are green. Do not tick a roadmap item until it has been
 verified by a test, a CI run or a recorded manual check, and record what is still unverified in

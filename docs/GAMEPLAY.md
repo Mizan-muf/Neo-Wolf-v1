@@ -68,7 +68,7 @@ level has its own page:
 |---|---|---|---|
 | Menu (main) | Up/Down (`W`/`S`, arrows) | Menu | Moves the highlight (wraps around) |
 | Menu (main) | Enter/Space on **New Game** | Gameplay | Level 1 is loaded from its files (a full reset of the world: known issue C7) with the `gameplay.json` initial health and ammo |
-| Menu (main) | Enter/Space on **Continue** | Gameplay | The highest unlocked level, with the initial health and ammo (see below). Only shown when saved progress exists |
+| Menu (main) | Enter/Space on **Continue** | Gameplay | The highest unlocked level, with the initial health and ammo (see below). Shown when saved progress exists or a level was completed in this session |
 | Menu (main) | Enter/Space on **Level Select** | Menu (level select) | Lists every level by number and name; locked ones are dimmed **and** marked `LOCKED` |
 | Menu (main) | Enter/Space on **Quit**, or Esc | (exit) | The game closes (exit code 0) |
 | Menu (level select) | Enter/Space on an unlocked level | Gameplay | That level, with the initial health and ammo. Locked levels do nothing |
@@ -125,7 +125,7 @@ The values are the shipped `gameplay.json` (`player`, `weapon`;
   shot, 35 damage (`weapon.damage`), range 12 cells (`weapon.range`). The shot travels from the
   player's centre along the view direction and stops at the first wall or closed door; it hits
   the nearest living enemy whose centre is within 0.45 cells of that line. With no ammo the HUD
-  shows `Out of Ammo!` and nothing is fired. The player starts with 24 ammo (`weapon.initialAmmo`,
+  shows `OUT OF AMMO!` (the HUD shows messages in capitals) and nothing is fired. The player starts with 24 ammo (`weapon.initialAmmo`,
   at most `weapon.maxAmmo` 99) and 100 health (`player.initialHealth`, at most `player.maxHealth`
   100). Every shot is a noise enemies can hear ([Enemy AI](#enemy-ai)).
 - **Pickups:** walking within 0.6 cells (centre to centre) of a health or ammo pickup collects
@@ -196,10 +196,10 @@ known issue C10).
 | Rule | Detail |
 |---|---|
 | **Sight** | A straight line from the enemy to the player, traced with the raycaster's DDA (`HasLineOfSight`, `engine/world/Navigation.cpp`): walls, the exit switch and **closed doors** block it, an open door does not. An idle enemy notices the player only within its `alertRadius`; once alerted it keeps sight up to twice that distance. There is no field-of-view cone: an enemy sees all round. **Light does not matter**: a level's dark zones (`lights`, [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#light-zones-lights)) only change the picture, for enemies and for the autoplay bot alike (a deliberate v1 simplification). |
-| **Hearing** | Every shot the player fires is a noise at the player's position. An idle or searching enemy hears it when the path from the shot to the enemy through **open cells** is at most `weapon.noiseRadius` cells long (default 10; breadth-first search, so the distance goes round walls). Closed doors block sound. A heard shot alerts an idle enemy like seeing the player does; the enemy then heads for where the shot came from. |
-| **Alert** | The enemy stands still for its `reactionTime`, then the alert sound plays (at most once every 2 s for all enemies together) and it chases. |
+| **Hearing** | Every shot the player fires is a noise at the player's position. An idle or searching enemy hears it when the path from the shot to the enemy through **open cells** is at most `weapon.noiseRadius` cells long (default 10; breadth-first search, so the distance goes round walls). Closed doors block sound. A heard shot alerts an idle enemy like seeing the player does; the enemy then heads for where the shot came from. An enemy that is already alerted but does not see the player heads for the shot too. |
+| **Alert** | The enemy stands still for its `reactionTime`, then the alert sound plays (at most once every 2 s for all enemies together) and it chases. The `enemy_alert` sound also plays each time an enemy hits the player. |
 | **Chase** | The enemy moves to the player while it sees the player, otherwise to the player's **last known position**. Where a body of radius 0.25 fits along the straight line it goes straight; otherwise it follows a grid path (8-connected breadth-first search over walkable cells, never cutting a wall corner), steering for the centre of the next cell and sliding along walls. A path is recomputed at most every 0.3 s (`kEnemyRepathInterval`), and at once if the enemy makes no progress for 0.5 s. |
-| **Attack** | Within `attackRadius` **and** with line of sight, the enemy stops and hits for `damage` every `attackRate` seconds (the first hit lands at once). It goes back to Chase when the player is out of sight or more than 0.15 cells beyond the attack radius. |
+| **Attack** | Within `attackRadius` **and** with line of sight, the enemy stops and hits for `damage` every `attackRate` seconds (the first hit lands at once unless that enemy attacked within its last `attackRate` seconds). It goes back to Chase when the player is out of sight or more than 0.15 cells beyond the attack radius. |
 | **Losing the player** | After 3 s in Chase without seeing the player the enemy searches: it walks to the last known position and waits there. Seeing or hearing the player again resumes the chase; after 4 s of Search without contact it gives up (Idle) where it stands. |
 | **Shot** | A hit alerts an idle, alerted or searching enemy at once (no reaction delay). |
 | **Doors** | Enemies **never open doors**. A closed door is a wall for their paths, sight and hearing; an enemy whose path is shut stops, and after the lose timer searches and gives up. An enemy standing in an open doorway stops the door from closing (see [Doors](#doors)). |

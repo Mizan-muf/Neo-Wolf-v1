@@ -126,7 +126,7 @@ std::filesystem::path RepoRoot() {
         .parent_path();
 }
 
-// The Phase 7 campaign (level01..level03 at commit 1d40ae2), frozen as a test fixture in
+// The Phase 7 campaign (level01..level03 at commit 940f3bd), frozen as a test fixture in
 // tests/fixtures/reference/game/. Tests that need exact level details (level 1's door at
 // (8, 7), level 2's blue key, level 3's brute) read it instead of the shipped levels, so
 // Phase 8 can redraw game/ without touching them. Tests about the shipped campaign as a whole

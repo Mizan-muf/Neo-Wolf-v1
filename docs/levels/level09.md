@@ -114,7 +114,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 - **Hub** (Great Reading Room) x 14–23, y 13–22 (`A` walls, four `A` pillars, the cluster in the centre); wing
   mouths west (13, 17) and east (24, 16); Db (18, 12) north, Dr (17, 23) and Dv (22, 23) south.
 - **W wing (flooded stacks)**: mouth corridor (10–13, 17); stacks hall x 1–9, y 13–25 with `A` shelving rows
-  (y 15, 19, 23, and x 3–7 on y 17). A winding 1-wide passage (1, 9–12) and (1–9, 9) leads to the **west key
+  (x 2–7 on y 15, 19 and 23; the aisle on y 17 is open). A winding 1-wide passage (1, 9–12) and (1–9, 9) leads to the **west key
   room** x 2–9, y 1–7 (`A` walls), entered at its south-east doorway (9, 8); red key in a nook (1, 4).
 - **E wing (catalogue vaults)**: corridor along y 16 (x 24–35); vaults **V1** x 26–29, y 12–14 (doorway (27, 15)),
   **V2** x 31–34, y 12–14 (doorway (33, 15)), **V3** x 26–30, y 18–21 (doorway (28, 17)); a south leg x 35
@@ -142,7 +142,7 @@ Legend (documentation only: lower case and digits are not valid map tiles; the s
 | guard | (15, 26) | S antechamber |
 | guard | (15, 28) | S antechamber |
 | brute | (8, 7) | west key room, beside the doorway (round the corner) |
-| brute | (29, 32) | east key room, seen across the room (9.2 cells from its doorway) |
+| brute | (29, 32) | east key room, seen across the room (10.0 cells from its doorway (35, 24)) |
 | brute | (14, 6) | map room |
 | brute | (19, 25) | S antechamber, round the corner from Dr's vestibule |
 | runner | (15, 14) | hub |
@@ -186,7 +186,7 @@ All at the default values (+25 HP, +12 ammo).
 | Dg | (17, 30) | gold | (26, 4) | 7 cells behind Dr; pair |
 
 **Red** (W wing) and **blue** (E wing) in either order; **gold** behind Db (N wing); the exit behind Dr, then
-Dg. `inspect-map --level 9`: keys `blue, red, gold`. The bot went blue → gold → red, crossing the hub four times.
+Dg. `inspect-map --level 9`: keys `blue, red, gold`. The bot went blue → gold → red, crossing the hub several times (four counted in Phase 8; not re-checked).
 
 ## Landmarks (decorations)
 

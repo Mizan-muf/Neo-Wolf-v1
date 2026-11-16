@@ -55,7 +55,7 @@ The game saves which levels are unlocked to `progress.json` in the per-user fold
   A broken file is not repaired or deleted; it is replaced the next time a level is completed.
 - **Reset progress:** quit the game and delete `progress.json`.
 - **Unlock everything for testing:** start a level directly with `--level N` (no unlock check),
-  or write `{ "version": 1, "highestUnlocked": 3 }` into the file.
+  or write `{ "version": 1, "highestUnlocked": 10 }` into the file.
 - A leftover `progress.json.tmp` means the game stopped while saving; it is safe to delete
   (the previous `progress.json` is intact).
 
@@ -89,7 +89,7 @@ log lists every problem, with the file, the entry and the field, for example:
 
 ```text
 [ERROR]   .../game/defs/gameplay.json: weapon.damage must be an integer from 1 to 10000, got "35"
-[ERROR]   .../game/defs/level01.entities.json: entities[2] (pickup): field "kind" is required ("health" or "ammo")
+[ERROR]   .../game/defs/level01.entities.json: entities[4] (pickup): field "kind" is required ("health", "ammo" or "key")
 ```
 
 Fix the file (formats, ranges and defaults: [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md))
@@ -110,6 +110,10 @@ invalid `SDL_AUDIODRIVER`), the log shows
 and the game runs silently. Check the system's output device and volume, unset `SDL_AUDIODRIVER`
 if you set it, then restart the game (devices are only looked for at startup). Individual sound
 files that fail to load are logged as warnings.
+
+Sound effects play one after another, not mixed (the engine queues them on one SDL audio
+device), so a burst of shots can delay the next sound. This is a known limitation, not a fault
+(known issue C23).
 
 ## No GPU, virtual machines, remote desktop, headless
 
@@ -185,7 +189,8 @@ Other macOS cases:
 
 ### Windows: "Windows protected your PC" (SmartScreen)
 
-`neo_wolf.exe` is not code-signed, so SmartScreen may stop the first start of a downloaded copy.
+`neo_wolf.exe` is not code-signed, so SmartScreen may stop the first start of a downloaded copy
+(standard Windows behaviour for unsigned downloads; not yet observed with this game, known issue D5).
 Click **More info** → **Run anyway**. Alternatively, before extracting, right-click the downloaded
 zip → Properties → tick **Unblock** → OK; the extracted files then carry no download mark. Only do
 this for a copy from the project's release page (`Get-FileHash <zip> -Algorithm SHA256`, compare
@@ -193,12 +198,14 @@ with `SHA256SUMS`).
 
 Other Windows cases:
 - **"Game content not found" right after double-clicking in the zip window**: Explorer runs the
-  exe from a temporary folder without `game\`. Extract the whole zip first (right-click → Extract
+  exe from a temporary folder without `game\` (standard Explorer behaviour; not yet tried with this
+  game on a Windows PC). Extract the whole zip first (right-click → Extract
   All...) and start `neo_wolf.exe` from the extracted folder; keep `game\` next to it.
 - **A missing DLL message** (`VCRUNTIME140.dll`, `SDL2.dll`, ...): the official package needs
   none (static C runtime and SDL). You are running another build; use the release package.
 - The Release exe has no console: `--version` and `--help` print only when started from a
-  Command Prompt or PowerShell window; problems are in the log file (above).
+  Command Prompt or PowerShell window (not yet verified on a Windows PC); problems are in the log
+  file (above).
 
 ## Sending a log with a bug report
 
