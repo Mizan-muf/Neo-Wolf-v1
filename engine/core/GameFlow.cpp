@@ -2,6 +2,25 @@
 
 #include <algorithm>
 
+namespace {
+// Up and down (the move keys) move a menu cursor over `count` entries, wrapping around.
+int MoveCursor(const InputState& input, int cursor, int count) {
+    if (input.WasPressed(InputAction::MoveForward)) {
+        cursor = (cursor + count - 1) % count;
+    }
+    if (input.WasPressed(InputAction::MoveBackward)) {
+        cursor = (cursor + 1) % count;
+    }
+    return cursor;
+}
+
+void RequestQuit(std::vector<FlowRequest>& requests) {
+    FlowRequest quit{};
+    quit.type = FlowRequestType::Quit;
+    requests.push_back(quit);
+}
+}  // namespace
+
 const char* MenuItemLabel(MenuItem item) {
     switch (item) {
         case MenuItem::NewGame:
@@ -153,17 +172,9 @@ std::vector<FlowRequest> GameFlow::Update(const InputState& input, const FlowEve
 void GameFlow::UpdateMainMenu(const InputState& input, std::vector<FlowRequest>& requests) {
     const std::vector<MenuItem> items = MenuItems();
     const int count = static_cast<int>(items.size());
-    menuCursor_ = std::clamp(menuCursor_, 0, count - 1);
-    if (input.WasPressed(InputAction::MoveForward)) {
-        menuCursor_ = (menuCursor_ + count - 1) % count;
-    }
-    if (input.WasPressed(InputAction::MoveBackward)) {
-        menuCursor_ = (menuCursor_ + 1) % count;
-    }
+    menuCursor_ = MoveCursor(input, std::clamp(menuCursor_, 0, count - 1), count);
     if (input.WasPressed(InputAction::Back)) {
-        FlowRequest quit{};
-        quit.type = FlowRequestType::Quit;
-        requests.push_back(quit);
+        RequestQuit(requests);
         return;
     }
     if (!input.WasPressed(InputAction::Select)) {
@@ -180,23 +191,14 @@ void GameFlow::UpdateMainMenu(const InputState& input, std::vector<FlowRequest>&
             page_ = MenuPage::LevelSelect;
             levelCursor_ = highestUnlocked_ - 1;
             break;
-        case MenuItem::Quit: {
-            FlowRequest quit{};
-            quit.type = FlowRequestType::Quit;
-            requests.push_back(quit);
+        case MenuItem::Quit:
+            RequestQuit(requests);
             break;
-        }
     }
 }
 
 void GameFlow::UpdateLevelSelect(const InputState& input, std::vector<FlowRequest>& requests) {
-    const int count = config_.levelCount;
-    if (input.WasPressed(InputAction::MoveForward)) {
-        levelCursor_ = (levelCursor_ + count - 1) % count;
-    }
-    if (input.WasPressed(InputAction::MoveBackward)) {
-        levelCursor_ = (levelCursor_ + 1) % count;
-    }
+    levelCursor_ = MoveCursor(input, levelCursor_, config_.levelCount);
     if (input.WasPressed(InputAction::Back)) {
         page_ = MenuPage::Main;
         return;

@@ -1,11 +1,11 @@
 #include "engine/core/Engine.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "engine/core/Color.h"
-#include "engine/core/Log.h"
+#include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
 #include "engine/render/Framebuffer.h"
 #include "engine/render/ParticleRenderer.h"
@@ -14,37 +14,30 @@
 #include "engine/ui/UiRenderer.h"
 
 namespace {
-constexpr float kFieldOfViewRadians = 1.04719755f;  // 60 degrees
+constexpr float kFieldOfViewRadians = DegreesToRadians(60.0f);
+constexpr float kDegreesPerRadian = 57.2957795f;           // for the debug overlay's heading
+constexpr std::uint32_t kPlainCeilingColor = 0xFF2A2A2Au;  // ARGB, when there is no ceiling texture
+constexpr std::uint32_t kPlainFloorColor = 0xFF3F3F3Fu;    // ARGB, when there is no floor texture
 
-void RenderCeilingAndFloor(Framebuffer& framebuffer, const Texture* ceilingTexture, const Texture* floorTexture) {
-    const int halfHeight = framebuffer.Height() / 2;
+// Fills rows [firstRow, endRow) with `texture` tiled in screen space, or with `plainColor`
+// when there is no usable texture.
+void FillRows(Framebuffer& framebuffer, int firstRow, int endRow, const Texture* texture, std::uint32_t plainColor) {
+    const bool textured = texture != nullptr && texture->Width() > 0 && texture->Height() > 0;
     const int width = framebuffer.Width();
-
-    for (int y = 0; y < halfHeight; ++y) {
+    for (int y = firstRow; y < endRow; ++y) {
         for (int x = 0; x < width; ++x) {
-            std::uint32_t pixel = 0xFF2A2A2Au;
-            if (ceilingTexture != nullptr && ceilingTexture->Width() > 0 && ceilingTexture->Height() > 0) {
-                const int tx = x % ceilingTexture->Width();
-                const int ty = y % ceilingTexture->Height();
-                pixel = ceilingTexture->GetPixel(tx, ty);
-            }
-            framebuffer.PutPixel(x, y, pixel);
-        }
-    }
-
-    for (int y = halfHeight; y < framebuffer.Height(); ++y) {
-        for (int x = 0; x < width; ++x) {
-            std::uint32_t pixel = 0xFF3F3F3Fu;
-            if (floorTexture != nullptr && floorTexture->Width() > 0 && floorTexture->Height() > 0) {
-                const int tx = x % floorTexture->Width();
-                const int ty = y % floorTexture->Height();
-                pixel = floorTexture->GetPixel(tx, ty);
-            }
+            const std::uint32_t pixel =
+                textured ? texture->GetPixel(x % texture->Width(), y % texture->Height()) : plainColor;
             framebuffer.PutPixel(x, y, pixel);
         }
     }
 }
 
+void RenderCeilingAndFloor(Framebuffer& framebuffer, const Texture* ceilingTexture, const Texture* floorTexture) {
+    const int halfHeight = framebuffer.Height() / 2;
+    FillRows(framebuffer, 0, halfHeight, ceilingTexture, kPlainCeilingColor);
+    FillRows(framebuffer, halfHeight, framebuffer.Height(), floorTexture, kPlainFloorColor);
+}
 }  // namespace
 
 void Engine::Render() {
@@ -156,9 +149,10 @@ void Engine::RenderUi() {
 
     if (debugOverlayVisible_) {
         const float fps = time_.deltaSeconds > 0.0 ? static_cast<float>(1.0 / time_.deltaSeconds) : 0.0f;
-        UiRenderer::DrawDebugOverlay(
-            framebuffer_, fps, player_.position.x, player_.position.y, player_.directionAngleRadians * 57.2957795f,
-            static_cast<int>(std::floor(player_.position.x)), static_cast<int>(std::floor(player_.position.y)));
+        UiRenderer::DrawDebugOverlay(framebuffer_, fps, player_.position.x, player_.position.y,
+                                     player_.directionAngleRadians * kDegreesPerRadian,
+                                     static_cast<int>(std::floor(player_.position.x)),
+                                     static_cast<int>(std::floor(player_.position.y)));
     }
 
     const std::string label = UiRenderer::LevelLabel(levelNumber, levelName);

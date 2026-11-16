@@ -66,7 +66,10 @@ bool ParseJsonText(const std::string& text, const std::string& sourceName, nlohm
     }
 
     for (const std::string& duplicate : duplicates) {
-        errors.push_back(sourceName + ": " + duplicate + " (each key may appear only once per object)");
+        errors.push_back(std::string(sourceName)
+                             .append(": ")
+                             .append(duplicate)
+                             .append(" (each key may appear only once per object)"));
     }
     return duplicates.empty();
 }

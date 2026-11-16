@@ -1,6 +1,7 @@
 #include "engine/core/Engine.h"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@ constexpr int kWindowHeight = 768;
 constexpr int kRenderWidth = 320;
 constexpr int kRenderHeight = 240;
 constexpr const char* kErrorTitle = "Neo-Wolf cannot start";
+constexpr std::size_t kShownErrors = 3;  // errors listed in the start-up dialog; the log has all of them
 
 // Logs `message` as an error and, if allowed, shows it in a message box.
 void ReportFatal(const std::string& message, bool showDialog) {
@@ -31,6 +33,32 @@ void ReportFatal(const std::string& message, bool showDialog) {
     }
 }
 
+// "<heading>" followed by the first kShownErrors errors and how many more the log has.
+std::string DescribeErrors(const std::string& heading, const std::vector<std::string>& errors) {
+    std::string message = heading;
+    for (std::size_t i = 0; i < errors.size() && i < kShownErrors; ++i) {
+        message += "\n- " + errors[i];
+    }
+    if (errors.size() > kShownErrors) {
+        message += "\n(" + std::to_string(errors.size() - kShownErrors) + " more in the log)";
+    }
+    return message;
+}
+
+// The "content not found" message, with a hint that depends on where the search looked.
+std::string DescribeMissingContent(const std::vector<ContentRootCandidate>& candidates, const ContentRootResult& root) {
+    std::string message = "Game content not found.\n" + DescribeContentRootSearch(root);
+    const std::string explicitSource = candidates.size() == 1 ? candidates.front().source : std::string();
+    if (explicitSource == "--data") {
+        message += "\nThe --data folder must contain game/maps and game/defs.";
+    } else if (explicitSource == "NEOWOLF_DATA_DIR") {
+        message += "\nThe NEOWOLF_DATA_DIR folder must contain game/maps and game/defs (or unset it).";
+    } else {
+        message += "\nKeep the game/ folder next to the game, or pass --data <folder that contains game/>.";
+    }
+    return message;
+}
+
 // Logs every message collected by a loader (they are otherwise silently dropped).
 void LogLoadErrors(std::vector<std::string>& errors) {
     for (const std::string& error : errors) {
@@ -43,55 +71,74 @@ void LogLoadErrors(std::vector<std::string>& errors) {
 bool Engine::Init(const EngineOptions& options) {
     LogInfo("Initializing Neo-Wolf Engine...");
 
-    // 1. Content root: resolved once, before any window is opened.
+    if (!InitContentRoot(options) || !InitDefinitions(options)) {
+        return false;
+    }
+
+    // Saved progress (a missing or corrupt file only means "no progress").
+    prefDir_ = options.prefDir;
+    LoadSavedProgress();
+
+    if (!InitWindow(options)) {
+        return false;
+    }
+    if (!framebuffer_.Resize(kRenderWidth, kRenderHeight)) {
+        ReportFatal("Failed to allocate the framebuffer.", options.errorDialogs);
+        return false;
+    }
+
+    // Audio is optional.
+    if (options.headless) {
+        LogInfo("Headless: no window, renderer or audio.");
+    } else if (!audio_.Init()) {
+        LogWarning("No audio device: the game runs without sound.");
+    }
+
+    InitAssets();
+    if (!InitFirstLevel(options)) {
+        return false;
+    }
+
+    reportedState_ = GameState::Menu;
+    running_ = true;
+    if (options.preview != PreviewScreen::None && !SetupPreview(options.preview)) {
+        ReportFatal(std::string("Could not set up the preview ") + PreviewScreenName(options.preview) + ".",
+                    options.errorDialogs);
+        return false;
+    }
+    PublishStateChange();
+    LogInfo("Engine initialized successfully.");
+    return true;
+}
+
+// Resolved once, before any window is opened.
+bool Engine::InitContentRoot(const EngineOptions& options) {
     const std::vector<ContentRootCandidate> candidates =
         BuildContentRootCandidates(GatherContentRootInputs(options.dataDir));
     const ContentRootResult root = FindContentRoot(candidates);
     if (!root.found) {
-        std::string message = "Game content not found.\n" + DescribeContentRootSearch(root);
-        const std::string explicitSource = candidates.size() == 1 ? candidates.front().source : std::string();
-        if (explicitSource == "--data") {
-            message += "\nThe --data folder must contain game/maps and game/defs.";
-        } else if (explicitSource == "NEOWOLF_DATA_DIR") {
-            message += "\nThe NEOWOLF_DATA_DIR folder must contain game/maps and game/defs (or unset it).";
-        } else {
-            message += "\nKeep the game/ folder next to the game, or pass --data <folder that contains game/>.";
-        }
-        ReportFatal(message, options.errorDialogs);
+        ReportFatal(DescribeMissingContent(candidates, root), options.errorDialogs);
         return false;
     }
     contentRoot_ = root.root;
     LogInfo("Content root: " + PathToUtf8(contentRoot_) + " (" + root.source + ")");
+    return true;
+}
 
-    // 2. Gameplay values. An invalid gameplay.json is fatal (checked before any window opens):
-    //    playing with half-applied or default values would hide the mistake.
-    std::vector<std::string> gameplayErrors;
-    if (!LoadGameplay(options.gameplayPath, &gameplayErrors)) {
-        // The dialog shows the first problems; the log has all of them.
-        constexpr std::size_t kShownErrors = 3;
-        std::string message = "Invalid gameplay definitions in " + ResolveContentPath(options.gameplayPath) + ":";
-        for (std::size_t i = 0; i < gameplayErrors.size() && i < kShownErrors; ++i) {
-            message += "\n- " + gameplayErrors[i];
-        }
-        if (gameplayErrors.size() > kShownErrors) {
-            message += "\n(" + std::to_string(gameplayErrors.size() - kShownErrors) + " more in the log)";
-        }
-        ReportFatal(message, options.errorDialogs);
+// An invalid gameplay.json or campaign.json is fatal (checked before any window opens):
+// playing with half-applied or default values would hide the mistake.
+bool Engine::InitDefinitions(const EngineOptions& options) {
+    std::vector<std::string> errors;
+    if (!LoadGameplay(options.gameplayPath, &errors)) {
+        ReportFatal(
+            DescribeErrors("Invalid gameplay definitions in " + ResolveContentPath(options.gameplayPath) + ":", errors),
+            options.errorDialogs);
         return false;
     }
-
-    // 3. The campaign manifest: fatal when invalid, like gameplay.json.
-    std::vector<std::string> campaignErrors;
-    if (!LoadCampaignDefinition(options.campaignPath, &campaignErrors)) {
-        constexpr std::size_t kShownErrors = 3;
-        std::string message = "Invalid campaign manifest " + ResolveContentPath(options.campaignPath) + ":";
-        for (std::size_t i = 0; i < campaignErrors.size() && i < kShownErrors; ++i) {
-            message += "\n- " + campaignErrors[i];
-        }
-        if (campaignErrors.size() > kShownErrors) {
-            message += "\n(" + std::to_string(campaignErrors.size() - kShownErrors) + " more in the log)";
-        }
-        ReportFatal(message, options.errorDialogs);
+    if (!LoadCampaignDefinition(options.campaignPath, &errors)) {
+        ReportFatal(
+            DescribeErrors("Invalid campaign manifest " + ResolveContentPath(options.campaignPath) + ":", errors),
+            options.errorDialogs);
         return false;
     }
     const int levelCount = static_cast<int>(campaign_.levels.size());
@@ -101,43 +148,34 @@ bool Engine::Init(const EngineOptions& options) {
                     options.errorDialogs);
         return false;
     }
+    return true;
+}
 
-    // 4. Saved progress (a missing or corrupt file only means "no progress").
-    prefDir_ = options.prefDir;
-    LoadSavedProgress();
-
-    // 5. Window and renderer (not in headless mode).
-    if (!options.headless) {
-        platform_ = new PlatformSDL();
-        PlatformConfig platformConfig{};
-        platformConfig.title = "Neo-Wolf";
-        platformConfig.windowWidth = kWindowWidth;
-        platformConfig.windowHeight = kWindowHeight;
-        platformConfig.logicalWidth = kRenderWidth;
-        platformConfig.logicalHeight = kRenderHeight;
-        platformConfig.fullscreen = options.fullscreen;
-        if (!platform_->Init(platformConfig)) {
-            delete platform_;
-            platform_ = nullptr;
-            ReportFatal("Could not open the game window (see the log for the SDL error).", options.errorDialogs);
-            return false;
-        }
+// The window and renderer (none in headless mode).
+bool Engine::InitWindow(const EngineOptions& options) {
+    if (options.headless) {
+        return true;
     }
-
-    if (!framebuffer_.Resize(kRenderWidth, kRenderHeight)) {
-        ReportFatal("Failed to allocate the framebuffer.", options.errorDialogs);
+    auto platform = std::make_unique<PlatformSDL>();
+    PlatformConfig platformConfig{};
+    platformConfig.title = "Neo-Wolf";
+    platformConfig.windowWidth = kWindowWidth;
+    platformConfig.windowHeight = kWindowHeight;
+    platformConfig.logicalWidth = kRenderWidth;
+    platformConfig.logicalHeight = kRenderHeight;
+    platformConfig.fullscreen = options.fullscreen;
+    if (!platform->Init(platformConfig)) {
+        ReportFatal("Could not open the game window (see the log for the SDL error).", options.errorDialogs);
         return false;
     }
+    platform_ = std::move(platform);
+    return true;
+}
 
-    // 6. Audio is optional.
-    if (options.headless) {
-        LogInfo("Headless: no window, renderer or audio.");
-    } else if (!audio_.Init()) {
-        LogWarning("No audio device: the game runs without sound.");
-    }
-
-    // 7. Sprite and audio definitions. Missing or broken files fall back to defaults with a
-    //    warning. (Wall, door, floor, ceiling and exit textures come from each level's theme.)
+// Sprite and audio definitions, then the sprite textures and sounds they name. Missing or
+// broken files fall back to defaults with a warning. (Wall, door, floor, ceiling and exit
+// textures come from each level's theme.)
+void Engine::InitAssets() {
     std::vector<std::string> errors;
     SpriteTextureDefinitions spriteDefinitions{};
     if (LoadSpriteTextureDefinitions(ResolveContentPath("game/defs/sprites.cfg"), spriteDefinitions, errors)) {
@@ -152,46 +190,54 @@ bool Engine::Init(const EngineOptions& options) {
     }
     LogLoadErrors(errors);
 
-    // 8. Sprite textures (a checkerboard stands in for any that fail).
+    LoadSpriteTextures(spriteDefinitions);
+    if (audio_.IsAvailable()) {
+        LoadSoundEffects(audioDefinitions);
+    }
+}
+
+// A checkerboard stands in for any sprite texture that fails to load.
+void Engine::LoadSpriteTextures(const SpriteTextureDefinitions& definitions) {
     assets_.Clear();
     currentThemeId_.clear();
-    TextureLoader::BuildFallbackChecker(missingTexture_, 64, 64);
+    TextureLoader::BuildFallbackChecker(missingTexture_, kMissingTextureSize, kMissingTextureSize);
     assets_.SetTexture("__missing", missingTexture_);
 
-    const auto loadTextureWithFallback = [&](const std::string& id, const std::string& relativePath) {
+    std::vector<std::string> errors;
+    for (int i = 0; i < kSpriteTextureCount; ++i) {
+        const std::string id = kSpriteTextureKeys[i];
+        const std::string& relativePath = definitions.paths[static_cast<std::size_t>(i)];
         if (!assets_.LoadTextureFromPPM(id, ResolveContentPath(relativePath), errors)) {
             LogLoadErrors(errors);
             LogWarning("Using fallback texture for: " + id);
             assets_.SetTexture(id, missingTexture_);
         }
-    };
-    for (int i = 0; i < kSpriteTextureCount; ++i) {
-        loadTextureWithFallback(kSpriteTextureKeys[i], spriteDefinitions.paths[static_cast<std::size_t>(i)]);
     }
     RefreshTexturePointers();
+}
 
-    // 9. Sounds (skipped when there is no audio device).
-    if (audio_.IsAvailable()) {
-        std::size_t soundsLoaded = 0;
-        const auto loadSoundSafe = [&](const std::string& soundId, const std::string& relativePath) {
-            if (relativePath.empty()) {
-                return;
-            }
-            if (audio_.LoadEffectFromWav(soundId, ResolveContentPath(relativePath), errors)) {
-                ++soundsLoaded;
-            }
-            LogLoadErrors(errors);
-        };
+void Engine::LoadSoundEffects(const AudioEffectDefinitions& definitions) {
+    std::vector<std::string> errors;
+    std::size_t soundsLoaded = 0;
+    const auto loadSound = [&](const std::string& soundId, const std::string& relativePath) {
+        if (relativePath.empty()) {
+            return;
+        }
+        if (audio_.LoadEffectFromWav(soundId, ResolveContentPath(relativePath), errors)) {
+            ++soundsLoaded;
+        }
+        LogLoadErrors(errors);
+    };
+    loadSound("door_open", definitions.doorOpen);
+    loadSound("pickup", definitions.pickup);
+    loadSound("enemy_alert", definitions.enemyAlert);
+    loadSound("weapon_fire", definitions.weaponFire);
+    LogInfo("Sound effects loaded: " + std::to_string(soundsLoaded));
+}
 
-        loadSoundSafe("door_open", audioDefinitions.doorOpen);
-        loadSoundSafe("pickup", audioDefinitions.pickup);
-        loadSoundSafe("enemy_alert", audioDefinitions.enemyAlert);
-        loadSoundSafe("weapon_fire", audioDefinitions.weaponFire);
-        LogInfo("Sound effects loaded: " + std::to_string(soundsLoaded));
-    }
-
-    // 10. The first level: --level N starts it directly; otherwise level 1 is loaded behind
-    //     the main menu (New Game reloads it fresh). Failing here is fatal: nothing to play.
+// --level N starts its level directly; otherwise level 1 is loaded behind the main menu (New
+// Game reloads it fresh). Failing here is fatal: there is nothing to play.
+bool Engine::InitFirstLevel(const EngineOptions& options) {
     const int firstIndex = options.startLevel > 0 ? options.startLevel - 1 : 0;
     PlayerStats firstStats{gameplay_.player.initialHealth, gameplay_.weapon.initialAmmo};
     if (options.startLevel > 0) {
@@ -204,15 +250,5 @@ bool Engine::Init(const EngineOptions& options) {
                     options.errorDialogs);
         return false;
     }
-
-    reportedState_ = GameState::Menu;
-    running_ = true;
-    if (options.preview != PreviewScreen::None && !SetupPreview(options.preview)) {
-        ReportFatal(std::string("Could not set up the preview ") + PreviewScreenName(options.preview) + ".",
-                    options.errorDialogs);
-        return false;
-    }
-    PublishStateChange();
-    LogInfo("Engine initialized successfully.");
     return true;
 }

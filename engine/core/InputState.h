@@ -1,5 +1,8 @@
 #pragma once
 
+// Input as game actions (move, turn, fire, menu keys), independent of the keys that produce
+// them; the platform layer and the input injector fill it once per frame.
+
 #include <array>
 #include <cstddef>
 #include <cstdint>

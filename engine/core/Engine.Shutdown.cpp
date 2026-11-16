@@ -15,8 +15,7 @@ void Engine::Shutdown() {
 
     if (platform_ != nullptr) {
         platform_->Shutdown();
-        delete platform_;
-        platform_ = nullptr;
+        platform_.reset();
     }
 
     input_ = {};
@@ -43,29 +42,13 @@ void Engine::Shutdown() {
     sprites_.clear();
     entityManager_.Clear();
     particleManager_.Clear();
-    ambientDustSpawnTimer_ = 0.0f;
-    enemyAlertCooldown_ = 0.0f;
-    playerAttackCooldown_ = 0.0f;
     gameplay_ = GameplayDefinitions{};
-    playerHealth_ = gameplay_.player.initialHealth;
-    playerAmmo_ = gameplay_.weapon.initialAmmo;
-    playerMaxHealth_ = gameplay_.player.maxHealth;
-    playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
-    keys_.Clear();
-    pendingNoise_ = NoiseEvent{};
-    hudMessage_.clear();
-    hudMessageTimer_ = 0.0f;
+    ResetLevelState();
     campaign_ = CampaignDefinition{};
     flow_ = GameFlow{};
     prefDir_.clear();
     currentThemeId_.clear();
     currentLevelIndex_ = -1;
-    levelBannerTimer_ = 0.0f;
-    levelTimeSeconds_ = 0.0;
-    levelEnemyTotal_ = 0;
-    levelPickupTotal_ = 0;
-    levelShotsFired_ = 0;
-    levelDamageTaken_ = 0;
     simulationFrozen_ = false;
     inputInjector_ = nullptr;
     reportedState_ = GameState::Menu;

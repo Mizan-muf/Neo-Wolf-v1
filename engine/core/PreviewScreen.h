@@ -4,6 +4,7 @@
 // (docs/TESTING.md "Screen previews"). Combined with --frames and --screenshot it produces
 // the reference images in docs/images/screens/.
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -50,7 +51,7 @@ inline const char* PreviewScreenName(PreviewScreen screen) {
 }
 
 // Every preview id, for help texts and tests.
-inline constexpr PreviewScreen kPreviewScreens[] = {
+inline constexpr std::array kPreviewScreens = {
     PreviewScreen::Menu,    PreviewScreen::LevelSelect,   PreviewScreen::Hud,      PreviewScreen::Minimap,
     PreviewScreen::Pause,   PreviewScreen::LevelComplete, PreviewScreen::GameOver, PreviewScreen::CampaignComplete,
     PreviewScreen::Enemies, PreviewScreen::Items};

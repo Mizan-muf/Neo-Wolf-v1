@@ -11,6 +11,8 @@
 using nlohmann::json;
 
 namespace {
+constexpr int kJsonIndent = 2;  // spaces per level in the saved file
+
 // An integer field in [min, max]; false (with `message`) otherwise.
 bool ReadBoundedInt(const json& document, const char* key, std::int64_t min, std::int64_t max,
                     const std::string& sourceName, std::int64_t& out, std::string& message) {
@@ -89,7 +91,7 @@ std::string SerializeProgress(const ProgressData& data) {
     json document = json::object();
     document["version"] = kProgressSchemaVersion;
     document["highestUnlocked"] = data.highestUnlocked;
-    return document.dump(2) + "\n";
+    return document.dump(kJsonIndent) + "\n";
 }
 
 bool SaveProgressFile(const std::string& filePath, const ProgressData& data, std::string& error) {

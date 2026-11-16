@@ -2,25 +2,23 @@
 
 #include <cmath>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "engine/assets/GameplayConfig.h"
 #include "engine/core/Log.h"
 #include "engine/core/Paths.h"
+#include "engine/platform/PlatformSDL.h"
 #include "engine/world/EntityPlacementLoader.h"
 #include "engine/world/InteractionRules.h"
 #include "engine/world/LevelBuilder.h"
 #include "engine/world/MapLoader.h"
 
 namespace {
-void LogMessages(const std::vector<std::string>& messages, void (*log)(std::string_view)) {
-    for (const std::string& message : messages) {
-        log("  " + message);
-    }
-}
+constexpr float kMuzzleFlashDistance = 0.4f;  // in front of the player, in map units
 }  // namespace
+
+Engine::Engine() = default;
 
 Engine::~Engine() {
     Shutdown();
@@ -50,10 +48,7 @@ void Engine::PublishStateChange() {
     }
     reportedState_ = state;
     LogInfo(std::string("GameState changed to: ") + GameStateToString(state));
-    InteropEvent evt{};
-    evt.type = InteropEventType::StateChanged;
-    evt.intArg1 = static_cast<int>(state);
-    bridge_.PushEvent(evt);
+    PushInteropEvent(InteropEventType::StateChanged, static_cast<int>(state));
 }
 
 void Engine::ShowMessage(const std::string& message, float duration) {
@@ -80,13 +75,13 @@ bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::stri
     const bool loaded = LoadGameplayDefinitions(resolvedPath, definitions, errors, warnings);
     if (!warnings.empty()) {
         LogWarning("Gameplay definitions " + resolvedPath + ": " + std::to_string(warnings.size()) + " warning(s):");
-        LogMessages(warnings, &LogWarning);
+        LogIndented(LogLevel::Warning, warnings);
     }
     if (!loaded) {
         LogError("Invalid gameplay definitions " + resolvedPath + ":");
-        LogMessages(errors, &LogError);
+        LogIndented(LogLevel::Error, errors);
         if (outErrors != nullptr) {
-            *outErrors = errors;
+            *outErrors = std::move(errors);
         }
         return false;
     }
@@ -106,7 +101,7 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     const std::string resolvedMapPath = ResolveContentPath(mapPath);
     if (!LoadMapFromFile(resolvedMapPath, newMap, errors)) {
         LogError("Failed to load map: " + resolvedMapPath);
-        LogMessages(errors, &LogError);
+        LogIndented(LogLevel::Error, errors);
         return false;
     }
 
@@ -118,18 +113,18 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     if (!warnings.empty()) {
         LogWarning("Entity placements " + resolvedEntitiesPath + ": " + std::to_string(warnings.size()) +
                    " warning(s):");
-        LogMessages(warnings, &LogWarning);
+        LogIndented(LogLevel::Warning, warnings);
     }
     if (!placementsLoaded) {
         LogError("Failed to load entity placements: " + resolvedEntitiesPath);
-        LogMessages(errors, &LogError);
+        LogIndented(LogLevel::Error, errors);
         return false;
     }
 
     LevelContents contents{};
     if (!BuildLevelFromPlacements(newMap, placements, lights, gameplay_, contents, errors)) {
         LogError("Invalid entity placements in " + resolvedEntitiesPath + ":");
-        LogMessages(errors, &LogError);
+        LogIndented(LogLevel::Error, errors);
         return false;
     }
     LogInfo("Level entities: " + DescribeLevelContents(contents) +
@@ -143,6 +138,26 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     latestRayHits_.clear();
     latestWallDepthBuffer_.clear();
 
+    ResetLevelState();
+    for (const Entity& entity : entityManager_.Entities()) {
+        levelEnemyTotal_ += entity.type == EntityType::Enemy ? 1 : 0;
+        levelPickupTotal_ += entity.type == EntityType::Pickup ? 1 : 0;
+    }
+
+    currentMapPath_ = mapPath;
+    currentEntitiesPath_ = entitiesPath;
+    currentLevelIndex_ = -1;  // LoadCampaignLevel sets it after a campaign load
+
+    InteropEvent evt{};
+    evt.type = InteropEventType::LevelLoaded;
+    evt.SetString(mapPath.c_str());
+    bridge_.PushEvent(evt);
+
+    LogInfo("Level loaded successfully.");
+    return true;
+}
+
+void Engine::ResetLevelState() {
     playerHealth_ = gameplay_.player.initialHealth;
     playerAmmo_ = gameplay_.weapon.initialAmmo;
     playerMaxHealth_ = gameplay_.player.maxHealth;
@@ -160,21 +175,22 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     levelPickupTotal_ = 0;
     levelShotsFired_ = 0;
     levelDamageTaken_ = 0;
-    for (const Entity& entity : entityManager_.Entities()) {
-        levelEnemyTotal_ += entity.type == EntityType::Enemy ? 1 : 0;
-        levelPickupTotal_ += entity.type == EntityType::Pickup ? 1 : 0;
+}
+
+void Engine::PushInteropEvent(InteropEventType type, int intArg1, int intArg2) {
+    InteropEvent event{};
+    event.type = type;
+    event.intArg1 = intArg1;
+    event.intArg2 = intArg2;
+    bridge_.PushEvent(event);
+}
+
+bool Engine::PlayEnemyAlertSound() {
+    if (enemyAlertCooldown_ > 0.0f) {
+        return false;
     }
-
-    currentMapPath_ = mapPath;
-    currentEntitiesPath_ = entitiesPath;
-    currentLevelIndex_ = -1;  // LoadCampaignLevel sets it after a campaign load
-
-    InteropEvent evt{};
-    evt.type = InteropEventType::LevelLoaded;
-    evt.SetString(mapPath.c_str());
-    bridge_.PushEvent(evt);
-
-    LogInfo("Level loaded successfully.");
+    audio_.PlayEffect("enemy_alert");
+    enemyAlertCooldown_ = kEnemyAlertSoundCooldown;
     return true;
 }
 
@@ -200,19 +216,16 @@ void Engine::PlayerAttack() {
     ++levelShotsFired_;
     audio_.PlayEffect("weapon_fire");
     pendingNoise_ = NoiseEvent{true, player_.position, gameplay_.weapon.noiseRadius};
-    if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {
-        audio_.PlayEffect("enemy_alert");
-        enemyAlertCooldown_ = kEnemyAlertSoundCooldown;
+    if (events.enemyAlerted) {
+        PlayEnemyAlertSound();
     }
 
-    // Spawn muzzle flash / spark
+    // Muzzle flash: a spark just in front of the player.
     const Vec2 playerDir{std::cos(player_.directionAngleRadians), std::sin(player_.directionAngleRadians)};
-    const Vec2 muzzlePos = player_.position + playerDir * 0.4f;
+    const Vec2 muzzlePos = player_.position + playerDir * kMuzzleFlashDistance;
     particleManager_.SpawnHitSpark(muzzlePos);
 
-    InteropEvent atkEvt{};
-    atkEvt.type = InteropEventType::PlayerAttacked;
-    bridge_.PushEvent(atkEvt);
+    PushInteropEvent(InteropEventType::PlayerAttacked);
 
     if (events.enemyDamaged) {
         ShowMessage("Hit enemy! (-" + std::to_string(events.enemyDamageAmount) + " HP)", 1.0f);
@@ -230,10 +243,7 @@ void Engine::PlayerAttack() {
             ShowMessage("Enemy eliminated!", 2.0f);
             particleManager_.SpawnPickupSparkle(events.hitPosition);
 
-            InteropEvent dieEvt{};
-            dieEvt.type = InteropEventType::EnemyDied;
-            dieEvt.intArg1 = events.deadEnemyId;
-            bridge_.PushEvent(dieEvt);
+            PushInteropEvent(InteropEventType::EnemyDied, events.deadEnemyId);
         }
     } else {
         particleManager_.SpawnHitSpark(events.hitPosition);

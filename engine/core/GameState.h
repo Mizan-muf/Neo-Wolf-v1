@@ -1,5 +1,7 @@
 #pragma once
 
+// The game's top-level states (menus, play, pause, end screens).
+
 #include <cstdint>
 
 // The values are part of the C API (nw_engine_get_state / nw_engine_set_state, the

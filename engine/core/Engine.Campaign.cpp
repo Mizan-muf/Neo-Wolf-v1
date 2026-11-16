@@ -2,7 +2,9 @@
 
 #include "engine/core/Engine.h"
 
+#include <array>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -11,34 +13,70 @@
 #include "engine/core/Log.h"
 #include "engine/core/Paths.h"
 #include "engine/core/Progress.h"
+#include "engine/core/Vec2i.h"
 #include "engine/world/LevelBuilder.h"
 
 namespace {
 constexpr float kLevelBannerSeconds = 3.0f;
+constexpr int kPreviewHighestUnlocked = 2;       // previews: level 2 unlocked, later levels locked
+constexpr float kPreviewMessageSeconds = 60.0f;  // HUD messages in previews outlast any --frames run
+constexpr PlayerStats kPreviewStats{75, 18};     // health and ammo in the HUD and minimap previews
+constexpr PlayerStats kShowcaseStats{82, 31};    // health and ammo in the enemies and items previews
 
 struct ThemeSlot {
     const char* textureId;
     const std::string ThemeTextureAssignments::* path;
 };
 
-constexpr ThemeSlot kThemeSlots[] = {
-    {"wall", &ThemeTextureAssignments::wall},           {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
-    {"wall_alt_b", &ThemeTextureAssignments::wallAltB}, {"door", &ThemeTextureAssignments::door},
-    {"door_red", &ThemeTextureAssignments::doorRed},    {"door_blue", &ThemeTextureAssignments::doorBlue},
-    {"door_gold", &ThemeTextureAssignments::doorGold},  {"floor", &ThemeTextureAssignments::floor},
-    {"ceiling", &ThemeTextureAssignments::ceiling},     {"exit", &ThemeTextureAssignments::exit},
-};
+constexpr std::array<ThemeSlot, 10> kThemeSlots = {{
+    {"wall", &ThemeTextureAssignments::wall},
+    {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
+    {"wall_alt_b", &ThemeTextureAssignments::wallAltB},
+    {"door", &ThemeTextureAssignments::door},
+    {"door_red", &ThemeTextureAssignments::doorRed},
+    {"door_blue", &ThemeTextureAssignments::doorBlue},
+    {"door_gold", &ThemeTextureAssignments::doorGold},
+    {"floor", &ThemeTextureAssignments::floor},
+    {"ceiling", &ThemeTextureAssignments::ceiling},
+    {"exit", &ThemeTextureAssignments::exit},
+}};
 
 // The fixed stage of the "enemies" and "items" previews: the hall of the Phase 7 level 1
 // (a door at (8, 7), a trigger at (13, 8), the exit switch at (15, 8)), built in code so the
 // reference screenshots do not change when the campaign's first level is redrawn (Phase 8).
 constexpr int kShowcaseWidth = 16;
 constexpr int kShowcaseHeight = 12;
-constexpr const char* kShowcaseRows[kShowcaseHeight] = {
+constexpr std::array<std::string_view, kShowcaseHeight> kShowcaseRows = {
     "################", "#..............#", "#..............#", "#..##A####B##..#",
     "#..............#", "#.......A......#", "#..............#", "#.......D......#",
     "#............T.X", "#.......B......#", "#..............#", "################",
 };
+constexpr Vec2 kShowcasePlayerStart{2.5f, 7.5f};  // looking east along the hall
+constexpr Vec2i kShowcaseDoorCell{8, 7};
+constexpr Vec2i kShowcaseTriggerCell{13, 8};
+
+// The enemies preview: one enemy of each type, and a guard whose corpse lies on the floor (the
+// last entry).
+struct ShowcaseEnemy {
+    EnemyVariant variant = EnemyVariant::Guard;
+    Vec2 position;
+};
+constexpr std::array<ShowcaseEnemy, 4> kShowcaseEnemies = {{{EnemyVariant::Guard, {6.0f, 6.0f}},
+                                                            {EnemyVariant::Runner, {5.5f, 6.95f}},
+                                                            {EnemyVariant::Brute, {5.8f, 8.9f}},
+                                                            {EnemyVariant::Guard, {4.6f, 8.0f}}}};
+
+// The items preview: health, ammo and the three key cards.
+struct ShowcaseItem {
+    PickupType kind = PickupType::Health;
+    KeyColor key = KeyColor::None;
+    Vec2 position;
+};
+constexpr std::array<ShowcaseItem, 5> kShowcaseItems = {{{PickupType::Health, KeyColor::None, {7.0f, 5.6f}},
+                                                         {PickupType::Key, KeyColor::Red, {7.0f, 6.4f}},
+                                                         {PickupType::Key, KeyColor::Blue, {7.0f, 7.5f}},
+                                                         {PickupType::Key, KeyColor::Gold, {7.0f, 8.6f}},
+                                                         {PickupType::Ammo, KeyColor::None, {7.0f, 9.4f}}}};
 
 TileType ShowcaseTile(char c) {
     switch (c) {
@@ -68,6 +106,12 @@ EntityPlacement ShowcasePlacement(PlacementType type, Vec2 position, int mapX, i
     placement.source = "preview stage";
     return placement;
 }
+
+// A door or trigger placement in the middle of its cell.
+EntityPlacement ShowcaseCellPlacement(PlacementType type, Vec2i cell) {
+    const Vec2 center{static_cast<float>(cell.x) + 0.5f, static_cast<float>(cell.y) + 0.5f};
+    return ShowcasePlacement(type, center, cell.x, cell.y);
+}
 }  // namespace
 
 bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors) {
@@ -76,16 +120,12 @@ bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector
     std::vector<std::string> warnings;
     CampaignDefinition campaign{};
     const bool loaded = LoadCampaign(resolvedPath, contentRoot_, campaign, errors, warnings);
-    for (const std::string& warning : warnings) {
-        LogWarning("  " + warning);
-    }
+    LogIndented(LogLevel::Warning, warnings);
     if (!loaded) {
         LogError("Invalid campaign manifest " + resolvedPath + ":");
-        for (const std::string& error : errors) {
-            LogError("  " + error);
-        }
+        LogIndented(LogLevel::Error, errors);
         if (outErrors != nullptr) {
-            *outErrors = errors;
+            *outErrors = std::move(errors);
         }
         return false;
     }
@@ -135,7 +175,7 @@ void Engine::LoadSavedProgress() {
     }
 }
 
-void Engine::SaveProgress(int highestUnlocked) {
+void Engine::SaveProgress(int highestUnlocked) const {
     if (prefDir_.empty()) {
         LogInfo("Progress not saved (no per-user folder).");
         return;
@@ -173,7 +213,7 @@ bool Engine::ApplyTheme(const std::string& themeId) {
         return true;
     }
     if (missingTexture_.Width() <= 0) {
-        TextureLoader::BuildFallbackChecker(missingTexture_, 64, 64);
+        TextureLoader::BuildFallbackChecker(missingTexture_, kMissingTextureSize, kMissingTextureSize);
     }
 
     const std::string configPath = ResolveContentPath(ThemeConfigPath(themeId));
@@ -187,7 +227,7 @@ bool Engine::ApplyTheme(const std::string& themeId) {
     // Load the whole set first; only then replace the textures in use.
     std::vector<std::pair<std::string, Texture>> loaded;
     for (const ThemeSlot& slot : kThemeSlots) {
-        const std::string& relativePath = assignments.*(slot.path);
+        const std::string& relativePath = assignments.*slot.path;
         Texture texture{};
         if (relativePath.empty() || !TextureLoader::LoadPPM(ResolveContentPath(relativePath), texture)) {
             LogWarning("Theme " + themeId + ": using the fallback texture for '" + slot.textureId + "'" +
@@ -283,15 +323,15 @@ bool Engine::SetupPreview(PreviewScreen screen) {
         return true;
     }
     LogInfo(std::string("Preview: ") + PreviewScreenName(screen) + " (sample data; the simulation is frozen).");
-    // Sample progress: level 2 unlocked, later levels locked. Nothing is saved.
-    flow_.SetProgress(true, 2);
+    // Sample progress; nothing is saved.
+    flow_.SetProgress(true, kPreviewHighestUnlocked);
     simulationFrozen_ = true;
 
     const auto startLevel = [this](int index) {
         ExecuteFlowRequests({flow_.StartLevelDirect(index)});
         return flow_.State() == GameState::Gameplay;
     };
-    const auto startLevelOne = [&startLevel]() { return startLevel(0); };
+    const auto startLevelOne = [&startLevel] { return startLevel(0); };
 
     switch (screen) {
         case PreviewScreen::None:
@@ -307,10 +347,10 @@ bool Engine::SetupPreview(PreviewScreen screen) {
             if (!startLevelOne()) {
                 return false;
             }
-            playerHealth_ = 75;
-            playerAmmo_ = 18;
+            playerHealth_ = kPreviewStats.health;
+            playerAmmo_ = kPreviewStats.ammo;
             if (screen == PreviewScreen::Hud) {
-                ShowMessage("HEALTH RESTORED (+25 HP)", 60.0f);
+                ShowMessage("HEALTH RESTORED (+25 HP)", kPreviewMessageSeconds);
             } else {
                 levelBannerTimer_ = 0.0f;
                 minimapVisible_ = true;
@@ -368,18 +408,16 @@ bool Engine::SetupShowcase(bool enemies) {
             stage.SetCell(x, y, ShowcaseTile(kShowcaseRows[y][x]));
         }
     }
-    std::vector<EntityPlacement> placements = {
-        ShowcasePlacement(PlacementType::Player, {2.5f, 7.5f}, -1, -1),
-        ShowcasePlacement(PlacementType::Door, {8.5f, 7.5f}, 8, 7),
-        ShowcasePlacement(PlacementType::Trigger, {13.5f, 8.5f}, 13, 8),
+    const std::vector<EntityPlacement> placements = {
+        ShowcasePlacement(PlacementType::Player, kShowcasePlayerStart, -1, -1),
+        ShowcaseCellPlacement(PlacementType::Door, kShowcaseDoorCell),
+        ShowcaseCellPlacement(PlacementType::Trigger, kShowcaseTriggerCell),
     };
     LevelContents contents{};
     std::vector<std::string> errors;
     if (!BuildLevelFromPlacements(stage, placements, gameplay_, contents, errors)) {
         LogError("Preview stage could not be built:");
-        for (const std::string& error : errors) {
-            LogError("  " + error);
-        }
+        LogIndented(LogLevel::Error, errors);
         return false;
     }
     map_ = std::move(stage);
@@ -400,38 +438,21 @@ bool Engine::SetupShowcase(bool enemies) {
         map_.SetDoorLock(door->mapX, door->mapY, lock);
     }
     levelBannerTimer_ = 0.0f;
-    playerHealth_ = 82;
-    playerAmmo_ = 31;
+    playerHealth_ = kShowcaseStats.health;
+    playerAmmo_ = kShowcaseStats.ammo;
 
     if (enemies) {
-        // One enemy of each type and a guard's corpse on the floor.
-        const struct {
-            EnemyVariant variant;
-            Vec2 position;
-        } lineUp[] = {{EnemyVariant::Guard, {6.0f, 6.0f}},
-                      {EnemyVariant::Runner, {5.5f, 6.95f}},
-                      {EnemyVariant::Brute, {5.8f, 8.9f}},
-                      {EnemyVariant::Guard, {4.6f, 8.0f}}};
-        for (const auto& placement : lineUp) {
+        for (const ShowcaseEnemy& placement : kShowcaseEnemies) {
             Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, placement.position);
             ApplyEnemyArchetype(enemy, placement.variant, gameplay_.enemies);
         }
         Entity& corpse = entityManager_.Entities().back();
         corpse.enemyState = EnemyState::Dead;
         corpse.active = false;
-        ShowMessage("NEED BLUE KEY", 60.0f);
+        ShowMessage("NEED BLUE KEY", kPreviewMessageSeconds);
     } else {
-        // Health, ammo and the three key cards; every key held; minimap on.
-        const struct {
-            PickupType kind;
-            KeyColor key;
-            Vec2 position;
-        } items[] = {{PickupType::Health, KeyColor::None, {7.0f, 5.6f}},
-                     {PickupType::Key, KeyColor::Red, {7.0f, 6.4f}},
-                     {PickupType::Key, KeyColor::Blue, {7.0f, 7.5f}},
-                     {PickupType::Key, KeyColor::Gold, {7.0f, 8.6f}},
-                     {PickupType::Ammo, KeyColor::None, {7.0f, 9.4f}}};
-        for (const auto& item : items) {
+        // Every key held; minimap on.
+        for (const ShowcaseItem& item : kShowcaseItems) {
             Entity& pickup = entityManager_.CreateEntity(EntityType::Pickup, item.position);
             pickup.pickupType = item.kind;
             pickup.keyColor = item.key;
@@ -442,7 +463,7 @@ bool Engine::SetupShowcase(bool enemies) {
             keys_.Add(color);
         }
         minimapVisible_ = true;
-        ShowMessage("GOLD KEY CARD", 60.0f);
+        ShowMessage("GOLD KEY CARD", kPreviewMessageSeconds);
     }
     SyncSpritesWithEntities(entityManager_, sprites_);
     return true;

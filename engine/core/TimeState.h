@@ -1,5 +1,7 @@
 #pragma once
 
+// The frame clock the engine advances in Update.
+
 #include <cstdint>
 
 struct TimeState {

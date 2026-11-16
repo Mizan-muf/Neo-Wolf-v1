@@ -1,5 +1,7 @@
 #pragma once
 
+// 2D float vector for world positions and directions (map units, one tile = 1.0).
+
 #include <cmath>
 
 struct Vec2 {
@@ -9,10 +11,6 @@ struct Vec2 {
 
 inline Vec2 Add(const Vec2& a, const Vec2& b) {
     return {a.x + b.x, a.y + b.y};
-}
-
-inline Vec2 Subtract(const Vec2& a, const Vec2& b) {
-    return {a.x - b.x, a.y - b.y};
 }
 
 inline Vec2 Scale(const Vec2& value, float scalar) {
@@ -41,16 +39,6 @@ inline float Length(const Vec2& value) {
 
 inline float LengthSquared(const Vec2& value) {
     return value.x * value.x + value.y * value.y;
-}
-
-inline Vec2 Normalize(const Vec2& value) {
-    const float len = Length(value);
-    if (len <= 0.000001f) {
-        return {0.0f, 0.0f};
-    }
-
-    const float invLen = 1.0f / len;
-    return {value.x * invLen, value.y * invLen};
 }
 
 inline float Dot(const Vec2& a, const Vec2& b) {

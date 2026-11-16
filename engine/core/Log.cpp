@@ -7,18 +7,37 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include "engine/core/Paths.h"
 
 namespace {
-std::string g_logFilePath{};
-std::mutex g_logMutex{};
-LogLevel g_consoleMinimum = LogLevel::Info;
+// The log's shared state. A function-local static is initialised on first use, so logging
+// works even from other static initialisers.
+struct LogState {
+    std::mutex mutex;
+    std::string filePath;  // empty: no log file
+    LogLevel consoleMinimum = LogLevel::Info;
+};
+
+LogState& State() {
+    static LogState state;
+    return state;
+}
 
 int Severity(LogLevel level) {
-    return level == LogLevel::Error ? 2 : (level == LogLevel::Warning ? 1 : 0);
+    switch (level) {
+        case LogLevel::Warning:
+            return 1;
+        case LogLevel::Error:
+            return 2;
+        case LogLevel::Info:
+        default:
+            return 0;
+    }
 }
 
 const char* LevelToText(LogLevel level) {
@@ -33,16 +52,33 @@ const char* LevelToText(LogLevel level) {
             return "LOG";
     }
 }
+
+// "[HH:MM:SS] [LEVEL] message", local time.
+std::string FormatLogLine(LogLevel level, std::string_view message) {
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm localTime{};
+#if defined(_WIN32)
+    localtime_s(&localTime, &now);
+#else
+    localtime_r(&now, &localTime);
+#endif
+    std::ostringstream line;
+    line << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
+         << "[" << LevelToText(level) << "] " << message << '\n';
+    return line.str();
+}
 }  // namespace
 
 void SetConsoleLogLevel(LogLevel minimum) {
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    g_consoleMinimum = minimum;
+    LogState& state = State();
+    const std::scoped_lock lock(state.mutex);
+    state.consoleMinimum = minimum;
 }
 
 void SetLogFilePath(std::string_view path) {
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    g_logFilePath = std::string(path);
+    LogState& state = State();
+    const std::scoped_lock lock(state.mutex);
+    state.filePath = std::string(path);
 }
 
 bool StartFreshLogFile(std::string_view path, std::string_view previousPath) {
@@ -54,46 +90,43 @@ bool StartFreshLogFile(std::string_view path, std::string_view previousPath) {
         std::filesystem::rename(logPath, prevPath, ec);
     }
 
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    std::ofstream file(logPath, std::ios::out | std::ios::trunc);
+    LogState& state = State();
+    const std::scoped_lock lock(state.mutex);
+    const std::ofstream file(logPath, std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
-        g_logFilePath.clear();
+        state.filePath.clear();
         return false;
     }
-    g_logFilePath = std::string(path);
+    state.filePath = std::string(path);
     return true;
 }
 
 std::string GetLogFilePath() {
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    return g_logFilePath;
+    LogState& state = State();
+    const std::scoped_lock lock(state.mutex);
+    return state.filePath;
 }
 
 void LogMessage(LogLevel level, std::string_view message) {
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t nowTime = std::chrono::system_clock::to_time_t(now);
+    const std::string line = FormatLogLine(level, message);
 
-    std::tm localTime{};
-#if defined(_WIN32)
-    localtime_s(&localTime, &nowTime);
-#else
-    localtime_r(&nowTime, &localTime);
-#endif
-
-    std::lock_guard<std::mutex> lock(g_logMutex);
-
-    if (Severity(level) >= Severity(g_consoleMinimum)) {
+    LogState& state = State();
+    const std::scoped_lock lock(state.mutex);
+    if (Severity(level) >= Severity(state.consoleMinimum)) {
         std::ostream& stream = (level == LogLevel::Error) ? std::cerr : std::cout;
-        stream << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
-               << "[" << LevelToText(level) << "] " << message << '\n';
+        stream << line;
     }
-
-    if (!g_logFilePath.empty()) {
-        std::ofstream file(PathFromUtf8(g_logFilePath), std::ios::out | std::ios::app);
+    if (!state.filePath.empty()) {
+        std::ofstream file(PathFromUtf8(state.filePath), std::ios::out | std::ios::app);
         if (file.is_open()) {
-            file << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
-                 << "[" << LevelToText(level) << "] " << message << '\n';
+            file << line;
         }
+    }
+}
+
+void LogIndented(LogLevel level, const std::vector<std::string>& messages) {
+    for (const std::string& message : messages) {
+        LogMessage(level, "  " + message);
     }
 }
 

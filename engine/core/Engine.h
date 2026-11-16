@@ -1,8 +1,13 @@
 #pragma once
 
+// The engine: owns every subsystem and runs start-up, the frame update, rendering and
+// shutdown. The members are public because the C API, the command bridge, the autoplay bot
+// and the tests work on them directly (docs/ARCHITECTURE.md).
+
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,10 +33,13 @@
 #include "engine/world/Sprite.h"
 
 class PlatformSDL;
+struct AudioEffectDefinitions;
+struct GameplayEvents;
+struct SpriteTextureDefinitions;
 
 // Startup settings (filled from the command line by App; the defaults suit the C API and tests).
 struct EngineOptions {
-    std::string dataDir{};                                // --data (UTF-8); empty = automatic content-root search
+    std::string dataDir;                                  // --data (UTF-8); empty = automatic content-root search
     std::string campaignPath{"game/defs/campaign.json"};  // relative to the content root
     std::string gameplayPath{"game/defs/gameplay.json"};
     // --level N: campaign level to start in (1-based), skipping the menu and the unlock
@@ -39,7 +47,7 @@ struct EngineOptions {
     int startLevel = 0;
     // Folder for progress.json (App resolves --pref-dir / NEOWOLF_PREF_DIR / SDL_GetPrefPath).
     // Empty = progress is neither loaded nor saved (C API, tests).
-    std::filesystem::path prefDir{};
+    std::filesystem::path prefDir;
     PreviewScreen preview = PreviewScreen::None;  // --preview: a still screen with sample data
     bool fullscreen = false;
     // Show a message box for fatal startup errors. Off for automated runs (--frames).
@@ -56,11 +64,14 @@ using InputInjector = std::function<void(InputState& input)>;
 
 class Engine {
 public:
-    Engine() = default;
+    // Defined where PlatformSDL is a complete type (platform_ is a unique_ptr to it).
+    Engine();
     ~Engine();
 
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
+    Engine(Engine&&) = delete;
+    Engine& operator=(Engine&&) = delete;
 
     // Returns false (after logging and, if enabled, showing an error box) when the game
     // cannot start: no content root, an invalid gameplay.json or campaign.json, a --level
@@ -112,15 +123,15 @@ public:
     std::string ResolveContentPath(const std::string& relativePath) const;
     const std::filesystem::path& ContentRoot() const { return contentRoot_; }
 
-    PlatformSDL* platform_ = nullptr;
+    std::unique_ptr<PlatformSDL> platform_;  // null when headless
     InputState input_{};
     TimeState time_{};
-    Framebuffer framebuffer_{};
-    Map map_{};
+    Framebuffer framebuffer_;
+    Map map_;
     Player player_{};
     AssetManager assets_{};
-    AudioSystem audio_{};
-    Texture missingTexture_{};
+    AudioSystem audio_;
+    Texture missingTexture_;
     const Texture* wallTexture_ = nullptr;
     const Texture* wallAltATexture_ = nullptr;
     const Texture* wallAltBTexture_ = nullptr;
@@ -132,9 +143,9 @@ public:
     std::array<const Texture*, kSpriteTextureCount> spriteTextures_{};  // by SpriteTextureId (sprites.cfg)
     bool minimapVisible_ = false;                                       // M / Tab (off by default, C9)
     bool debugOverlayVisible_ = false;                                  // F3
-    std::vector<RaycastHit> latestRayHits_{};
-    std::vector<float> latestWallDepthBuffer_{};
-    std::vector<SpriteEntity> sprites_{};
+    std::vector<RaycastHit> latestRayHits_;
+    std::vector<float> latestWallDepthBuffer_;
+    std::vector<SpriteEntity> sprites_;
     EntityManager entityManager_{};
     ParticleManager particleManager_{};
     float ambientDustSpawnTimer_ = 0.0f;
@@ -147,15 +158,15 @@ public:
     int playerMaxAmmo_ = kDefaultWeaponDefinition.maxAmmo;
     KeyRing keys_{};             // key cards held; cleared on every level load and restart
     NoiseEvent pendingNoise_{};  // the last shot, heard by enemies in the next AI update
-    std::string hudMessage_{};
+    std::string hudMessage_;
     float hudMessageTimer_ = 0.0f;
-    std::filesystem::path contentRoot_{};
+    std::filesystem::path contentRoot_;
     std::string currentMapPath_{"game/maps/level01.map"};
     std::string currentEntitiesPath_{"game/defs/level01.entities.json"};
     CampaignDefinition campaign_{};
     GameFlow flow_{};
-    std::filesystem::path prefDir_{};  // where progress.json lives; empty = not saved
-    std::string currentThemeId_{};
+    std::filesystem::path prefDir_;  // where progress.json lives; empty = not saved
+    std::string currentThemeId_;
     int currentLevelIndex_ = -1;     // campaign index of the loaded level; -1 = loaded by path
     float levelBannerTimer_ = 0.0f;  // "LEVEL N / name" banner at level start
     double levelTimeSeconds_ = 0.0;  // time spent in Gameplay on this level
@@ -164,16 +175,41 @@ public:
     int levelShotsFired_ = 0;        // shots fired on this level (LevelResults)
     int levelDamageTaken_ = 0;       // health lost to enemy attacks on this level
     bool simulationFrozen_ = false;  // previews: Update only reads input
-    InputInjector inputInjector_{};
+    InputInjector inputInjector_;
     GameState reportedState_ = GameState::Menu;  // last state announced with a StateChanged event
-    CommandBridge bridge_{};
+    CommandBridge bridge_;
     bool running_ = false;
 
 private:
+    static constexpr int kMissingTextureSize = 64;  // the checkerboard that stands in for missing textures
+
+    // Init steps, in order. Each returns false after reporting a fatal error.
+    bool InitContentRoot(const EngineOptions& options);
+    bool InitDefinitions(const EngineOptions& options);  // gameplay.json, campaign.json, --level
+    bool InitWindow(const EngineOptions& options);
+    void InitAssets();  // sprite and audio definitions, sprite textures, sounds
+    bool InitFirstLevel(const EngineOptions& options);
+    void LoadSpriteTextures(const SpriteTextureDefinitions& definitions);
+    void LoadSoundEffects(const AudioEffectDefinitions& definitions);
+
     // One frame of play (movement, interactions, AI); fills `events` for the game flow.
     void UpdateGameplay(float dt, FlowEvents& events);
+    void MovePlayer(float dt);  // turning and walking from the input
+    // HUD messages, sounds, particles and C API events for pickups, doors and triggers.
+    void ReportInteractionEvents(const GameplayEvents& events);
+    void CompleteLevel(const GameplayEvents& events, FlowEvents& flowEvents);
+    // Reports this frame's enemy attacks; returns true if the player died.
+    bool ReportPlayerDamage(const GameplayEvents& events, FlowEvents& flowEvents);
+    // Plays the alert sound unless it played less than kEnemyAlertSoundCooldown ago; returns
+    // true if it played.
+    bool PlayEnemyAlertSound();
+    void UpdateAmbientDust(float dt);
+    void PushInteropEvent(InteropEventType type, int intArg1 = 0, int intArg2 = 0);
+    // Player stats from gameplay_, keys, timers, HUD message and level counters back to the
+    // start of a level (LoadLevel, Shutdown).
+    void ResetLevelState();
     void ExecuteFlowRequests(const std::vector<FlowRequest>& requests);
-    void SaveProgress(int highestUnlocked);
+    void SaveProgress(int highestUnlocked) const;
     void LoadSavedProgress();
     void ConfigureFlow();
     // Pushes a StateChanged event (and logs) if the flow's state differs from the last one.

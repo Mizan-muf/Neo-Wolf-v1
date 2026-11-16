@@ -1,5 +1,7 @@
 #pragma once
 
+// 2D integer vector for map cells.
+
 struct Vec2i {
     int x = 0;
     int y = 0;

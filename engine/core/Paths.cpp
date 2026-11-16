@@ -19,6 +19,9 @@ namespace fs = std::filesystem;
 
 namespace {
 constexpr int kBasePathParents = 3;
+// SDL_GetPrefPath(organisation, application): the player's per-user folder.
+constexpr const char* kPrefOrganisation = "NeoWolf";
+constexpr const char* kPrefApplication = "NeoWolf";
 
 std::string GetEnvironmentUtf8(const char* name) {
 #if defined(_WIN32)
@@ -55,6 +58,13 @@ fs::path MakeAbsolute(const fs::path& path, const std::string& workingDir) {
         return path;
     }
     return PathFromUtf8(workingDir) / path;
+}
+
+// The current working directory (UTF-8), or "" if it cannot be read.
+std::string WorkingDirUtf8() {
+    std::error_code ec;
+    const fs::path cwd = fs::current_path(ec);
+    return ec ? std::string() : PathToUtf8(cwd);
 }
 
 void AddCandidate(std::vector<ContentRootCandidate>& out, const fs::path& directory, const std::string& source) {
@@ -150,11 +160,7 @@ ContentRootInputs GatherContentRootInputs(const std::string& dataOption) {
         SDL_free(basePath);
     }
 
-    std::error_code ec;
-    const fs::path cwd = fs::current_path(ec);
-    if (!ec) {
-        inputs.workingDir = PathToUtf8(cwd);
-    }
+    inputs.workingDir = WorkingDirUtf8();
     return inputs;
 }
 
@@ -196,14 +202,12 @@ PrefDirResult ChoosePrefDir(const std::string& option, const std::string& env, c
 }
 
 PrefDirResult ResolvePrefDir(const std::string& option) {
-    std::error_code ec;
-    const fs::path cwd = fs::current_path(ec);
-    const std::string workingDir = ec ? std::string() : PathToUtf8(cwd);
+    const std::string workingDir = WorkingDirUtf8();
     const std::string env = GetEnvironmentUtf8("NEOWOLF_PREF_DIR");
 
     std::string sdlPrefPath;
     if (option.empty() && env.empty()) {
-        if (char* prefPath = SDL_GetPrefPath("NeoWolf", "NeoWolf")) {
+        if (char* prefPath = SDL_GetPrefPath(kPrefOrganisation, kPrefApplication)) {
             sdlPrefPath = prefPath;
             SDL_free(prefPath);
         }

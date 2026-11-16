@@ -13,12 +13,20 @@
 #include "engine/world/LevelBuilder.h"
 #include "engine/world/MovementRules.h"
 
+namespace {
+// A random offset in [-spread / 2, spread / 2), in steps of spread / 100.
+float RandomDustOffset(float spread) {
+    // NOLINTNEXTLINE(misc-predictable-rand): decoration only; another generator would change the dust layout
+    return (static_cast<float>(std::rand() % 100) / 100.0f - 0.5f) * spread;
+}
+}  // namespace
+
 void Engine::Update(double deltaSeconds) {
     if (!running_) {
         return;
     }
 
-    // Process incoming interop commands
+    // Commands queued through the C API run first, so this frame already sees their effect.
     bridge_.ProcessCommands(*this);
 
     input_.BeginFrame();
@@ -37,7 +45,7 @@ void Engine::Update(double deltaSeconds) {
     time_.deltaSeconds = deltaSeconds;
     time_.totalSeconds += deltaSeconds;
     time_.frameIndex += 1;
-    const float dt = static_cast<float>(deltaSeconds);
+    const auto dt = static_cast<float>(deltaSeconds);
 
     if (simulationFrozen_) {
         // A preview shows a still image; Escape still quits.
@@ -93,7 +101,38 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         PlayerAttack();
     }
 
-    // Player Turning
+    MovePlayer(dt);
+    SyncPlayerEntity(entityManager_, player_);
+
+    GameplayEvents events{};
+    UpdateEntityInteractions(entityManager_, map_, player_, playerHealth_, playerAmmo_, playerMaxHealth_,
+                             playerMaxAmmo_, input_.WasPressed(InputAction::Interact), keys_, events);
+    ReportInteractionEvents(events);
+    if (events.exitActivated) {
+        CompleteLevel(events, flowEvents);
+        return;
+    }
+
+    // Enemy AI & Combat (the last shot is heard once, then forgotten).
+    const int healthBeforeAttacks = playerHealth_;
+    UpdateEnemyAi(entityManager_, map_, player_, playerHealth_, dt, events, &pendingNoise_);
+    levelDamageTaken_ += std::max(0, healthBeforeAttacks - playerHealth_);
+    pendingNoise_ = NoiseEvent{};
+
+    if (events.enemyAlerted && PlayEnemyAlertSound()) {
+        PushInteropEvent(InteropEventType::EnemyAlerted);
+    }
+    if (ReportPlayerDamage(events, flowEvents)) {
+        return;
+    }
+
+    // Sprites follow their entities (positions, hidden when collected or dead).
+    SyncSpritesWithEntities(entityManager_, sprites_);
+    particleManager_.Update(dt);
+    UpdateAmbientDust(dt);
+}
+
+void Engine::MovePlayer(float dt) {
     float turnDelta = 0.0f;
     if (input_.IsDown(InputAction::TurnLeft)) {
         turnDelta -= 1.0f;
@@ -104,7 +143,6 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
     player_.directionAngleRadians =
         NormalizeAngle(player_.directionAngleRadians + turnDelta * player_.turnSpeedRadians * dt);
 
-    // Player Movement
     Vec2 wishDir{0.0f, 0.0f};
     const Vec2 forward{std::cos(player_.directionAngleRadians), std::sin(player_.directionAngleRadians)};
     const Vec2 right{-forward.y, forward.x};
@@ -122,8 +160,10 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         wishDir = wishDir - right;
     }
 
+    // Opposite keys cancel out; below this squared length there is no direction to walk in.
+    constexpr float kMinWishLengthSquared = 1e-6f;
     const float lengthSq = wishDir.x * wishDir.x + wishDir.y * wishDir.y;
-    if (lengthSq > 1e-6f) {
+    if (lengthSq > kMinWishLengthSquared) {
         const float invLen = 1.0f / std::sqrt(lengthSq);
         wishDir = wishDir * invLen;
         const Vec2 moveDelta = wishDir * (player_.moveSpeed * dt);
@@ -131,14 +171,9 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         player_.position = MoveWithSlidingAndBodies(map_, player_.position, moveDelta, player_.collisionRadius,
                                                     LivingEnemyBodies(entityManager_));
     }
+}
 
-    SyncPlayerEntity(entityManager_, player_);
-
-    // Entity Interactions (Pickups, Doors, Triggers)
-    GameplayEvents events{};
-    UpdateEntityInteractions(entityManager_, map_, player_, playerHealth_, playerAmmo_, playerMaxHealth_,
-                             playerMaxAmmo_, input_.WasPressed(InputAction::Interact), keys_, events);
-
+void Engine::ReportInteractionEvents(const GameplayEvents& events) {
     if (events.pickupCollected) {
         audio_.PlayEffect("pickup");
         particleManager_.SpawnPickupSparkle(player_.position);
@@ -150,12 +185,7 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         } else {
             ShowMessage(std::string(KeyColorLabel(events.pickupKey)) + " KEY CARD", 2.0f);
         }
-
-        InteropEvent pEvt{};
-        pEvt.type = InteropEventType::PickupCollected;
-        pEvt.intArg1 = static_cast<int>(events.pickupType);
-        pEvt.intArg2 = events.pickupValue;
-        bridge_.PushEvent(pEvt);
+        PushInteropEvent(InteropEventType::PickupCollected, static_cast<int>(events.pickupType), events.pickupValue);
     }
 
     if (events.doorNeedsKey != KeyColor::None) {
@@ -166,89 +196,63 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
 
     if (events.doorToggled) {
         audio_.PlayEffect("door_open");
-        InteropEvent dEvt{};
-        dEvt.type = InteropEventType::DoorToggled;
-        dEvt.intArg1 = events.doorMapX;
-        dEvt.intArg2 = events.doorMapY;
-        bridge_.PushEvent(dEvt);
+        PushInteropEvent(InteropEventType::DoorToggled, events.doorMapX, events.doorMapY);
     }
 
     if (events.triggerActivated) {
         // A walk-over marker: an interop event and a HUD message. It does not end the level.
         ShowMessage("CHECKPOINT REACHED", 2.0f);
-        InteropEvent tEvt{};
-        tEvt.type = InteropEventType::TriggerActivated;
-        tEvt.intArg1 = events.triggerId;
-        bridge_.PushEvent(tEvt);
+        PushInteropEvent(InteropEventType::TriggerActivated, events.triggerId);
     }
+}
 
-    if (events.exitActivated) {
-        const LevelResults results = CurrentLevelResults();
-        LogInfo("Exit switch at (" + std::to_string(events.exitMapX) + ", " + std::to_string(events.exitMapY) +
-                ") used: level complete (enemies " + std::to_string(results.kills) + "/" +
-                std::to_string(results.totalEnemies) + ", pickups " + std::to_string(results.pickups) + "/" +
-                std::to_string(results.totalPickups) + ", score " + std::to_string(results.score) + ", health " +
-                std::to_string(playerHealth_) + ", ammo " + std::to_string(playerAmmo_) + ").");
-        ShowMessage("EXIT SWITCH ACTIVATED", 2.0f);
-        InteropEvent lEvt{};
-        lEvt.type = InteropEventType::LevelCompleted;
-        lEvt.intArg1 = currentLevelIndex_ + 1;
-        lEvt.intArg2 = playerHealth_;
-        lEvt.floatArg1 = static_cast<float>(results.seconds);
-        bridge_.PushEvent(lEvt);
-        flowEvents.levelCompleted = true;
-        flowEvents.stats = CurrentStats();
-        flowEvents.results = results;
-        return;
+void Engine::CompleteLevel(const GameplayEvents& events, FlowEvents& flowEvents) {
+    const LevelResults results = CurrentLevelResults();
+    LogInfo("Exit switch at (" + std::to_string(events.exitMapX) + ", " + std::to_string(events.exitMapY) +
+            ") used: level complete (enemies " + std::to_string(results.kills) + "/" +
+            std::to_string(results.totalEnemies) + ", pickups " + std::to_string(results.pickups) + "/" +
+            std::to_string(results.totalPickups) + ", score " + std::to_string(results.score) + ", health " +
+            std::to_string(playerHealth_) + ", ammo " + std::to_string(playerAmmo_) + ").");
+    ShowMessage("EXIT SWITCH ACTIVATED", 2.0f);
+    InteropEvent levelEvent{};
+    levelEvent.type = InteropEventType::LevelCompleted;
+    levelEvent.intArg1 = currentLevelIndex_ + 1;
+    levelEvent.intArg2 = playerHealth_;
+    levelEvent.floatArg1 = static_cast<float>(results.seconds);
+    bridge_.PushEvent(levelEvent);
+    flowEvents.levelCompleted = true;
+    flowEvents.stats = CurrentStats();
+    flowEvents.results = results;
+}
+
+bool Engine::ReportPlayerDamage(const GameplayEvents& events, FlowEvents& flowEvents) {
+    if (!events.playerDamaged) {
+        return false;
     }
+    audio_.PlayEffect("enemy_alert");
+    particleManager_.SpawnHitSpark(player_.position);
+    ShowMessage("UNDER ATTACK! (-" + std::to_string(events.playerDamageAmount) + " HP)", 1.0f);
+    PushInteropEvent(InteropEventType::PlayerDamaged, events.playerDamageAmount);
 
-    // Enemy AI & Combat (the last shot is heard once, then forgotten).
-    const int healthBeforeAttacks = playerHealth_;
-    UpdateEnemyAi(entityManager_, map_, player_, playerHealth_, dt, events, &pendingNoise_);
-    levelDamageTaken_ += std::max(0, healthBeforeAttacks - playerHealth_);
-    pendingNoise_ = NoiseEvent{};
-
-    if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {
-        audio_.PlayEffect("enemy_alert");
-        enemyAlertCooldown_ = kEnemyAlertSoundCooldown;
-        InteropEvent aEvt{};
-        aEvt.type = InteropEventType::EnemyAlerted;
-        bridge_.PushEvent(aEvt);
+    if (!events.playerDied && playerHealth_ > 0) {
+        return false;
     }
+    playerHealth_ = 0;
+    ShowMessage("YOU DIED!", 3.0f);
+    PushInteropEvent(InteropEventType::PlayerDied);
+    flowEvents.playerDied = true;
+    return true;
+}
 
-    if (events.playerDamaged) {
-        audio_.PlayEffect("enemy_alert");
-        particleManager_.SpawnHitSpark(player_.position);
-        ShowMessage("UNDER ATTACK! (-" + std::to_string(events.playerDamageAmount) + " HP)", 1.0f);
-
-        InteropEvent dmgEvt{};
-        dmgEvt.type = InteropEventType::PlayerDamaged;
-        dmgEvt.intArg1 = events.playerDamageAmount;
-        bridge_.PushEvent(dmgEvt);
-
-        if (events.playerDied || playerHealth_ <= 0) {
-            playerHealth_ = 0;
-            ShowMessage("YOU DIED!", 3.0f);
-            InteropEvent dieEvt{};
-            dieEvt.type = InteropEventType::PlayerDied;
-            bridge_.PushEvent(dieEvt);
-            flowEvents.playerDied = true;
-            return;
-        }
-    }
-
-    // Sprites follow their entities (positions, hidden when collected or dead).
-    SyncSpritesWithEntities(entityManager_, sprites_);
-
-    // Update Particles
-    particleManager_.Update(dt);
-
-    // Ambient Dust
+// Cosmetic dust around the player, a few times a second.
+void Engine::UpdateAmbientDust(float dt) {
+    constexpr float kSpawnIntervalSeconds = 0.25f;
+    constexpr float kSpreadTiles = 4.0f;  // a square this wide, centred on the player
     ambientDustSpawnTimer_ += dt;
-    if (ambientDustSpawnTimer_ >= 0.25f) {
+    if (ambientDustSpawnTimer_ >= kSpawnIntervalSeconds) {
         ambientDustSpawnTimer_ = 0.0f;
-        const float ox = (static_cast<float>(std::rand() % 100) / 100.0f - 0.5f) * 4.0f;
-        const float oy = (static_cast<float>(std::rand() % 100) / 100.0f - 0.5f) * 4.0f;
+        const float ox = RandomDustOffset(kSpreadTiles);
+        const float oy = RandomDustOffset(kSpreadTiles);
         const Vec2 spawnPos = player_.position + Vec2{ox, oy};
         if (!map_.IsWall(static_cast<int>(std::floor(spawnPos.x)), static_cast<int>(std::floor(spawnPos.y)))) {
             particleManager_.SpawnAmbientDust(spawnPos);

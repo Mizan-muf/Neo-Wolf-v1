@@ -34,7 +34,7 @@ enum class CommandLineAction {
 struct CommandLineResult {
     CommandLineAction action = CommandLineAction::Run;
     CommandLineOptions options{};
-    std::string error{};
+    std::string error;
 };
 
 // `args` excludes the program name (argv[1..argc-1]), as UTF-8.
