@@ -17,7 +17,7 @@ from tools.devkit.asset_tools import (
 )
 from tools.devkit.def_tools import sync_entity_definitions
 from tools.devkit.doctor import render_doctor_report, run_doctor
-from tools.devkit.engine_formats import load_json_strict, parse_entities, parse_map
+from tools.devkit.engine_formats import check_light_bounds, load_json_strict, parse_entities, parse_map
 from tools.devkit.map_tools import (
     analyze_reachability,
     create_level_stub_entities,
@@ -157,6 +157,7 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
         return 1
 
     entities: Optional[List[dict]] = None
+    lights: List[dict] = []
     if entities_path is not None:
         if not entities_path.exists():
             print(f"Error: Entity file '{entities_path}' not found.")
@@ -169,8 +170,16 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
             for error in parsed.errors:
                 print(f"  {error}")
             return 1
+        light_errors = check_light_bounds(parsed.lights, parsed_map.width, parsed_map.height, str(entities_path) + ":")
+        if light_errors:
+            print(f"Error: the engine cannot build the level from {entities_path}:")
+            for error in light_errors:
+                print(f"  {error}")
+            return 1
         entities = parsed.entities
-        print(f"Entities: {entities_path} ({len(entities)} placements)")
+        lights = parsed.lights
+        print(f"Entities: {entities_path} ({len(entities)} placements"
+              + (f", {len(lights)} light zone(s))" if lights else ")"))
 
     print(render_ascii_preview(map_path, entity_placements=entities, color=args.color))
 
@@ -179,6 +188,12 @@ def cmd_inspect_map(args: argparse.Namespace) -> int:
         print("\n--- Map Statistics ---")
         for k, v in stats.items():
             print(f"  {k:20s}: {v}")
+
+    if lights:
+        print("\n--- Light Zones (applied in order; every other cell is 1.0) ---")
+        for index, zone in enumerate(lights):
+            print(f"  lights[{index}]: cells ({zone['x']}, {zone['y']}) to ({zone['x'] + zone['w'] - 1}, "
+                  f"{zone['y'] + zone['h'] - 1}), {zone['w']}x{zone['h']}, level {zone['level']}")
 
     if args.no_reachability:
         return 0
@@ -355,10 +370,15 @@ def cmd_create_asset(args: argparse.Namespace) -> int:
 
 def cmd_sync_entities(args: argparse.Namespace) -> int:
     root = resolve_root(args)
-    synced = sync_entity_definitions(root, from_csv=args.from_csv)
+    try:
+        synced = sync_entity_definitions(root, from_csv=args.from_csv)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
+    pairs = [s for s in synced if not s.startswith("Warning:")]
     for s in synced:
         print(f"  {s}")
-    print(f"Entity definitions synchronization complete ({len(synced)} file pairs).")
+    print(f"Entity definitions synchronization complete ({len(pairs)} file pairs).")
     return 0
 
 

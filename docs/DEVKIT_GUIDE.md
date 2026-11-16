@@ -122,6 +122,9 @@ exactly like the engine (`tools/devkit/engine_formats.py`):
   integers 0–100000 on doors and triggers; `kind` on pickups, `key` on key pickups, `value`
   1–10000, `variant`, `lock`; fields that do not apply and unknown fields are warnings
   ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#2-entity-placements-levelentitiesjson)).
+  Light zones (the optional top-level `lights` array, JSON only): integers `x`, `y` ≥ 0 and
+  `w`, `h` ≥ 1, `level` a number from 0.2 to 1.0, each zone fully inside the map
+  ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#light-zones-lights)).
   Positions and door/trigger cells must lie inside the map; exactly one player.
 - **Key/value files** (themes, `sprites.cfg`, `audio.cfg`): `key=value` lines, `#` comments; a
   line without `=` or with an empty key or value is an **error** (the engine then ignores the
@@ -190,7 +193,8 @@ It prints the grid with the entities on top (`P` player, `E` enemy, `$` pickup, 
 **with the validator's rules**: door entities open their cells, a locked door only once its key
 was reached, a `D` without a door entity is a wall. It lists the reachable and unreachable
 cells, the usable exit switches, the key order, key/lock problems and unreachable pickups and
-enemies.
+enemies. A level with light zones also gets a `Light Zones` list (each zone's cells and level,
+in the order they apply); a zone outside the map is an error (exit code 1), as in the engine.
 
 Exit code `1` when the map or entity file does not load, there is no spawn (no or several player
 entities and no `--spawn-x/--spawn-y`), the spawn is outside the map or inside a solid or door
@@ -271,8 +275,12 @@ The shipped sprites and theme textures come from `gen_sprites.py` and `gen_textu
 |---|---|
 | `--from-csv` | Convert CSV to JSON instead (overwrites every `<level>.entities.json` that has a CSV). |
 
-The JSON files are canonical (the game loads them); the CSV files are an optional export. The
-old `--prefer-json` flag is accepted and does nothing.
+The JSON files are canonical (the game loads them); the CSV files are an optional, **lossy**
+export: they cannot hold light zones. JSON → CSV prints a `Warning:` line for every level with
+light zones and writes a `# lights: ...` comment line into its CSV; CSV → JSON keeps the light
+zones of each JSON it overwrites, and refuses (exit code 1, no file written) if an existing JSON
+cannot be read, since its light zones would be lost. The old `--prefer-json` flag is accepted
+and does nothing.
 
 ---
 

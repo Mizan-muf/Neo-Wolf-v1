@@ -27,9 +27,22 @@ struct LevelContents {
 //               becomes a closed door (Map::SetDoorLock records the lock for drawing)
 //   trigger     Trigger (level exit) entity bound to (mapX, mapY); that cell becomes a 'T' tile
 //   decoration  Decoration entity (no interaction) plus a decoration sprite
-// The level needs exactly one player; every position and map cell must lie inside the map.
-// On an error nothing is changed: `map` and `out` are only written when the function returns
-// true. Errors name the placement's source (file and entity index).
+// Light zones (the entity file's "lights") set Map::SetLightLevel for their cells, in order, so
+// a later zone overrides an earlier one; cells no zone covers keep the map's level (1.0 for a
+// freshly loaded map). Light only changes the picture: enemy sight, hearing and the autoplay
+// bot ignore it.
+// The level needs exactly one player; every position, map cell and light zone must lie inside
+// the map. On an error nothing is changed: `map` and `out` are only written when the function
+// returns true. Errors name the placement's or zone's source (file and index).
+bool BuildLevelFromPlacements(
+    Map& map,
+    const std::vector<EntityPlacement>& placements,
+    const std::vector<LightZone>& lights,
+    const GameplayDefinitions& gameplay,
+    LevelContents& out,
+    std::vector<std::string>& errors);
+
+// The same without light zones.
 bool BuildLevelFromPlacements(
     Map& map,
     const std::vector<EntityPlacement>& placements,

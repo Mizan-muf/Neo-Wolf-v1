@@ -130,6 +130,21 @@ class TestInspectMap(CliTest):
         self.assertEqual(code, 0, out)
         self.assertEqual(run_cli("--root", str(self.root), "inspect-map", "--level", "99")[0], 1)
 
+    def test_light_zones_are_listed(self) -> None:
+        path = self.root / "game" / "defs" / "alpha.entities.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["lights"] = [{"x": 1, "y": 1, "w": 2, "h": 1, "level": 0.35}]
+        path.write_text(json.dumps(document), encoding="utf-8")
+        code, out = run_cli("--root", str(self.root), "inspect-map", "--level", "alpha")
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 light zone(s)", out)
+        self.assertIn("lights[0]: cells (1, 1) to (2, 1), 2x1, level 0.35", out)
+        document["lights"].append({"x": 0, "y": 0, "w": 999, "h": 1, "level": 0.5})
+        path.write_text(json.dumps(document), encoding="utf-8")
+        code, out = run_cli("--root", str(self.root), "inspect-map", "--level", "alpha")
+        self.assertEqual(code, 1, out)
+        self.assertIn("lights[1]: cells (0, 0) to (998, 0) are not all inside", out)
+
     def test_spawn_inside_a_wall_is_reported_not_a_crash(self) -> None:
         ents = list(GOOD_LEVELS["alpha"][1])
         ents[0] = {"type": "player", "x": 0.5, "y": 0.5}

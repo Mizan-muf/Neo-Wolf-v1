@@ -49,6 +49,11 @@ ENTITY_FIELDS = {
     "decoration": {"type", "x", "y"},
 }
 KNOWN_ENTITY_FIELDS = {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock"}
+TOP_LEVEL_FIELDS = {"level", "entities", "lights"}
+# Light zones: the optional top-level "lights" array (ReadLightZone, kMin/MaxLightZoneLevel).
+LIGHT_FIELDS = ("x", "y", "w", "h", "level")
+MIN_LIGHT_LEVEL = 0.2
+MAX_LIGHT_LEVEL = 1.0
 # CSV column order and kinds (kCsvColumns).
 CSV_COLUMNS: List[Tuple[str, str]] = [
     ("type", "text"),
@@ -225,6 +230,7 @@ def _is_int(value: object) -> bool:
 @dataclass
 class EntityParse:
     entities: List[dict] = field(default_factory=list)  # the placements that are valid
+    lights: List[dict] = field(default_factory=list)  # the light zones that are valid (JSON only)
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     count: int = 0  # placements in the file, valid or not
@@ -303,6 +309,55 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     return ok
 
 
+def check_light_zone(item: dict, label: str, result: EntityParse) -> bool:
+    """One entry of "lights" with the engine's rules (ReadLightZone). False on an error.
+
+    x and y are integers from 0, w and h integers from 1 (all up to MAX_MAP_COORDINATE), and
+    level a number from 0.2 to 1.0. Map bounds are checked separately (check_light_bounds)."""
+    ok = True
+    for key, low in (("x", 0), ("y", 0), ("w", 1), ("h", 1)):
+        if key not in item:
+            result.errors.append(f"{label}: field '{key}' is required (an integer from {low} to {MAX_MAP_COORDINATE})")
+            ok = False
+        elif not (_is_int(item[key]) and low <= item[key] <= MAX_MAP_COORDINATE):
+            result.errors.append(
+                f"{label}: field '{key}' must be an integer from {low} to {MAX_MAP_COORDINATE}, got {item[key]!r}"
+            )
+            ok = False
+    if "level" not in item:
+        result.errors.append(f"{label}: field 'level' is required (a number from 0.2 to 1.0)")
+        ok = False
+    elif not (_is_number(item["level"]) and MIN_LIGHT_LEVEL <= item["level"] <= MAX_LIGHT_LEVEL):
+        result.errors.append(f"{label}: field 'level' must be a number from 0.2 to 1.0, got {item['level']!r}")
+        ok = False
+    for key in sorted(set(item) - set(LIGHT_FIELDS)):
+        result.warnings.append(f"{label}: unknown field '{key}' ignored")
+    return ok
+
+
+def check_light_bounds(lights: List[dict], width: int, height: int, label: str) -> List[str]:
+    """The zones that are not fully inside a width x height map (BuildLevelFromPlacements)."""
+    errors: List[str] = []
+    for index, zone in enumerate(lights):
+        right, bottom = zone["x"] + zone["w"], zone["y"] + zone["h"]
+        if right > width or bottom > height:
+            errors.append(
+                f"{label} lights[{index}]: cells ({zone['x']}, {zone['y']}) to ({right - 1}, {bottom - 1}) "
+                f"are not all inside the {width}x{height} map"
+            )
+    return errors
+
+
+def light_grid(width: int, height: int, lights: List[dict]) -> List[List[float]]:
+    """The light level of every cell once the zones are applied in order (1.0 where none)."""
+    grid = [[1.0] * width for _ in range(height)]
+    for zone in lights:
+        for y in range(zone["y"], min(zone["y"] + zone["h"], height)):
+            for x in range(zone["x"], min(zone["x"] + zone["w"], width)):
+                grid[y][x] = float(zone["level"])
+    return grid
+
+
 def parse_entities_json(path: Path) -> EntityParse:
     result = EntityParse()
     path = Path(path)
@@ -315,8 +370,19 @@ def parse_entities_json(path: Path) -> EntityParse:
         return result
     if "level" in document and not isinstance(document["level"], str):
         result.warnings.append(f"JSON {path}: field 'level' should be a string (the level id)")
-    for key in sorted(set(document) - {"level", "entities"}):
+    for key in sorted(set(document) - TOP_LEVEL_FIELDS):
         result.warnings.append(f"JSON {path}: unknown top-level field '{key}' ignored")
+    if "lights" in document:
+        lights = document["lights"]
+        if not isinstance(lights, list):
+            result.errors.append(f"JSON {path}: field 'lights' must be an array of light zones, got {lights!r}")
+        else:
+            for index, item in enumerate(lights):
+                label = f"JSON {path}: lights[{index}]"
+                if not isinstance(item, dict):
+                    result.errors.append(f"{label}: each light zone must be an object, got {item!r}")
+                elif check_light_zone(item, label, result):
+                    result.lights.append(item)
     entities = document.get("entities")
     if not isinstance(entities, list):
         result.errors.append(f"JSON {path}: Missing 'entities' array.")

@@ -294,6 +294,7 @@ if(NEOWOLF_BUILD_TESTS)
         player_enemy_collision
         sprite_vertical_crop
         content_parity_fixtures
+        light_zones
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}

@@ -159,6 +159,62 @@ class TestValidator(unittest.TestCase):
         report = validate_campaign(self._write_campaign("######\n#..#.X\n######\n"))
         self.assertTrue(any("can be reached" in e for e in report.errors), report.errors)
 
+    def _light_file(self, lights, name: str = "lights.entities.json") -> Path:
+        path = self.dir_path / name
+        path.write_text(json.dumps({"level": "l", "entities": [{"type": "player", "x": 1.5, "y": 1.5}],
+                                    "lights": lights}), encoding="utf-8")
+        return path
+
+    def test_light_zones_valid(self) -> None:
+        # Known issue C21: "lights" is a known top-level field (no warning); the range is
+        # inclusive at both ends; a zone may cover the whole map.
+        path = self._light_file([{"x": 0, "y": 0, "w": 10, "h": 10, "level": 0.2},
+                                 {"x": 2, "y": 3, "w": 1, "h": 1, "level": 1}])
+        report, _ = validate_entity_json(path, map_dimensions=(10, 10))
+        self.assertEqual((report.errors, report.warnings), ([], []))
+        self.assertTrue(any("2 light zone(s)" in line for line in report.info), report.info)
+
+    def test_light_zones_invalid(self) -> None:
+        cases = [
+            ({"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.19}, "lights[0]: field 'level' must be a number from 0.2 to 1.0, got 0.19"),
+            ({"x": 1, "y": 1, "w": 1, "h": 1, "level": 1.01}, "must be a number from 0.2 to 1.0, got 1.01"),
+            ({"x": 1, "y": 1, "w": 1, "h": 1, "level": True}, "must be a number from 0.2 to 1.0, got True"),
+            ({"x": 1, "y": 1, "w": 1, "h": 1, "level": "dim"}, "got 'dim'"),
+            ({"x": 1, "y": 1, "w": 1, "h": 1}, "field 'level' is required"),
+            ({"x": 1, "y": 1, "w": 0, "h": 1, "level": 0.5}, "field 'w' must be an integer from 1 to 100000, got 0"),
+            ({"x": -1, "y": 1, "w": 1, "h": 1, "level": 0.5}, "field 'x' must be an integer from 0 to 100000, got -1"),
+            ({"x": 1, "y": 1.0, "w": 1, "h": 1, "level": 0.5}, "field 'y' must be an integer from 0 to 100000, got 1.0"),
+            ({"x": 1, "y": 1, "w": 1, "level": 0.5}, "field 'h' is required"),
+            (7, "lights[0]: each light zone must be an object, got 7"),
+            ({"x": 8, "y": 1, "w": 3, "h": 1, "level": 0.5}, "lights[0]: cells (8, 1) to (10, 1) are not all inside the 10x10 map"),
+            ({"x": 1, "y": 9, "w": 1, "h": 2, "level": 0.5}, "cells (1, 9) to (1, 10) are not all inside the 10x10 map"),
+        ]
+        for zone, message in cases:
+            with self.subTest(zone=zone):
+                report, _ = validate_entity_json(self._light_file([zone]), map_dimensions=(10, 10))
+                self.assertFalse(report.is_valid)
+                self.assertTrue(any(message in error for error in report.errors), report.errors)
+        report, _ = validate_entity_json(self._light_file({"x": 1}), map_dimensions=(10, 10))
+        self.assertTrue(any("field 'lights' must be an array" in error for error in report.errors), report.errors)
+        report, _ = validate_entity_json(self._light_file([{"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.5, "r": 1}]))
+        self.assertTrue(report.is_valid, report.errors)
+        self.assertTrue(any("lights[0]: unknown field 'r' ignored" in w for w in report.warnings), report.warnings)
+
+    def test_campaign_checks_light_zones(self) -> None:
+        root = self._write_campaign("#####\n#..X#\n#####\n")
+        entities = root / "game" / "defs" / "l1.entities.json"
+        document = {"entities": [{"type": "player", "x": 1.5, "y": 1.5}],
+                    "lights": [{"x": 1, "y": 1, "w": 2, "h": 1, "level": 0.35}]}
+        entities.write_text(json.dumps(document), encoding="utf-8")
+        report = validate_campaign(root)
+        self.assertEqual((report.errors, report.warnings), ([], []))
+        self.assertTrue(any("1 light zone(s)" in line for line in report.info), report.info)
+        document["lights"].append({"x": 3, "y": 1, "w": 3, "h": 1, "level": 0.35})
+        entities.write_text(json.dumps(document), encoding="utf-8")
+        report = validate_campaign(root)
+        self.assertTrue(any("lights[1]: cells (3, 1) to (5, 1) are not all inside the 5x3 map" in e
+                            for e in report.errors), report.errors)
+
     def test_validate_unclosed_map(self) -> None:
         map_content = (
             "######\n"

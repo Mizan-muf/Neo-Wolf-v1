@@ -33,6 +33,24 @@ struct EntityPlacement {
     std::string source{};               // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
+// One entry of the optional "lights" array of a level's entity JSON file: a rectangle of map
+// cells (x, y, w, h, all inside the map; checked when the level is built) and the light level
+// its cells get. Zones are applied in file order, so a later zone overrides an earlier one;
+// cells no zone covers keep 1.0 (schema: docs/CONTENT_DEFINITIONS.md).
+struct LightZone {
+    int x = 0;
+    int y = 0;
+    int width = 1;
+    int height = 1;
+    float level = 1.0f;
+    std::string source{};  // for messages: "file: lights[2]"
+};
+
+// The range a light zone's "level" must lie in. The floor keeps every area playable: an enemy
+// in a zone at the minimum is still clearly visible (see docs/LEVEL_AUTHORING.md).
+constexpr double kMinLightZoneLevel = 0.2;
+constexpr double kMaxLightZoneLevel = 1.0;
+
 // "player", "enemy", ... (the names used in entity files).
 const char* PlacementTypeName(PlacementType type);
 
@@ -43,7 +61,18 @@ const char* PlacementTypeName(PlacementType type);
 // Every problem is reported with the file name, the entity (index, and line for CSV) and the
 // field. Errors (unreadable file, bad syntax, unknown type, missing or invalid required field)
 // make the load fail; unknown or inapplicable fields are warnings. Returns false if this call
-// added any error; outPlacements then holds only the entries that were valid.
+// added any error; outPlacements (and outLights) then hold only the entries that were valid.
+// Light zones come only from JSON (its optional "lights" array); a CSV has none, so outLights
+// is empty after loading a CSV.
+bool LoadEntityPlacementsFromFile(
+    const std::string& filePath,
+    std::vector<EntityPlacement>& outPlacements,
+    std::vector<LightZone>& outLights,
+    std::vector<std::string>& errors,
+    std::vector<std::string>& warnings);
+
+// The same without light zones: a JSON file's "lights" are still checked (an invalid zone is
+// an error) but not returned. For tools and tests that need the placements only.
 bool LoadEntityPlacementsFromFile(
     const std::string& filePath,
     std::vector<EntityPlacement>& outPlacements,
@@ -51,6 +80,14 @@ bool LoadEntityPlacementsFromFile(
     std::vector<std::string>& warnings);
 
 // The two parsers, from text; `sourceName` (normally the file path) starts every message.
+bool ParseEntityPlacementsJson(
+    const std::string& text,
+    const std::string& sourceName,
+    std::vector<EntityPlacement>& outPlacements,
+    std::vector<LightZone>& outLights,
+    std::vector<std::string>& errors,
+    std::vector<std::string>& warnings);
+
 bool ParseEntityPlacementsJson(
     const std::string& text,
     const std::string& sourceName,

@@ -3,7 +3,9 @@
 A level's walls are a plain-text grid in `game/maps/levelNN.map`, one character per cell.
 Everything that is not a wall (player start, enemies, pickups, doors, the exit, decorations)
 is placed in the level's entity file, `game/defs/levelNN.entities.json`
-([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md)).
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md)). So are dim and dark areas: the map has no
+light layer; the entity file's `lights` array sets the light of cell rectangles
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#light-zones-lights)).
 
 This page describes what the engine's loader (`engine/world/MapLoader.cpp`) accepts. The
 DevKit validator is stricter; its extra rules are listed separately below.

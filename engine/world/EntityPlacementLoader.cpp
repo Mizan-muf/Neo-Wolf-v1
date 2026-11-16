@@ -251,6 +251,54 @@ bool ReadPlacement(const json& object, const std::string& where, EntityPlacement
     return ok;
 }
 
+// Fills `out` from one entry of the "lights" array. `where` names the file and the zone. Map
+// bounds are checked later, when the level is built (BuildLevelFromPlacements has the map).
+bool ReadLightZone(const json& object, const std::string& where, LightZone& out, Diagnostics& diag) {
+    out.source = where;
+    bool ok = true;
+    const auto readCell = [&](const char* key, std::int64_t minValue, int& value) {
+        bool present = false;
+        if (!ReadInteger(object, key, where, minValue, kMaxMapCoordinate, value, present, diag)) {
+            return false;
+        }
+        if (!present) {
+            diag.errors.push_back(where + ": field \"" + key + "\" is required (an integer from " +
+                                  std::to_string(minValue) + " to " + std::to_string(kMaxMapCoordinate) + ")");
+            return false;
+        }
+        return true;
+    };
+    ok = readCell("x", 0, out.x) && ok;
+    ok = readCell("y", 0, out.y) && ok;
+    ok = readCell("w", 1, out.width) && ok;
+    ok = readCell("h", 1, out.height) && ok;
+
+    const auto levelIt = object.find("level");
+    if (levelIt == object.end()) {
+        diag.errors.push_back(where + ": field \"level\" is required (a number from 0.2 to 1.0)");
+        ok = false;
+    } else if (!levelIt->is_number() || !std::isfinite(levelIt->get<double>()) ||
+               levelIt->get<double>() < kMinLightZoneLevel || levelIt->get<double>() > kMaxLightZoneLevel) {
+        diag.errors.push_back(where + ": field \"level\" must be a number from 0.2 to 1.0, got " +
+                              DescribeJsonValue(*levelIt));
+        ok = false;
+    } else {
+        out.level = static_cast<float>(levelIt->get<double>());
+    }
+
+    static const char* const kKnownFields[] = {"x", "y", "w", "h", "level"};
+    for (auto it = object.begin(); it != object.end(); ++it) {
+        bool known = false;
+        for (const char* field : kKnownFields) {
+            known = known || it.key() == field;
+        }
+        if (!known) {
+            diag.warnings.push_back(where + ": unknown field \"" + it.key() + "\" ignored");
+        }
+    }
+    return ok;
+}
+
 // CSV: one cell converted to the JSON value the shared reader expects.
 enum class CsvColumnType { Text, Number, Integer };
 
@@ -322,9 +370,11 @@ bool ParseEntityPlacementsJson(
     const std::string& text,
     const std::string& sourceName,
     std::vector<EntityPlacement>& outPlacements,
+    std::vector<LightZone>& outLights,
     std::vector<std::string>& errors,
     std::vector<std::string>& warnings) {
     outPlacements.clear();
+    outLights.clear();
     const std::size_t errorsBefore = errors.size();
     Diagnostics diag{errors, warnings};
 
@@ -344,8 +394,31 @@ bool ParseEntityPlacementsJson(
                            DescribeJsonValue(*levelIt));
     }
     for (auto it = document.begin(); it != document.end(); ++it) {
-        if (it.key() != "level" && it.key() != "entities") {
+        if (it.key() != "level" && it.key() != "entities" && it.key() != "lights") {
             warnings.push_back(sourceName + ": unknown top-level field \"" + it.key() + "\" ignored");
+        }
+    }
+
+    // "lights" (optional): an array of light zones, applied in order when the level is built.
+    const auto lightsIt = document.find("lights");
+    if (lightsIt != document.end()) {
+        if (!lightsIt->is_array()) {
+            errors.push_back(sourceName + ": field \"lights\" must be an array of light zones, got " +
+                             DescribeJsonValue(*lightsIt));
+        } else {
+            std::size_t lightIndex = 0;
+            for (const json& entry : *lightsIt) {
+                const std::string where = sourceName + ": lights[" + std::to_string(lightIndex) + "]";
+                ++lightIndex;
+                if (!entry.is_object()) {
+                    errors.push_back(where + ": each light zone must be an object, got " + DescribeJsonValue(entry));
+                    continue;
+                }
+                LightZone zone{};
+                if (ReadLightZone(entry, where, zone, diag)) {
+                    outLights.push_back(zone);
+                }
+            }
         }
     }
 
@@ -370,6 +443,16 @@ bool ParseEntityPlacementsJson(
         }
     }
     return errors.size() == errorsBefore;
+}
+
+bool ParseEntityPlacementsJson(
+    const std::string& text,
+    const std::string& sourceName,
+    std::vector<EntityPlacement>& outPlacements,
+    std::vector<std::string>& errors,
+    std::vector<std::string>& warnings) {
+    std::vector<LightZone> ignoredLights;
+    return ParseEntityPlacementsJson(text, sourceName, outPlacements, ignoredLights, errors, warnings);
 }
 
 bool ParseEntityPlacementsCsv(
@@ -450,9 +533,11 @@ bool ParseEntityPlacementsCsv(
 bool LoadEntityPlacementsFromFile(
     const std::string& filePath,
     std::vector<EntityPlacement>& outPlacements,
+    std::vector<LightZone>& outLights,
     std::vector<std::string>& errors,
     std::vector<std::string>& warnings) {
     outPlacements.clear();
+    outLights.clear();
     const bool isJson = HasExtension(filePath, ".json");
     const bool isCsv = HasExtension(filePath, ".csv");
     if (!isJson && !isCsv) {
@@ -464,6 +549,15 @@ bool LoadEntityPlacementsFromFile(
     if (!ReadTextFile(filePath, "entity placement file", text, errors)) {
         return false;
     }
-    return isJson ? ParseEntityPlacementsJson(text, filePath, outPlacements, errors, warnings)
+    return isJson ? ParseEntityPlacementsJson(text, filePath, outPlacements, outLights, errors, warnings)
                   : ParseEntityPlacementsCsv(text, filePath, outPlacements, errors, warnings);
+}
+
+bool LoadEntityPlacementsFromFile(
+    const std::string& filePath,
+    std::vector<EntityPlacement>& outPlacements,
+    std::vector<std::string>& errors,
+    std::vector<std::string>& warnings) {
+    std::vector<LightZone> ignoredLights;
+    return LoadEntityPlacementsFromFile(filePath, outPlacements, ignoredLights, errors, warnings);
 }

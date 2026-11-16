@@ -9,7 +9,14 @@ import json
 import unittest
 from pathlib import Path
 
-from tools.devkit.engine_formats import parse_c_double, parse_c_integer, parse_entities, parse_map
+from tools.devkit.engine_formats import (
+    check_light_bounds,
+    light_grid,
+    parse_c_double,
+    parse_c_integer,
+    parse_entities,
+    parse_map,
+)
 from tools.devkit.map_tools import load_map
 from tools.devkit.validator import validate_entity_csv, validate_entity_json, validate_map
 
@@ -50,10 +57,36 @@ class TestParity(unittest.TestCase):
                 self.assertEqual(parsed.ok, want["ok"], parsed.errors)
                 if want["ok"]:
                     self.assertEqual([e["type"] for e in parsed.entities], want["types"])
+                    self.assertEqual([[z["x"], z["y"], z["w"], z["h"], z["level"]] for z in parsed.lights],
+                                     want.get("lights", []))
                     validate = validate_entity_json if name.endswith(".json") else validate_entity_csv
                     report, entities = validate(PARITY_DIR / name)
                     self.assertTrue(report.is_valid, report.errors)
                     self.assertEqual(len(entities), len(want["types"]))
+                else:
+                    validate = validate_entity_json if name.endswith(".json") else validate_entity_csv
+                    self.assertFalse(validate(PARITY_DIR / name)[0].is_valid)
+
+    def test_levels_match_the_engine(self) -> None:
+        # A map with an entity file: the level builds (light zones inside the map) and the light
+        # level of every cell afterwards, like BuildLevelFromPlacements.
+        self.assertGreaterEqual(len(self.expected["levels"]), 4)
+        for name, want in self.expected["levels"].items():
+            with self.subTest(level=name):
+                parsed_map = parse_map(PARITY_DIR / want["map"])
+                parsed = parse_entities(PARITY_DIR / want["entities"])
+                self.assertTrue(parsed_map.ok and parsed.ok)
+                errors = check_light_bounds(parsed.lights, parsed_map.width, parsed_map.height, want["entities"])
+                self.assertEqual(not errors, want["ok"], errors)
+                report, _ = validate_entity_json(PARITY_DIR / want["entities"], (parsed_map.width, parsed_map.height))
+                self.assertEqual(report.is_valid, want["ok"], report.errors)
+                if want["ok"]:
+                    grid = light_grid(parsed_map.width, parsed_map.height, parsed.lights)
+                    self.assertEqual(len(grid), len(want["light"]))
+                    for row, wanted in zip(grid, want["light"]):
+                        self.assertEqual(len(row), len(wanted))
+                        for value, expected in zip(row, wanted):
+                            self.assertAlmostEqual(value, expected, places=6)
 
     def test_c_number_syntax(self) -> None:
         # strtod/strtoll accept these ...

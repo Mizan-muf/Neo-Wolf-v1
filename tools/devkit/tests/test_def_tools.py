@@ -85,6 +85,53 @@ class TestDefTools(unittest.TestCase):
         synced = sync_entity_definitions(self.dir_path, from_csv=True)
         self.assertEqual(synced, ["Synced level01.entities.csv -> level01.entities.json"])
 
+    def _defs_with_lights(self) -> Path:
+        defs = self.dir_path / "game" / "defs"
+        defs.mkdir(parents=True)
+        self.lights = [{"x": 1, "y": 1, "w": 3, "h": 2, "level": 0.35}, {"x": 2, "y": 1, "w": 1, "h": 1, "level": 0.2}]
+        save_entity_json("level05", [{"type": "player", "x": 1.5, "y": 1.5}], defs / "level05.entities.json", self.lights)
+        return defs
+
+    def test_json_to_csv_warns_when_lights_are_dropped(self) -> None:
+        # Known issue C21: the CSV cannot hold light zones; the export says so, in the result
+        # and in a comment line the loaders skip.
+        defs = self._defs_with_lights()
+        synced = sync_entity_definitions(self.dir_path)
+        self.assertEqual(synced[0], "Synced level05.entities.json -> level05.entities.csv")
+        self.assertTrue(synced[1].startswith("Warning: level05.entities.json has 2 light zone(s)"), synced)
+        csv_text = (defs / "level05.entities.csv").read_text(encoding="utf-8")
+        self.assertIn("# lights: 2 light zone(s) in the JSON are not exported", csv_text)
+        self.assertEqual(load_entity_csv(defs / "level05.entities.csv"), [{"type": "player", "x": 1.5, "y": 1.5}])
+        self.assertEqual(json.loads((defs / "level05.entities.json").read_text(encoding="utf-8"))["lights"], self.lights)
+
+    def test_csv_to_json_keeps_the_lights(self) -> None:
+        defs = self._defs_with_lights()
+        (defs / "level05.entities.csv").write_text("player,2.5,2.5\nenemy,3.5,1.5\n", encoding="utf-8")
+        synced = sync_entity_definitions(self.dir_path, from_csv=True)
+        self.assertEqual(synced, ["Synced level05.entities.csv -> level05.entities.json "
+                                  "(kept its 2 light zone(s); the CSV has none)"])
+        document = json.loads((defs / "level05.entities.json").read_text(encoding="utf-8"))
+        self.assertEqual(document["lights"], self.lights)
+        self.assertEqual([e["type"] for e in document["entities"]], ["player", "enemy"])
+        # Without lights the JSON gets no "lights" key, as before.
+        save_entity_json("level05", [{"type": "player", "x": 1.5, "y": 1.5}], defs / "level05.entities.json")
+        sync_entity_definitions(self.dir_path, from_csv=True)
+        self.assertNotIn("lights", json.loads((defs / "level05.entities.json").read_text(encoding="utf-8")))
+
+    def test_csv_to_json_refuses_an_unreadable_json(self) -> None:
+        # It could not keep that file's light zones: nothing is written, not even other levels.
+        defs = self._defs_with_lights()
+        (defs / "level05.entities.csv").write_text("player,2.5,2.5\n", encoding="utf-8")
+        (defs / "level06.entities.csv").write_text("player,2.5,2.5\n", encoding="utf-8")
+        (defs / "level06.entities.json").write_text("{ not json", encoding="utf-8")
+        before = (defs / "level05.entities.json").read_text(encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            sync_entity_definitions(self.dir_path, from_csv=True)
+        self.assertIn("level06.entities.json cannot be read", str(caught.exception))
+        self.assertIn("light zones", str(caught.exception))
+        self.assertEqual((defs / "level05.entities.json").read_text(encoding="utf-8"), before)
+        self.assertEqual((defs / "level06.entities.json").read_text(encoding="utf-8"), "{ not json")
+
 
 if __name__ == "__main__":
     unittest.main()

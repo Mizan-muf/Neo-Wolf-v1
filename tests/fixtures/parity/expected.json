@@ -1,5 +1,5 @@
 {
-  "_about": "Line-ending and parser parity fixtures. Each file is loaded by the engine (native test content_parity_fixtures) and by the DevKit (tools/devkit/tests/test_parity.py); both must agree with the result recorded here. ok = the loader accepts the file; maps also give the grid size, entity files the entity types in order. Files are kept byte for byte (.gitattributes: -text).",
+  "_about": "Line-ending and parser parity fixtures. Each file is loaded by the engine (native test content_parity_fixtures) and by the DevKit (tools/devkit/tests/test_parity.py); both must agree with the result recorded here. ok = the loader accepts the file; maps also give the grid size, entity files the entity types in order and, when given, the light zones [x, y, w, h, level] in order. \"levels\" pairs a map with an entity file: ok = the level builds (every light zone inside the map), and \"light\" is the resulting light level of every cell, row by row. Files are kept byte for byte (.gitattributes: -text).",
   "maps": {
     "lf.map": {
       "ok": true,
@@ -124,6 +124,245 @@
       "ok": false
     },
     "comment.entities.json": {
+      "ok": false
+    },
+    "lights.entities.json": {
+      "ok": true,
+      "types": [
+        "player"
+      ],
+      "lights": [
+        [
+          1,
+          1,
+          4,
+          2,
+          0.5
+        ],
+        [
+          3,
+          0,
+          3,
+          4,
+          0.2
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          1.0
+        ]
+      ]
+    },
+    "lights_crlf.entities.json": {
+      "ok": true,
+      "types": [
+        "player"
+      ],
+      "lights": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0.35
+        ]
+      ]
+    },
+    "lights_outside_y.entities.json": {
+      "ok": true,
+      "types": [
+        "player"
+      ],
+      "lights": [
+        [
+          2,
+          2,
+          4,
+          3,
+          0.5
+        ]
+      ]
+    },
+    "lights_outside_x.entities.json": {
+      "ok": true,
+      "types": [
+        "player"
+      ],
+      "lights": [
+        [
+          5,
+          0,
+          2,
+          1,
+          0.5
+        ]
+      ]
+    },
+    "lights_whole_map.entities.json": {
+      "ok": true,
+      "types": [
+        "player"
+      ],
+      "lights": [
+        [
+          0,
+          0,
+          6,
+          4,
+          0.2
+        ]
+      ]
+    },
+    "lights_level_low.entities.json": {
+      "ok": false
+    },
+    "lights_level_high.entities.json": {
+      "ok": false
+    },
+    "lights_level_bool.entities.json": {
+      "ok": false
+    },
+    "lights_float_size.entities.json": {
+      "ok": false
+    },
+    "lights_zero_size.entities.json": {
+      "ok": false
+    },
+    "lights_missing_field.entities.json": {
+      "ok": false
+    },
+    "lights_not_array.entities.json": {
+      "ok": false
+    }
+  },
+  "levels": {
+    "lights": {
+      "map": "lights.map",
+      "entities": "lights.entities.json",
+      "ok": true,
+      "light": [
+        [
+          1.0,
+          1.0,
+          1.0,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          1.0,
+          0.5,
+          0.5,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          1.0,
+          0.5,
+          0.5,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          1.0,
+          1.0,
+          1.0,
+          0.2,
+          0.2,
+          0.2
+        ]
+      ]
+    },
+    "whole_map": {
+      "map": "lights.map",
+      "entities": "lights_whole_map.entities.json",
+      "ok": true,
+      "light": [
+        [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2
+        ],
+        [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2
+        ]
+      ]
+    },
+    "no_lights": {
+      "map": "lights.map",
+      "entities": "lf.entities.json",
+      "ok": true,
+      "light": [
+        [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      ]
+    },
+    "outside_y": {
+      "map": "lights.map",
+      "entities": "lights_outside_y.entities.json",
+      "ok": false
+    },
+    "outside_x": {
+      "map": "lights.map",
+      "entities": "lights_outside_x.entities.json",
       "ok": false
     }
   }

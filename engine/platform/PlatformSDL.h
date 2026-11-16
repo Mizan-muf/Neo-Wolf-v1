@@ -67,4 +67,9 @@ private:
     int logicalHeight_ = 240;
     bool vsync_ = false;
     bool videoInitialized_ = false;
+    // True while the window holds keyboard focus. Focus loss only pauses the game after the
+    // window actually had focus: SDL's dummy driver (headless runs) never grants focus.
+    bool hasFocus_ = false;
+    // True for SDL's headless video drivers (dummy, offscreen): focus events are ignored.
+    bool headlessVideo_ = false;
 };

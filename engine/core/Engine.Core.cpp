@@ -112,8 +112,10 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     }
 
     std::vector<EntityPlacement> placements;
+    std::vector<LightZone> lights;
     const std::string resolvedEntitiesPath = ResolveContentPath(entitiesPath);
-    const bool placementsLoaded = LoadEntityPlacementsFromFile(resolvedEntitiesPath, placements, errors, warnings);
+    const bool placementsLoaded =
+        LoadEntityPlacementsFromFile(resolvedEntitiesPath, placements, lights, errors, warnings);
     if (!warnings.empty()) {
         LogWarning("Entity placements " + resolvedEntitiesPath + ": " + std::to_string(warnings.size()) +
                    " warning(s):");
@@ -126,12 +128,13 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     }
 
     LevelContents contents{};
-    if (!BuildLevelFromPlacements(newMap, placements, gameplay_, contents, errors)) {
+    if (!BuildLevelFromPlacements(newMap, placements, lights, gameplay_, contents, errors)) {
         LogError("Invalid entity placements in " + resolvedEntitiesPath + ":");
         LogMessages(errors, &LogError);
         return false;
     }
-    LogInfo("Level entities: " + DescribeLevelContents(contents));
+    LogInfo("Level entities: " + DescribeLevelContents(contents) +
+            (lights.empty() ? std::string() : "; " + std::to_string(lights.size()) + " light zone(s)"));
 
     map_ = std::move(newMap);
     entityManager_ = std::move(contents.entities);

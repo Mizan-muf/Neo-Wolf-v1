@@ -72,19 +72,84 @@ looks to +x (right on the map), 90 to +y (down).
 - [ ] **Pickups**: `"kind": "health"` or `"ammo"` (optional `"value"`), where the player can reach
       them; **decorations** anywhere on the floor (they block nothing).
 - [ ] Nothing inside a wall, the exit switch or a door cell (only the door itself).
-- [ ] Optional: `neo_devkit sync-entities` refreshes the CSV exports (`*.entities.csv`).
+- [ ] Optional: `neo_devkit sync-entities` refreshes the CSV exports (`*.entities.csv`). A level
+      with light zones prints a `Warning:` line: expected, the CSV cannot hold them (the JSON,
+      which the game loads, keeps them).
+
+### Dark and dim areas (light zones)
+
+A level darkens areas with the optional `lights` array of its entity JSON (schema and errors:
+[CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#light-zones-lights)):
+
+```json
+  "lights": [
+    { "x": 3, "y": 12, "w": 7, "h": 6, "level": 0.5 },
+    { "x": 5, "y": 14, "w": 3, "h": 2, "level": 0.35 }
+  ]
+```
+
+| `level` | Use |
+|---|---|
+| 1.0 | Normal (every cell without a zone) |
+| 0.7 | Slightly shaded: a side room, a mood change |
+| 0.5 | **Dim**: a crypt, a store room |
+| 0.35 | **Dark**: a blackout wing |
+| 0.2 | The darkest allowed: small pockets only (a closet, a dead-end corridor) |
+
+![The same room at light levels 1.0, 0.7, 0.4 and 0.2](images/light-levels.png)
+
+How to draw them:
+
+- [ ] Cover the **floor cells** of the area; the walls round it follow (a wall face takes the
+      light of the cell in front of it). Including the surrounding walls does no harm.
+- [ ] Zones apply in order, later ones win: one zone for the wing, then smaller, darker (or
+      lighter) zones inside it.
+- [ ] Edges are hard (no gradient). Put them at a doorway, a corridor mouth or a corner, where
+      a change of light reads as a different place; for a soft edge, step down in two zones
+      (e.g. a 0.5 cell row in front of a 0.35 room).
+- [ ] Every zone lies fully inside the map, with `level` from 0.2 to 1.0, or the level does not
+      load; `validate` reports it with the zone's index.
+
+Fairness: **light changes only the picture.** Enemies see and hear the player in a dark zone
+exactly as in the light, and the autoplay bot ignores light (a deliberate v1 simplification),
+so the bot's result does not prove a dark area is fair; looking at it does. The renderer keeps
+every sprite at least at 0.35 brightness, so enemies stay visible even at 0.2, but they are
+harder to spot at range. Rules:
+
+- [ ] Inside a dark zone (< 0.5) use guards and runners; no brute within 3 cells of the zone's
+      entrance (it hits for 25 before the player has made it out).
+- [ ] Mark every dark zone's entrance with a decoration pair, so the player knows it is
+      deliberate and where it starts.
+- [ ] Keep what the player must read in at least 0.5: the cell in front of a locked door (its
+      colour), the exit switch `X` and its room, and the cell of a key card on the critical path.
+      Pickups off the path may sit in the dark as a reward for exploring.
+- [ ] No ambush at a dark doorway: the rule "no enemy within 1.5 cells of a door's far side"
+      applies twice as strictly in the dark (use 3 cells).
+- [ ] Look at it: put the level in a scratch copy of the content as campaign level 1, move the
+      player to look into the zone, and take a preview screenshot (below). Check that each
+      enemy is visible against the background and that nothing on the critical path is lost.
+
+```bash
+rm -rf /tmp/levelNN-light && mkdir -p /tmp/levelNN-light && cp -R game /tmp/levelNN-light/game
+# edit /tmp/levelNN-light/game/defs/campaign.json: levels[0] "map", "entities", "theme" -> levelNN's;
+# edit the copy's levelNN.entities.json: the player's x, y and angle look into the zone
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --data /tmp/levelNN-light \
+    --pref-dir /tmp/levelNN-light/prefs --preview minimap --frames 5 --screenshot /tmp/levelNN-light/zone.bmp
+sips -s format png -z 480 640 /tmp/levelNN-light/zone.bmp --out /tmp/levelNN-light/zone.png
+```
 
 ## 5. Validate
 
 ```bash
 neo_devkit validate --strict                 # the whole project, warnings fail
-neo_devkit inspect-map --level levelNN       # the grid with the entities, reachability, key order
+neo_devkit inspect-map --level levelNN       # the grid with the entities, reachability, key order, light zones
 ```
 
 - [ ] `validate --strict` passes. It checks everything above: the map and entity files with the
       engine's own parsing, one player on floor, door/`D` and trigger/`T` pairing, nothing in
       walls, an exit reachable with every key collected before its lock, every pickup and enemy
-      reachable, no orphan files, `gameplay.json`, `campaign.json`, the theme's textures.
+      reachable, light zones (range, fields, inside the map), no orphan files, `gameplay.json`,
+      `campaign.json`, the theme's textures. It does not judge whether a dark area is fair.
 - [ ] `inspect-map --level levelNN` exits 0 and the key order is the intended one.
 - [ ] When the campaign is complete: `neo_devkit validate --strict --require-levels 10`.
 
@@ -121,7 +186,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --level N --fra
 ```
 
 - [ ] The start screenshot shows the intended view (textures of the theme, nothing missing as a
-      checkerboard, the level banner).
+      checkerboard, the level banner). Headless runs never pause on focus loss (the `dummy` and
+      `offscreen` video drivers ignore focus events), so the screenshot shows gameplay.
 - [ ] Play it by hand in a window (`build/macos/neo_wolf --level N`): the minimap (`M`) shows the
       layout, doors open, keys work, the exit switch reads `EXIT`.
 

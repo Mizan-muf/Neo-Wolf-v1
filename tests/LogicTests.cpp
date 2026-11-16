@@ -4090,9 +4090,10 @@ void TestContentParityFixtures() {
     }
     for (const auto& [name, want] : expected["entities"].items()) {
         std::vector<EntityPlacement> placements;
+        std::vector<LightZone> lights;
         std::vector<std::string> errors;
         std::vector<std::string> warnings;
-        const bool ok = LoadEntityPlacementsFromFile(PathToUtf8(dir / name), placements, errors, warnings);
+        const bool ok = LoadEntityPlacementsFromFile(PathToUtf8(dir / name), placements, lights, errors, warnings);
         if (ok != want["ok"].get<bool>()) {
             FailTest(__FILE__, __LINE__, name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
         }
@@ -4102,10 +4103,203 @@ void TestContentParityFixtures() {
                 types.emplace_back(PlacementTypeName(placement.type));
             }
             TEST_ASSERT(types == want["types"].get<std::vector<std::string>>());
+            // Light zones [x, y, w, h, level], in order (none when the entry does not list them).
+            const nlohmann::json wantLights = want.value("lights", nlohmann::json::array());
+            TEST_ASSERT(lights.size() == wantLights.size());
+            for (std::size_t i = 0; i < lights.size() && i < wantLights.size(); ++i) {
+                TEST_ASSERT(lights[i].x == wantLights[i][0].get<int>() && lights[i].y == wantLights[i][1].get<int>());
+                TEST_ASSERT(lights[i].width == wantLights[i][2].get<int>() &&
+                            lights[i].height == wantLights[i][3].get<int>());
+                TEST_ASSERT_NEAR(lights[i].level, wantLights[i][4].get<float>(), 1e-6f);
+            }
         }
         ++checked;
     }
-    TEST_ASSERT(checked >= 25);
+    // A map and an entity file together: the level builds or not (light zones inside the
+    // map), and the light level of every cell afterwards.
+    for (const auto& [name, want] : expected["levels"].items()) {
+        Map map{};
+        std::vector<EntityPlacement> placements;
+        std::vector<LightZone> lights;
+        std::vector<std::string> errors;
+        std::vector<std::string> warnings;
+        TEST_ASSERT(LoadMapFromFile(PathToUtf8(dir / want["map"].get<std::string>()), map, errors));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(dir / want["entities"].get<std::string>()), placements, lights,
+                                                 errors, warnings));
+        LevelContents level{};
+        const bool ok = BuildLevelFromPlacements(map, placements, lights, GameplayDefinitions{}, level, errors);
+        if (ok != want["ok"].get<bool>()) {
+            FailTest(__FILE__, __LINE__, "levels." + name + ": the engine " + (ok ? "builds" : "rejects") +
+                                             " it, expected.json says otherwise");
+        }
+        if (ok) {
+            const nlohmann::json& rows = want["light"];
+            TEST_ASSERT(static_cast<int>(rows.size()) == map.Height());
+            for (int y = 0; y < map.Height() && y < static_cast<int>(rows.size()); ++y) {
+                TEST_ASSERT(static_cast<int>(rows[static_cast<std::size_t>(y)].size()) == map.Width());
+                for (int x = 0; x < map.Width(); ++x) {
+                    TEST_ASSERT_NEAR(map.GetLightLevel(x, y),
+                                     rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)].get<float>(), 1e-6f);
+                }
+            }
+        }
+        ++checked;
+    }
+    TEST_ASSERT(checked >= 40);
+}
+
+void TestLightZones() {
+    // Known issue C21: the optional "lights" array of an entity JSON file sets the map's light
+    // levels. Zones apply in order (later ones override), uncovered cells keep 1.0.
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    std::vector<EntityPlacement> placements;
+    std::vector<LightZone> lights;
+    const std::string text = R"({"level": "t", "entities": [{"type": "player", "x": 1.5, "y": 1.5}],
+  "lights": [{"x": 2, "y": 1, "w": 4, "h": 3, "level": 0.5},
+             {"x": 4, "y": 2, "w": 2, "h": 2, "level": 0.2},
+             {"x": 1, "y": 4, "w": 1, "h": 1, "level": 1}]})";
+    TEST_ASSERT(ParseEntityPlacementsJson(text, "lights.json", placements, lights, errors, warnings));
+    TEST_ASSERT(errors.empty() && warnings.empty());
+    TEST_ASSERT(placements.size() == 1 && lights.size() == 3);
+    TEST_ASSERT(lights[0].x == 2 && lights[0].y == 1 && lights[0].width == 4 && lights[0].height == 3);
+    TEST_ASSERT_NEAR(lights[0].level, 0.5f, 1e-6f);
+    TEST_ASSERT_NEAR(lights[1].level, 0.2f, 1e-6f);  // the minimum is allowed ...
+    TEST_ASSERT_NEAR(lights[2].level, 1.0f, 1e-6f);  // ... and so is the maximum (an integer)
+    TEST_ASSERT(lights[1].source == "lights.json: lights[1]");
+
+    Map map(8, 6);
+    BuildBorderWalls(map);
+    LevelContents level{};
+    TEST_ASSERT(BuildLevelFromPlacements(map, placements, lights, GameplayDefinitions{}, level, errors));
+    for (int y = 0; y < map.Height(); ++y) {
+        for (int x = 0; x < map.Width(); ++x) {
+            float expected = 1.0f;  // not covered by any zone
+            if (x >= 2 && x <= 5 && y >= 1 && y <= 3) {
+                expected = 0.5f;
+            }
+            if (x >= 4 && x <= 5 && y >= 2 && y <= 3) {
+                expected = 0.2f;  // the second zone overrides the first where they overlap
+            }
+            TEST_ASSERT_NEAR(map.GetLightLevel(x, y), expected, 1e-6f);
+        }
+    }
+
+    // Without "lights" (and through the overloads without zones) every cell stays at 1.0.
+    Map plain(8, 6);
+    BuildBorderWalls(plain);
+    TEST_ASSERT(ParseEntityPlacementsJson(text, "lights.json", placements, errors, warnings));
+    TEST_ASSERT(BuildLevelFromPlacements(plain, placements, GameplayDefinitions{}, level, errors));
+    for (int y = 0; y < plain.Height(); ++y) {
+        for (int x = 0; x < plain.Width(); ++x) {
+            TEST_ASSERT_NEAR(plain.GetLightLevel(x, y), 1.0f, 1e-6f);
+        }
+    }
+
+    // Invalid zones are errors in the format of the entity errors; valid zones and the
+    // placements are still returned; an unknown field is a warning.
+    const std::string bad = R"({"entities": [{"type": "player", "x": 1.5, "y": 1.5}], "lights": [
+  {"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.1},
+  {"x": 1, "y": 1, "w": 1, "h": 1, "level": 1.5},
+  {"x": 1, "y": 1, "w": 1, "h": 1, "level": "dark"},
+  {"x": 1, "y": 1, "w": 1, "h": 1},
+  {"x": 1, "y": 1, "w": 0, "h": 1, "level": 0.5},
+  {"x": -1, "y": 1, "w": 1, "h": 1, "level": 0.5},
+  {"x": 1.5, "y": 1, "w": 1, "h": 1, "level": 0.5},
+  {"y": 1, "w": 1, "h": 1, "level": 0.5},
+  7,
+  {"x": 1, "y": 1, "w": 1, "h": 1, "level": 0.2, "colour": "red"}]})";
+    TEST_ASSERT(!ParseEntityPlacementsJson(bad, "bad.json", placements, lights, errors, warnings));
+    TEST_ASSERT(placements.size() == 1 && lights.size() == 1);
+    TEST_ASSERT(errors.size() == 9);
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.json: lights[0]: field \"level\" must be a number from 0.2 to 1.0, got 0.1"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.json: lights[1]: field \"level\" must be a number from 0.2 to 1.0, got 1.5"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[2]: field \"level\" must be a number from 0.2 to 1.0, got \"dark\""}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[3]: field \"level\" is required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[4]: field \"w\" must be an integer from 1 to 100000, got 0"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[5]: field \"x\" must be an integer from 0 to 100000, got -1"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[6]: field \"x\" must be an integer from 0 to 100000, got 1.5"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[7]: field \"x\" is required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"lights[8]: each light zone must be an object, got 7"}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"bad.json: lights[9]: unknown field \"colour\" ignored"}));
+    TEST_ASSERT(!AnyMessageContains(warnings, {"top-level field \"lights\""}));  // a known field now
+    errors.clear();
+    warnings.clear();
+    TEST_ASSERT(!ParseEntityPlacementsJson(R"({"entities": [], "lights": {"x": 1}})", "obj.json", placements, lights,
+                                           errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"obj.json: field \"lights\" must be an array of light zones, got an object"}));
+    errors.clear();
+    // The overload without zones still rejects a file with an invalid zone.
+    TEST_ASSERT(!ParseEntityPlacementsJson(bad, "bad.json", placements, errors, warnings));
+    errors.clear();
+    warnings.clear();
+
+    // A zone that leaves the map fails the build, and nothing is applied (not even the valid
+    // zone before it).
+    const std::string outside = R"({"entities": [{"type": "player", "x": 1.5, "y": 1.5}], "lights": [
+  {"x": 1, "y": 1, "w": 2, "h": 2, "level": 0.3},
+  {"x": 6, "y": 1, "w": 3, "h": 1, "level": 0.4},
+  {"x": 1, "y": 5, "w": 1, "h": 2, "level": 0.4}]})";
+    TEST_ASSERT(ParseEntityPlacementsJson(outside, "out.json", placements, lights, errors, warnings));
+    Map untouched(8, 6);
+    BuildBorderWalls(untouched);
+    TEST_ASSERT(!BuildLevelFromPlacements(untouched, placements, lights, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(errors.size() == 2);
+    TEST_ASSERT(AnyMessageContains(errors, {"out.json: lights[1]: cells (6, 1) to (8, 1) are not all inside the 8x6 map"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"out.json: lights[2]: cells (1, 5) to (1, 6) are not all inside the 8x6 map"}));
+    TEST_ASSERT_NEAR(untouched.GetLightLevel(1, 1), 1.0f, 1e-6f);
+    errors.clear();
+
+    // The real load path: Engine::LoadLevel applies the zones; a CSV has none; the next level
+    // load starts from a fresh, fully lit map.
+    ScratchDir scratch("light-zones");
+    const std::filesystem::path root = scratch.Path() / "content";
+    WriteContentRoot(root, "{}", R"({"level": "level01", "entities": [
+    { "type": "player", "x": 2.5, "y": 2.5 },
+    { "type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7 }],
+  "lights": [{ "x": 1, "y": 4, "w": 6, "h": 3, "level": 0.35 }]})");
+    WriteTextFile(root / "game" / "defs" / "level01.entities.csv", "player,2.5,2.5\ndoor,8.5,7.5,8,7\n");
+    Engine engine;
+    engine.contentRoot_ = root;
+    TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
+    TEST_ASSERT(engine.LoadLevel("game/maps/level01.map", "game/defs/level01.entities.json"));
+    TEST_ASSERT_NEAR(engine.map_.GetLightLevel(1, 4), 0.35f, 1e-6f);
+    TEST_ASSERT_NEAR(engine.map_.GetLightLevel(6, 6), 0.35f, 1e-6f);
+    TEST_ASSERT_NEAR(engine.map_.GetLightLevel(7, 6), 1.0f, 1e-6f);
+    TEST_ASSERT_NEAR(engine.map_.GetLightLevel(1, 3), 1.0f, 1e-6f);
+    TEST_ASSERT(engine.LoadLevel("game/maps/level01.map", "game/defs/level01.entities.csv"));
+    TEST_ASSERT_NEAR(engine.map_.GetLightLevel(1, 4), 1.0f, 1e-6f);
+
+    // Walls are lit like the cell in front of the face seen: a wall between a lit cell (west)
+    // and a dark one (east) is bright from the west and dark from the east.
+    Texture white(1, 1);
+    white.SetPixel(0, 0, PackARGB32(MakeColor(255, 255, 255)));
+    Map split(7, 5);
+    BuildBorderWalls(split);
+    split.SetCell(3, 1, TileType::Wall);
+    split.SetCell(3, 2, TileType::Wall);
+    split.SetCell(3, 3, TileType::Wall);
+    for (int y = 1; y <= 3; ++y) {
+        for (int x = 4; x <= 5; ++x) {
+            split.SetLightLevel(x, y, 0.2f);
+        }
+    }
+    RaycasterRenderParams params{};
+    params.wallTexture = &white;
+    const auto wallRed = [&](Vec2 position, float angle) {
+        Player viewer{};
+        viewer.position = position;
+        viewer.directionAngleRadians = angle;
+        Framebuffer framebuffer(64, 48);
+        std::vector<RaycastHit> hits;
+        Raycaster::RenderWalls(split, viewer, framebuffer, params, hits);
+        TEST_ASSERT(hits[32].hit && hits[32].mapX == 3);
+        return static_cast<int>((framebuffer.Data()[24 * 64 + 32] >> 16) & 0xFFu);
+    };
+    const int fromLitSide = wallRed({1.5f, 2.5f}, 0.0f);  // looking +x at the west face
+    const int fromDarkSide = wallRed({5.5f, 2.5f}, kPi);  // looking -x at the east face
+    TEST_ASSERT(fromLitSide > 150);
+    TEST_ASSERT(fromDarkSide < 60);
 }
 
 struct TestCase {
@@ -4182,6 +4376,7 @@ const TestCase kTests[] = {
     {"player_enemy_collision", "Living enemies block the player, corpses do not (C15)", &TestPlayerEnemyCollision},
     {"sprite_vertical_crop", "Close sprites are cropped, not squeezed", &TestSpriteVerticalCrop},
     {"content_parity_fixtures", "Engine loaders match tests/fixtures/parity/expected.json", &TestContentParityFixtures},
+    {"light_zones", "Entity-file light zones: order, range, bounds, default 1.0, wall faces (C21)", &TestLightZones},
 };
 
 void PrintUsage(const char* program) {

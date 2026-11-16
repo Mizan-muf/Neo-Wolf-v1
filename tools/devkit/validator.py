@@ -31,6 +31,7 @@ from tools.devkit.engine_formats import (
     PICKUP_KINDS,
     SOLID_TILES,
     WALKABLE_TILES,
+    check_light_bounds,
     load_json_strict,
     parse_entities,
     parse_entities_csv,
@@ -400,9 +401,13 @@ def _validate_entity_file(file_path: Path, kind: str, map_dimensions: Optional[T
     report.errors.extend(parsed.errors)
     report.warnings.extend(parsed.warnings)
     _check_bounds(parsed.entities, f"{kind} {file_path}:", map_dimensions, report)
+    if map_dimensions:
+        for error in check_light_bounds(parsed.lights, map_dimensions[0], map_dimensions[1], f"{kind} {file_path}:"):
+            report.add_error(error)
     if parsed.ok or parsed.count:
         _check_player_count(parsed.entities, f"{kind} {file_path}", report)
-    report.add_info(f"{kind} {file_path.name}: Found {len(parsed.entities)} entity placements.")
+    report.add_info(f"{kind} {file_path.name}: Found {len(parsed.entities)} entity placements"
+                    + (f" and {len(parsed.lights)} light zone(s)." if parsed.lights else "."))
     return report, parsed.entities
 
 
@@ -893,6 +898,7 @@ def validate_level(project_root: Path, level: CampaignLevelInfo, report: Validat
     entities = parsed.entities
     bounds = ValidationReport()
     _check_bounds(entities, f"{label}: {level.entities}", (len(rows[0]), len(rows)), bounds)
+    bounds.errors.extend(check_light_bounds(parsed.lights, len(rows[0]), len(rows), f"{label}: {level.entities}:"))
     if bounds.errors:
         report.errors.extend(bounds.errors)
         return
@@ -920,7 +926,8 @@ def validate_level(project_root: Path, level: CampaignLevelInfo, report: Validat
                                "from the spawn")
     if len(report.errors) == before:
         keys = f"; keys in order: {', '.join(progress.key_order)}" if progress.key_order else ""
-        report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}")
+        lights = f"; {len(parsed.lights)} light zone(s)" if parsed.lights else ""
+        report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}{lights}")
 
 
 def validate_campaign(project_root: Path, require_levels: Optional[int] = None,

@@ -157,6 +157,14 @@ bool PlatformSDL::Init(const PlatformConfig& config) {
         Shutdown();
         return false;
     }
+    hasFocus_ = (SDL_GetWindowFlags(window_) & SDL_WINDOW_INPUT_FOCUS) != 0;
+    {
+        // Headless video drivers have no real keyboard focus; their focus events must not
+        // pause the game (otherwise --screenshot of gameplay always shows the pause screen).
+        const char* driver = SDL_GetCurrentVideoDriver();
+        const std::string driverName = driver != nullptr ? driver : "";
+        headlessVideo_ = driverName == "dummy" || driverName == "offscreen";
+    }
     SDL_SetWindowMinimumSize(window_, config.logicalWidth, config.logicalHeight);
 
     if (!CreateRenderer()) {
@@ -208,8 +216,13 @@ void PlatformSDL::PumpEvents(InputState& input) {
             input.quitRequested = true;
             break;
         case SDL_WINDOWEVENT:
-            if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-                input.focusLost = true;
+            if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+                hasFocus_ = true;
+            } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                if (hasFocus_ && !headlessVideo_) {
+                    input.focusLost = true;
+                }
+                hasFocus_ = false;
             }
             break;
         case SDL_KEYDOWN:

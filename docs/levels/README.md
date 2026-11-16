@@ -31,7 +31,7 @@ Sizes are the grid size in cells (width × height), ±2 cells.
 | 2 | `level02` | Old Cellars | `stone` | 22×14 | 4/0/0 | 1/1 | blue key → 1 blue door | Key cards and locked doors: meet the locked door first (`NEED BLUE KEY`), then fetch the key from a side room | 2 | 2–3 min |
 | 3 | `level03` | Server Annex | `tech` | 24×18 | 6/0/0 | 2/2 | red key → 1 red door | Gunfire is heard (closed doors block it): a ring corridor round a closed server room; a checkpoint trigger | 3 | 3–4 min |
 | 4 | `level04` | Motor Pool | `bunker` | 26×20 | 6/1/0 | 2/2 | gold key → 1 gold door | The brute: first seen across an open garage, so the player learns it takes 4 shots while it lumbers in | 4 | 4–5 min |
-| 5 | `level05` | Catacombs | `stone` | 28×24 | 6/1/4 | 3/3 | red key → red door; blue key (behind red) → blue door | Runners; two keys in sequence; a branching route (two ways to the red key); a dim crypt (light zone, see [Light zones](#light-zones-pending)) | 5 | 5–7 min |
+| 5 | `level05` | Catacombs | `stone` | 28×24 | 6/1/4 | 3/3 | red key → red door; blue key (behind red) → blue door | Runners; two keys in sequence; a branching route (two ways to the red key); a dim crypt (light zone, see [Light zones](#light-zones)) | 5 | 5–7 min |
 | 6 | `level06` | Relay Station | `tech` | 30×26 | 8/2/4 | 3/4 | blue key → blue door; gold key (behind blue) → gold door | Ambush rooms behind closed doors; an optional maintenance loop with extra supplies | 6 | 6–8 min |
 | 7 | `level07` | Blackout Barracks | `bunker` | 32×28 | 8/2/6 | 4/4 | red and gold keys, either order; the exit wing is behind a red door, then a gold door | Dark wings (light zones); two keys collected in parallel | 7 | 7–9 min |
 | 8 | `level08` | Reactor Spine | `tech` | 34×32 | 10/3/6 | 4/5 | blue → red → gold, a chain (each key behind the previous door) | Three keys; mixed squads (brute with guards, runner pairs) along a long spine with side bays | 8 | 8–11 min |
@@ -69,7 +69,7 @@ for the finale, so the last level looks unlike the rest.
 | Doors | `E` within 1.05 cells toggles **every** door in reach (C19); doors open instantly; a door does not close on a living body | [MAP_FORMAT.md](../MAP_FORMAT.md) |
 | Exit | `X` wall tile, `E` within 1.1 cells while facing it | [MAP_FORMAT.md](../MAP_FORMAT.md) |
 | Triggers | `T` + `trigger` entity: `CHECKPOINT REACHED` message only (no respawn point: death restarts the level) | [MAP_FORMAT.md](../MAP_FORMAT.md) |
-| Light | Per-cell light exists in the engine but **cannot be set from content yet** (see [Light zones](#light-zones-pending)) | `engine/world/Map.h` |
+| Light | Per-cell light zones in the entity JSON (`"lights"`), 0.2–1.0; cosmetic only (see [Light zones](#light-zones)) | `engine/world/Map.h`, `engine/world/LevelBuilder.cpp` |
 | Decorations | One sprite only (the blue vase); non-blocking; not shown on the minimap | `sprites.cfg` |
 
 ### What hurts the bot (measured)
@@ -246,26 +246,22 @@ Notes on the targets:
 16. **Triggers** (`T`) are used only as checkpoint messages at a level's halfway point or in
     front of an arena; they do not save anything. Levels 3, 6, 8 and 10 have one each.
 
-## Light zones (pending)
+## Light zones
 
-The design asks for dark or dim areas in levels 5, 7 and 10. The engine already draws per-cell light
-(`Map::GetLightLevel`/`SetLightLevel`, used by the wall, floor, sprite and particle renderers
-with floors of 0.18–0.35), but **no content file can set it**: the map format has no light
-layer and the entity schema has no light field (an unknown top-level key is a warning, which
-fails `validate --strict`). This is known issue C21 ([KNOWN_ISSUES.md](../KNOWN_ISSUES.md)).
+The design asks for dark or dim areas in levels 5, 7 and 10. Since known issue C21 was resolved
+(Phase 8), a level's entity JSON sets them with an optional top-level `"lights"` array of cell
+rectangles, `{ "x": 3, "y": 4, "w": 6, "h": 5, "level": 0.5 }`, applied in order (later zones
+override), `level` from 0.2 to 1.0, every other cell 1.0. Schema:
+[CONTENT_DEFINITIONS.md](../CONTENT_DEFINITIONS.md#light-zones-lights); how to draw them and the
+fairness rules: [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md#dark-and-dim-areas-light-zones); the
+intended zones per level: [BUILD_NOTES.md](BUILD_NOTES.md#light-zones-levels-5-7-and-10).
 
-Until the integrator decides how to author light (a proposal: an optional `"lights"` array of
-rectangles `{ "x": 3, "y": 4, "width": 6, "height": 5, "level": 0.4 }` in the entity JSON,
-read by `EntityPlacementLoader` and `validator.py`, JSON only), builders:
-
-- design the dark areas as normal geometry that is **fair at full light**;
-- list each intended zone in the level page (`docs/levels/levelNN.md`) as a cell rectangle and
-  a light level (0.5 = dim, 0.35 = dark, never below 0.3);
-- do not add any light field to the content files.
-
-The bot is unaffected by light (it uses line of sight, not the picture), so light zones change
-human difficulty only: inside a dark zone use guards and runners, not brutes within 3 cells of
-the entrance, and mark every dark zone's entrance with a decoration pair.
+- Levels: 0.5 = dim, 0.35 = dark; 0.2 is the floor (the renderer still draws sprites at 0.35 or
+  brighter, so enemies stay visible). Design the area so it is also fair at full light.
+- List each zone in the level page (`docs/levels/levelNN.md`) as its rectangle and level.
+- The bot and the enemy AI ignore light (a deliberate v1 simplification), so light zones change
+  human difficulty only: inside a dark zone use guards and runners, not brutes within 3 cells
+  of the entrance, and mark every dark zone's entrance with a decoration pair.
 
 ## Known issues that shape the design
 
@@ -274,7 +270,7 @@ the entrance, and mark every dark zone's entrance with a decoration pair.
 | C16 | Melee-only enemies that see all round and never open doors: closed doors make safe rooms and sealed ambushes; damage comes from corners, doorways and converging groups, not from range. |
 | C19 | One `E` toggles every door within 1.05 cells: rule 10 keeps doors apart. |
 | C20 | Bodies placed into walls get stuck: rules 2 and 4 (cell centres). |
-| C21 | Light cannot be authored yet: [Light zones](#light-zones-pending). |
+| C21 | Resolved: light zones are authored in the entity JSON ([Light zones](#light-zones)); cosmetic only (the AI and the bot ignore light). |
 | V1 | The bot does not dodge or retreat and fetches pickups only when low: rules 1–4 of the economy, and the measured table above. |
 
 ## Process

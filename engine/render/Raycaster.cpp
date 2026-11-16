@@ -264,7 +264,12 @@ void Raycaster::RenderWalls(
 
         const float sideShade = (hit.side == RayHitSide::Vertical) ? 1.0f : 0.72f;
         const float distanceShade = Clamp(1.0f / (1.0f + hit.distanceCorrected * 0.11f), 0.35f, 1.0f);
-        const float mapLight = map.GetLightLevel(hit.mapX, hit.mapY);
+        // A wall face is lit like the cell in front of it, the one the ray crossed last (light
+        // zones cover floor cells; a wall between a lit and a dark room is lit on one side and
+        // dark on the other).
+        const int faceX = hit.side == RayHitSide::Vertical ? hit.mapX + (rayDirection.x < 0.0f ? 1 : -1) : hit.mapX;
+        const int faceY = hit.side == RayHitSide::Horizontal ? hit.mapY + (rayDirection.y < 0.0f ? 1 : -1) : hit.mapY;
+        const float mapLight = map.GetLightLevel(faceX, faceY);
         const float wallShade = Clamp(sideShade * distanceShade * mapLight, 0.18f, 1.0f);
         for (int y = yStart; y <= yEnd; ++y) {
             const float wallV =

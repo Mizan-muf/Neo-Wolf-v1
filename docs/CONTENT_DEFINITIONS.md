@@ -176,6 +176,7 @@ A key card and the door it opens (level 2):
 |---|---|---|---|
 | `level` | string | no (a non-string is a warning) | The level id, for people and tools. The engine does not use it. |
 | `entities` | array of objects | **yes** | The placements, in any order. |
+| `lights` | array of objects | no | Light zones: dim or dark areas ([below](#light-zones-lights)). JSON only. |
 
 Other top-level fields are warnings.
 
@@ -226,7 +227,9 @@ The level load **fails**, and the current level (if any) stays as it was, when:
   there, is a pickup without a valid `kind` (or a key pickup without a valid `key`), is a
   door/trigger without `mapX`/`mapY`, has a `lock` or `variant` that is not one of the listed
   values, or has a value of the wrong type or range;
-- there is not exactly one player, or a position or a door/trigger cell lies outside the map.
+- there is not exactly one player, or a position or a door/trigger cell lies outside the map;
+- `lights` is not an array, or a light zone is invalid or not fully inside the map
+  ([Light zones](#light-zones-lights)).
 
 If the first level fails to load, startup fails (error message, exit code 1). There is **no
 built-in fallback layout** any more (it hid known issue C1).
@@ -243,6 +246,59 @@ Every message names the file, the entity and the field, for example:
 
 The engine does not check that a locked door's key exists in the level or can be reached;
 `validate --strict` does (below).
+
+### Light zones (`lights`)
+
+Every map cell has a light level from 0 to 1 that darkens the walls, floor, ceiling, sprites
+and particles drawn there (`Map::GetLightLevel`). A level sets it with an optional top-level
+`lights` array of cell rectangles (known issue C21, resolved in Phase 8):
+
+```json
+{
+  "level": "level05",
+  "entities": [ ... ],
+  "lights": [
+    { "x": 3, "y": 12, "w": 7, "h": 6, "level": 0.5 },
+    { "x": 5, "y": 14, "w": 3, "h": 2, "level": 0.35 }
+  ]
+}
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `x`, `y` | integer ≥ 0 | **yes** | The top-left cell of the rectangle (map cells, as `mapX`/`mapY`) |
+| `w`, `h` | integer ≥ 1 | **yes** | Width and height in cells. The rectangle must lie **fully inside the map** (checked when the level is built) |
+| `level` | number from **0.2 to 1.0** | **yes** | The light level of the cells: 1.0 full light, 0.5 dim, 0.35 dark, 0.2 the darkest allowed |
+
+- Zones are applied **in file order**: where two overlap, the later one wins. Cells that no zone
+  covers keep **1.0**. So a dark room with a dimmer corner is one zone for the room, then one
+  for the corner.
+- A **wall face** is lit like the floor cell in front of it (the one the viewer looks from),
+  so a zone only needs to cover the floor cells of an area: a wall between a lit room and a
+  dark room is lit on one side and dark on the other. The light of solid cells does not matter.
+- What the levels look like: the renderer never draws anything darker than a minimum (walls
+  0.18, floor and ceiling 0.20, **sprites 0.35**, after distance shading), so an enemy in a
+  0.2 zone is still clearly visible. The HUD, the minimap and the menus are never darkened.
+  Below about 0.4 the difference shows mostly close to the player. Comparison (1.0, 0.7, 0.4
+  and 0.2, a guard four cells away; the same room, `--preview minimap`):
+
+  ![The same room at light levels 1.0, 0.7, 0.4 and 0.2](images/light-levels.png)
+- **Light changes the picture only.** Enemy sight and hearing, the autoplay bot and every rule
+  of the game ignore it: an enemy in a dark zone sees the player exactly as in the light, and
+  the bot plays a dark level like a lit one. This is a deliberate v1 simplification (fair and
+  predictable; `validate` and the bot prove levels without modelling light).
+- A zone outside the range, with a missing or non-integer field, or not an object, is an
+  **error** (the level does not load); an unknown field in a zone is a warning:
+
+```text
+.../level05.entities.json: lights[1]: field "level" must be a number from 0.2 to 1.0, got 0.1
+.../level05.entities.json: lights[0]: field "w" must be an integer from 1 to 100000, got 0
+.../level05.entities.json: lights[2]: cells (26, 3) to (29, 5) are not all inside the 28x24 map
+```
+
+`validate` checks the same rules (and the bounds against the level's map), and `inspect-map`
+lists a level's zones. How to design dark areas fairly:
+[LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#dark-and-dim-areas-light-zones).
 
 ### The CSV export: `<level>.entities.csv`
 
@@ -266,6 +322,8 @@ door,9.5,3.5,9,3,,,,,,blue
 - Lines starting with `#` (after leading spaces) and blank lines are skipped. Columns after
   the eleventh are ignored with a warning.
 - There is no quoting: values cannot contain commas.
+- **The CSV is a lossy export: it cannot hold light zones.** A level loaded from its CSV (only
+  possible through the C API) is fully lit.
 
 Generate the CSV from the JSON with the DevKit. JSON → CSV is the default direction, and it
 overwrites the CSV:
@@ -274,6 +332,12 @@ overwrites the CSV:
 python3 tools/devkit/devkit.py sync-entities             # every <level>.entities.json -> .csv
 python3 tools/devkit/devkit.py sync-entities --from-csv  # the reverse; overwrites the JSON
 ```
+
+JSON → CSV drops a level's light zones: it prints a `Warning:` line for that level and writes a
+`# lights: N light zone(s) in the JSON are not exported` comment line into the CSV (the loaders
+skip `#` lines). CSV → JSON keeps the `lights` of the JSON it overwrites; if a JSON exists but
+cannot be read, it stops before writing any file and says so (it could not keep that file's
+light zones), so fix the JSON or delete it first.
 
 `validate --strict` checks both files with the engine's rules (types, required `kind`,
 `mapX`/`mapY` for doors and triggers, value ranges, bounds, exactly one player, `variant`,

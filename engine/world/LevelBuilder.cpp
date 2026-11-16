@@ -105,6 +105,21 @@ void ValidatePlacements(const Map& map, const std::vector<EntityPlacement>& plac
                          " player placements; exactly one is required (second: " + DescribeSource(*players[1]) + ")");
     }
 }
+
+// Every zone must lie fully inside the map. The loader has checked x, y >= 0 and w, h >= 1.
+void ValidateLightZones(const Map& map, const std::vector<LightZone>& lights, std::vector<std::string>& errors) {
+    for (const LightZone& zone : lights) {
+        const long long right = static_cast<long long>(zone.x) + zone.width;
+        const long long bottom = static_cast<long long>(zone.y) + zone.height;
+        if (zone.x < 0 || zone.y < 0 || zone.width < 1 || zone.height < 1 || right > map.Width() ||
+            bottom > map.Height()) {
+            errors.push_back((zone.source.empty() ? std::string("light zone") : zone.source) + ": cells (" +
+                             std::to_string(zone.x) + ", " + std::to_string(zone.y) + ") to (" +
+                             std::to_string(right - 1) + ", " + std::to_string(bottom - 1) + ") are not all inside the " +
+                             std::to_string(map.Width()) + "x" + std::to_string(map.Height()) + " map");
+        }
+    }
+}
 } // namespace
 
 bool BuildLevelFromPlacements(
@@ -113,8 +128,19 @@ bool BuildLevelFromPlacements(
     const GameplayDefinitions& gameplay,
     LevelContents& out,
     std::vector<std::string>& errors) {
+    return BuildLevelFromPlacements(map, placements, {}, gameplay, out, errors);
+}
+
+bool BuildLevelFromPlacements(
+    Map& map,
+    const std::vector<EntityPlacement>& placements,
+    const std::vector<LightZone>& lights,
+    const GameplayDefinitions& gameplay,
+    LevelContents& out,
+    std::vector<std::string>& errors) {
     const std::size_t errorsBefore = errors.size();
     ValidatePlacements(map, placements, errors);
+    ValidateLightZones(map, lights, errors);
     if (errors.size() != errorsBefore) {
         return false;
     }
@@ -183,6 +209,13 @@ bool BuildLevelFromPlacements(
             map.SetDoorLock(entity.mapX, entity.mapY, entity.doorLock);
         } else if (entity.type == EntityType::Trigger) {
             map.SetCell(entity.mapX, entity.mapY, TileType::Trigger);
+        }
+    }
+    for (const LightZone& zone : lights) {
+        for (int cellY = zone.y; cellY < zone.y + zone.height; ++cellY) {
+            for (int cellX = zone.x; cellX < zone.x + zone.width; ++cellX) {
+                map.SetLightLevel(cellX, cellY, zone.level);
+            }
         }
     }
     out = std::move(level);

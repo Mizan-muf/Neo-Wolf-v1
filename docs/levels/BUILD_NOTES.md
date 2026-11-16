@@ -51,15 +51,57 @@ ctest --preset macos                                                 # all green
 Before handing a level over, `validate --strict --require-levels 10` must still pass (CTest
 `content_validation_campaign_size`).
 
+`sync-entities` prints a `Warning:` line for levels with light zones (the CSV cannot hold them;
+the JSON keeps them): expected, not a problem. The headless `--level N --frames 5 --screenshot`
+run shows gameplay (headless video drivers ignore focus loss), so use it to look at any level,
+including its dark areas.
+
+## Light zones (levels 5, 7 and 10)
+
+Known issue C21 is resolved: a level's entity JSON takes an optional top-level `lights` array
+of cell rectangles (schema: [CONTENT_DEFINITIONS.md](../CONTENT_DEFINITIONS.md#light-zones-lights);
+how-to and fairness rules: [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md#dark-and-dim-areas-light-zones)).
+Add the zones to your `levelNN.entities.json` yourself; nothing else needs changing.
+
+```json
+  "lights": [
+    { "x": 3, "y": 14, "w": 9, "h": 7, "level": 0.5 }
+  ]
+```
+
+- `x`, `y` = the top-left cell, `w`, `h` ≥ 1 cells, fully inside the map; `level` from **0.2 to
+  1.0** (0.5 dim, 0.35 dark). Applied in order (later zones override); every other cell is 1.0.
+- Cover the area's floor cells; walls take the light of the cell in front of them. Start and
+  end a zone at a doorway or corridor mouth (edges are hard).
+- Light is **cosmetic**: enemies see and hear the player in the dark as in the light, and the bot
+  ignores it. So the bot's numbers do not change, and fairness is judged by looking: take the
+  preview screenshot of every zone and check that each enemy reads against the background.
+- Keep at **≥ 0.5**: the cell in front of a locked door, the exit room, and the cell of a key on
+  the critical path. Mark every dark zone's entrance with a decoration pair. In zones below 0.5,
+  no brute within 3 cells of the entrance and no enemy within 3 cells of a door's far side.
+- Run `validate --strict` (range, fields, bounds) and `inspect-map --level N` (lists the zones).
+
+The intended zones (rectangles follow your final room positions):
+
+| Level | Zone | Level | Notes |
+|---|---|---|---|
+| 05 Catacombs | **R4 crypt**: every floor cell of the crypt, starting one cell inside Dr | 0.5 | The blue door Db and the blue key stay at 0.5 (readable). Optional: the side alcove with the health at 0.35 (a later zone). R5 tomb and everything else 1.0. |
+| 07 Blackout Barracks | **R2 west wing**: the corridor and its 2–3 bunk rooms, up to the key room's doorway | 0.35 | The key rooms at the far ends stay **1.0** (lit key rooms; the brutes stand in the light). Optional soft edge: the wing's first corridor row from the hub at 0.5. |
+| 07 Blackout Barracks | **R3 east wing**: the corridor and its armoury bays, up to the key room's doorway | 0.35 | As the west wing. Hub, mess hall and exit wing 1.0. |
+| 10 Wolf's Den | **R5 chapel corridor and crypt** | 0.5 | The gold key and the brute across the nave stay readable at 0.5. Optional: the side alcoves with the health and ammo at 0.35. The arena behind Dg 1.0. |
+
+No other level uses light zones.
+
 **Report per level** (in its page `docs/levels/levelNN.md`, and to the integrator): the
 `--level N` row (time, damage, HP and ammo at exit, kills, pickups, keys, shots) against the
 README targets; whether `--all` still passes and the level's row in it; the start screenshot
-checked; the light zones intended (levels 5, 7 and 10, see README "Light zones"); anything that
-breaks a rule on purpose, and why.
+checked; the light zones (levels 5, 7 and 10, see [Light zones](#light-zones-levels-5-7-and-10)
+below) with their screenshot; anything that breaks a rule on purpose, and why.
 
 **Level page** `docs/levels/levelNN.md`: name, id, theme, size; the idea; a minimap or the
 `inspect-map` grid; enemies, pickups, keys and locks; the critical path in one paragraph;
-difficulty target; the bot's results (fresh and campaign) with the date; light zones (5, 7, 10).
+difficulty target; the bot's results (fresh and campaign) with the date; light zones (5, 7, 10):
+each zone's rectangle and level as in the entity file, and what it covers.
 
 **Builder B and the campaign run.** Levels 6–10 start, in `--all`, with whatever builder A's
 levels leave. Until A's levels are in, judge levels 6–10 with `--level N` (fresh start) against
@@ -200,7 +242,7 @@ gold key and door.
 ### level05 — Catacombs (`stone`, 28×24) — runners, two keys, a branch, a dim crypt
 
 Idea: runners (fast, fragile, they rush from far), two keys in sequence, a fork with two
-routes to the first key, and a dim crypt (light zone, design it fair at full light).
+routes to the first key, and a dim crypt (a light zone, see [Light zones](#light-zones-levels-5-7-and-10)).
 
 ```text
                          R1 stair landing (spawn, north centre) P
@@ -226,7 +268,7 @@ routes to the first key, and a dim crypt (light zone, design it fair at full lig
   takes the shorter. The branches form a loop: the player can go out one way and back the other.
 - **R3 chapel**: **1 guard**, **1 ammo** and **1 health** (on path, after the branch fight),
   the **red key**.
-- **R4 crypt** behind Dr: the **dim zone** (plan it as light 0.5 over the whole crypt; list it
+- **R4 crypt** behind Dr: the **dim zone** (a `lights` zone at 0.5 over the whole crypt; list it
   in the level page). **2 guards** (no brute in the crypt), **1 health** (side alcove), the
   **blue door Db** visible on entering the crypt, the **blue key** at the crypt's far end.
 - **R5 exit tomb** behind Db: **1 brute** seen across 6+ cells, **1 health** on the path after
@@ -296,7 +338,7 @@ and the exit wing needs both (red door, then gold door).
   south edge facing north, the **red door Dr** visible on the north side (pair). **2 runners**
   start in **R4 mess hall** (south-east, lit) and rush in when they notice the player (8+ cells
   from the spawn). **1 ammo** in the hub (on path).
-- **R2 west wing / R3 east wing**: each a dark corridor (light zone 0.35, list it) of 2–3 small
+- **R2 west wing / R3 east wing**: each a dark corridor (a `lights` zone at 0.35, list it) of 2–3 small
   bunk/armoury rooms off it, open doorways (no doors). Each wing: **3 guards + 2 runners** waiting
   in the side rooms (so they step out at close range in the dark: the human challenge), **1 ammo**
   on path, then a **lit key room** at the far end with **1 brute** and the key (**red** west,
@@ -424,7 +466,7 @@ checkpoint, a dim chapel, and a final arena with a brute squad in front of the e
 - **R4 armoury / supply room** behind **Db** (blue, pair, north of the hall): quiet, no enemies,
   decoration **cluster**, a `T` **trigger** (`CHECKPOINT REACHED`), **2 health + 2 ammo** (on
   path). All pickups use the default values.
-- **R5 chapel corridor and crypt** (dim zone, light 0.5, list it): **1 brute** seen across the
+- **R5 chapel corridor and crypt** (dim: a `lights` zone at 0.5, list it): **1 brute** seen across the
   nave, **2 guards + 2 runners**, the **gold key**, **1 health + 1 ammo** (side).
 - **R6 throne room arena** behind **Dg** (gold, pair), **1 health** within 6 cells before Dg:
   **2 brutes + 2 guards + 2 runners**, `A` pillars placed so that **at most one brute can reach
