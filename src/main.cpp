@@ -41,7 +41,7 @@ std::string WideToUtf8(const wchar_t* wide) {
     return utf8;
 }
 
-std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
+std::vector<std::string> CommandLineArgs(int argc, char** argv) {
     int wideCount = 0;
     LPWSTR* wideArgs = CommandLineToArgvW(GetCommandLineW(), &wideCount);
     std::vector<std::string> args;
@@ -74,14 +74,15 @@ void AttachParentConsoleForOutput() {
     }
 }
 #else
-std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
-    return std::vector<std::string>(argv + (argc > 0 ? 1 : 0), argv + argc);
+std::vector<std::string> CommandLineArgs(int argc, char** argv) {
+    return {argv + (argc > 0 ? 1 : 0), argv + argc};
 }
 
 void AttachParentConsoleForOutput() {}
 #endif
 }  // namespace
 
+// NOLINTNEXTLINE(bugprone-exception-escape): an exception here is a bug; terminating keeps it visible
 int main(int argc, char* argv[]) {
     const CommandLineResult parsed = ParseCommandLine(CommandLineArgs(argc, argv));
     const std::string program = "neo_wolf";
@@ -103,6 +104,5 @@ int main(int argc, char* argv[]) {
             break;
     }
 
-    App app;
-    return app.Run(parsed.options);
+    return App::Run(parsed.options);
 }

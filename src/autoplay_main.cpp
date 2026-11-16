@@ -14,6 +14,7 @@
 #include <iostream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "engine/autoplay/AutoplayBot.h"
@@ -38,7 +39,7 @@
 namespace {
 #if defined(_WIN32)
 // UTF-8 arguments from the UTF-16 command line, so non-ASCII --data paths survive.
-std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
+std::vector<std::string> CommandLineArgs(int argc, char** argv) {
     int wideCount = 0;
     LPWSTR* wideArgs = CommandLineToArgvW(GetCommandLineW(), &wideCount);
     std::vector<std::string> args;
@@ -63,16 +64,19 @@ std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
     return args;
 }
 #else
-std::vector<std::string> CommandLineArgs(int argc, char* argv[]) {
-    return std::vector<std::string>(argv + (argc > 0 ? 1 : 0), argv + argc);
+std::vector<std::string> CommandLineArgs(int argc, char** argv) {
+    return {argv + (argc > 0 ? 1 : 0), argv + argc};
 }
 #endif
+
+constexpr const char* kProgramName = "neo_wolf_autoplay";
+constexpr int kTemporaryFolderAttempts = 100;  // name clashes tolerated before giving up
 
 // A fresh, empty folder under the system's temporary directory.
 std::filesystem::path MakeTemporaryPrefDir() {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path base = std::filesystem::temp_directory_path();
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    for (int attempt = 0; attempt < kTemporaryFolderAttempts; ++attempt) {
         const std::filesystem::path candidate =
             base / ("neowolf-autoplay-" + std::to_string(nonce) + "-" + std::to_string(attempt));
         std::error_code ec;
@@ -82,10 +86,55 @@ std::filesystem::path MakeTemporaryPrefDir() {
     }
     return {};
 }
+
+// Deletes a folder and everything in it when it goes out of scope (an empty path: nothing).
+class FolderRemover {
+public:
+    explicit FolderRemover(std::filesystem::path folder) : folder_(std::move(folder)) {}
+    ~FolderRemover() {
+        if (!folder_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(folder_, ec);
+        }
+    }
+    FolderRemover(const FolderRemover&) = delete;
+    FolderRemover& operator=(const FolderRemover&) = delete;
+    FolderRemover(FolderRemover&&) = delete;
+    FolderRemover& operator=(FolderRemover&&) = delete;
+
+private:
+    std::filesystem::path folder_;
+};
+
+// Opens `utf8Path` for writing (binary, truncated), creating its parent folders first.
+bool OpenOutputFile(const std::string& utf8Path, std::ofstream& file) {
+    const std::filesystem::path path = PathFromUtf8(utf8Path);
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+    file.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
+    return static_cast<bool>(file);
+}
+
+// Writes `text`, closes the file and reports where it went ("<label>: <path>"), or on stderr
+// that `what` could not be written. Returns false on failure.
+bool WriteAndClose(std::ofstream& file, const std::string& text, const std::string& utf8Path, const char* what,
+                   const char* label) {
+    file << text;
+    file.close();
+    if (!file) {
+        std::cerr << kProgramName << ": cannot write " << what << " to " << utf8Path << "\n";
+        return false;
+    }
+    std::cout << label << ": " << utf8Path << "\n";
+    return true;
+}
 }  // namespace
 
+// NOLINTNEXTLINE(bugprone-exception-escape): an exception here is a bug; terminating keeps it visible
 int main(int argc, char* argv[]) {
-    const std::string program = "neo_wolf_autoplay";
+    const std::string program = kProgramName;
     const AutoplayCommandLine parsed = ParseAutoplayCommandLine(CommandLineArgs(argc, argv));
     switch (parsed.action) {
         case AutoplayCommandLine::Action::ShowHelp:
@@ -108,10 +157,9 @@ int main(int argc, char* argv[]) {
     options.dataDir = parsed.dataDir;
     options.level = parsed.all ? 0 : parsed.level;
     options.config.timeLimitSeconds = parsed.timeLimitSeconds;
-    bool temporaryPrefDir = false;
-    if (parsed.prefDir.empty()) {
+    const bool temporaryPrefDir = parsed.prefDir.empty();
+    if (temporaryPrefDir) {
         options.prefDir = MakeTemporaryPrefDir();
-        temporaryPrefDir = !options.prefDir.empty();
         if (options.prefDir.empty()) {
             std::cerr << program << ": cannot create a temporary folder for progress.json; pass --pref-dir\n";
             return 1;
@@ -121,22 +169,14 @@ int main(int argc, char* argv[]) {
         std::error_code ec;
         std::filesystem::create_directories(options.prefDir, ec);
     }
+    const FolderRemover removeTemporaryPrefDir(temporaryPrefDir ? options.prefDir : std::filesystem::path());
 
     // --trace: open the file before playing, so a bad path fails at once.
     std::ofstream traceFile;
     std::string trace;
     if (!parsed.tracePath.empty()) {
-        const std::filesystem::path tracePath = PathFromUtf8(parsed.tracePath);
-        std::error_code ec;
-        if (tracePath.has_parent_path()) {
-            std::filesystem::create_directories(tracePath.parent_path(), ec);
-        }
-        traceFile.open(tracePath, std::ios::out | std::ios::trunc | std::ios::binary);
-        if (!traceFile) {
+        if (!OpenOutputFile(parsed.tracePath, traceFile)) {
             std::cerr << program << ": cannot write the trace to " << parsed.tracePath << "\n";
-            if (temporaryPrefDir) {
-                std::filesystem::remove_all(options.prefDir, ec);
-            }
             return 1;
         }
         options.trace = &trace;
@@ -146,36 +186,15 @@ int main(int argc, char* argv[]) {
     std::cout << FormatAutoplayTable(report) << std::flush;
 
     int exitCode = report.Success() ? 0 : 1;
-    if (traceFile.is_open()) {
-        traceFile << trace;
-        traceFile.close();
-        if (!traceFile) {
-            std::cerr << program << ": cannot write the trace to " << parsed.tracePath << "\n";
-            exitCode = 1;
-        } else {
-            std::cout << "Trace: " << parsed.tracePath << "\n";
-        }
+    if (traceFile.is_open() && !WriteAndClose(traceFile, trace, parsed.tracePath, "the trace", "Trace")) {
+        exitCode = 1;
     }
     if (!parsed.jsonPath.empty()) {
-        const std::filesystem::path jsonPath = PathFromUtf8(parsed.jsonPath);
-        std::error_code ec;
-        if (jsonPath.has_parent_path()) {
-            std::filesystem::create_directories(jsonPath.parent_path(), ec);
-        }
-        std::ofstream file(jsonPath, std::ios::out | std::ios::trunc | std::ios::binary);
-        file << FormatAutoplayJson(report);
-        file.close();
-        if (!file) {
-            std::cerr << program << ": cannot write the JSON report to " << parsed.jsonPath << "\n";
+        std::ofstream jsonFile;
+        OpenOutputFile(parsed.jsonPath, jsonFile);  // a failure shows when writing
+        if (!WriteAndClose(jsonFile, FormatAutoplayJson(report), parsed.jsonPath, "the JSON report", "JSON report")) {
             exitCode = 1;
-        } else {
-            std::cout << "JSON report: " << parsed.jsonPath << "\n";
         }
-    }
-
-    if (temporaryPrefDir) {
-        std::error_code ec;
-        std::filesystem::remove_all(options.prefDir, ec);
     }
     return exitCode;
 }
