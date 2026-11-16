@@ -46,7 +46,8 @@ REQUIRED_INFO_KEYS = ("version", "os", "platform", "package", "format", "executa
 # Executables that must never ship (the native tests and the autoplay bot).
 FORBIDDEN_EXECUTABLES = ("neo_wolf_tests", "neo_wolf_autoplay")
 REQUIRED_FILES = ("README.txt", "LICENSE.md", "docs/CONTROLS.md", "docs/TROUBLESHOOTING.md",
-                  "LICENSES/SDL2-LICENSE.txt", "LICENSES/nlohmann-json-LICENSE.MIT.txt",
+                  "LICENSES/SDL2-LICENSE.txt", "LICENSES/SDL2-hidapi-LICENSE-bsd.txt",
+                  "LICENSES/SDL2-yuv2rgb-LICENSE.txt", "LICENSES/nlohmann-json-LICENSE.MIT.txt",
                   "LICENSES/THIRD_PARTY_LICENSES.md")
 
 # runner(command, working directory) -> exit code. The default streams the output.

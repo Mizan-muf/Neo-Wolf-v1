@@ -33,4 +33,10 @@ certutil -hashfile third_party\nlohmann\json.hpp SHA256   # Windows
 ```
 
 SDL2 is not vendored: CMake downloads a pinned, checksum-verified source release at configure
-time (see `CMakeLists.txt` and [docs/BUILD_MACOS.md](../docs/BUILD_MACOS.md)).
+time (see `CMakeLists.txt` and [docs/BUILD_MACOS.md](../docs/BUILD_MACOS.md)). SDL's source
+bundles a few components under their own licences; two of them, HIDAPI and yuv2rgb, are linked
+into the game, and the packages ship their notices from SDL's extracted source. The audit is in
+[docs/THIRD_PARTY_LICENSES.md](../docs/THIRD_PARTY_LICENSES.md#components-bundled-in-sdl2).
+
+Neo-Wolf's own images and sounds are not third-party: every file under `game/assets` is made by
+a generator in `tools/devkit/` ([docs/ASSET_CREDITS.md](../docs/ASSET_CREDITS.md)).

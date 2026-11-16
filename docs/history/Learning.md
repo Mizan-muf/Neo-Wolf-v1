@@ -1,3 +1,11 @@
+> **Superseded: history only (archived 2026-11-16, Roadmap Phase 10).** Learning notes written
+> during the original 26-phase checklist, up to its Phase 7 (spring 2026). They describe the
+> engine as it was then and are not maintained. For the current code read
+> [ARCHITECTURE.md](../ARCHITECTURE.md), [GAMEPLAY.md](../GAMEPLAY.md) and
+> [TESTING.md](../TESTING.md); for the plan, [ROADMAP.md](../ROADMAP.md). The claims below were
+> **not verified** against the current code, and the commands in them (for example the
+> `neo_wolf.exe` test runs) no longer match the build ([CONTRIBUTING.md](../../CONTRIBUTING.md)).
+
 # Neo Wolf Learning Notes
 
 ## Subheading: The things you asked for

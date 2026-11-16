@@ -90,7 +90,8 @@ NeoWolf.app/
 README.txt                     how to start it, Gatekeeper, controls, saves and logs, licence
 LICENSE.md                     the project licence (PolyForm Noncommercial 1.0.0)
 docs/CONTROLS.md, docs/TROUBLESHOOTING.md
-LICENSES/                      SDL2-LICENSE.txt (zlib), nlohmann-json-LICENSE.MIT.txt,
+LICENSES/                      SDL2-LICENSE.txt (zlib), SDL2-hidapi-LICENSE-bsd.txt,
+                               SDL2-yuv2rgb-LICENSE.txt, nlohmann-json-LICENSE.MIT.txt,
                                THIRD_PARTY_LICENSES.md
 ```
 

@@ -7,6 +7,7 @@ Writes 32x32 plain-text PPM (P3) sprites to game/assets/sprites/:
     guard_dead.ppm  brute_dead.ppm  runner_dead.ppm     their corpses (drawn on the floor)
     health.ppm  ammo.ppm                                pickups
     key_red.ppm  key_blue.ppm  key_gold.ppm             key cards
+    decoration.ppm                                      the blue vase (level landmarks)
 
 game/defs/sprites.cfg maps the engine's sprite slots to these files (docs/ASSET_GUIDE.md).
 
@@ -18,6 +19,8 @@ The enemies are told apart at 320x240 by silhouette as well as colour: the guard
 upright olive soldier with a helmet and rifle, the brute fills the whole frame (wide armoured
 shoulders, dark red, yellow visor), and the runner is small, slim and mid-stride (cyan, orange
 visor). Every figure gets a dark 1-pixel outline. Key cards carry their initial (R, B, G).
+The decoration (Phase 10) is a blue-and-white floor vase; it replaced the hand-made 16x16
+sprite_decor.ppm (known issue X5).
 
 Standard library only. Each sprite uses its own random.Random seeded from SEED and the
 sprite's name (zlib.crc32), so the output is byte-for-byte reproducible. The images are drawn
@@ -31,6 +34,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import random
 import sys
 import zlib
@@ -255,6 +259,61 @@ def key_card(color: Color, letter: str) -> Callable[[Sprite], None]:
     return draw
 
 
+# --- Decoration ---------------------------------------------------------------------------
+
+VASE_GLAZE: Color = (150, 192, 240)
+VASE_PATTERN: Color = (34, 70, 160)
+# Half-width of the vase (pixels) at the given rows; rows in between are interpolated.
+VASE_PROFILE: List[Tuple[int, float]] = [
+    (7, 5.5), (8, 5.5), (9, 3.5), (12, 3.5), (14, 5.5), (16, 8.5), (19, 10.0),
+    (22, 10.0), (25, 8.0), (28, 5.5), (29, 6.5), (31, 6.5),
+]
+
+
+def vase_half_width(y: int) -> float:
+    for (y0, r0), (y1, r1) in zip(VASE_PROFILE, VASE_PROFILE[1:]):
+        if y0 <= y <= y1:
+            return r0 + (r1 - r0) * (y - y0) / (y1 - y0)
+    return 0.0
+
+
+def decoration(s: Sprite) -> None:
+    """The landmark decoration (docs/levels/README.md rule 13): a blue-and-white porcelain
+    floor vase, 25 rows tall, standing on the floor. A light glaze shaded as a cylinder lit
+    from the left, with a highlight, dark blue bands at the rim, shoulder, base and foot, and
+    a wave round the belly. Pale and bright, so it reads in the dim light zones and against
+    every theme's walls."""
+    cx = SIZE / 2
+
+    def u_at(x: int, y: int) -> float:  # -1 at the vase's left edge, +1 at its right edge
+        return (x + 0.5 - cx) / vase_half_width(y)
+
+    for y in range(7, SIZE):
+        for x in range(SIZE):
+            u = u_at(x, y)
+            if abs(u) > 1.0:
+                continue
+            light = 0.62 + 0.38 * math.sqrt(1.0 - u * u) - 0.16 * u
+            if -0.62 <= u <= -0.38 and 15 <= y <= 27:
+                light += 0.22  # highlight
+            d = s.rng.randint(-3, 3)
+            s.set(x, y, shade((VASE_GLAZE[0] + d, VASE_GLAZE[1] + d, VASE_GLAZE[2] + d), light))
+
+    def paint(x: int, y: int) -> None:
+        u = u_at(x, y)
+        if abs(u) <= 1.0:
+            s.set(x, y, shade(VASE_PATTERN, 0.85 + 0.25 * math.sqrt(1.0 - u * u)))
+
+    for y in (7, 15, 17, 26, 29, 30):  # rim, shoulder, base and foot bands
+        for x in range(SIZE):
+            paint(x, y)
+    s.rect(14, 8, 4, 1, (28, 34, 60))  # the opening
+    for x in range(SIZE):  # the wave round the belly, rows 19-23
+        if abs(u_at(x, 21)) <= 0.92:
+            paint(x, 21 + round(1.6 * math.sin(x * 0.9)))
+    s.outline()
+
+
 SPRITES: Dict[str, Callable[[Sprite], None]] = {
     "guard": guard,
     "brute": brute,
@@ -267,6 +326,7 @@ SPRITES: Dict[str, Callable[[Sprite], None]] = {
     "key_red": key_card(LOCK_COLORS["red"], "R"),
     "key_blue": key_card(LOCK_COLORS["blue"], "B"),
     "key_gold": key_card(LOCK_COLORS["gold"], "G"),
+    "decoration": decoration,
 }
 
 

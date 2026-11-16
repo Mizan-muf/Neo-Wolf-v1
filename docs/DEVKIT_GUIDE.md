@@ -261,8 +261,9 @@ the new files are orphans (a warning) until you add the level to `campaign.json`
 | `--width`, `--height` | Texture size (default 64×64). |
 | `--duration` | Tone length in seconds (default 0.25). |
 
-The shipped sprites and theme textures come from `gen_sprites.py` and `gen_textures.py` instead
-([ASSET_GUIDE.md](ASSET_GUIDE.md)).
+The shipped sprites, theme textures and sounds come from `gen_sprites.py`, `gen_textures.py` and
+`gen_sounds.py` instead ([ASSET_GUIDE.md](ASSET_GUIDE.md)); `asset_provenance.py` checks that
+every file under `game/assets` is reproduced by them ([ASSET_CREDITS.md](ASSET_CREDITS.md)).
 
 ---
 
@@ -347,7 +348,8 @@ Runs every `tools/devkit/tests/test_*.py` (`unittest`); CTest runs it as `devkit
 | `doctor.py` | `doctor` |
 | `term.py` | When to use colours (Windows VT mode, `NO_COLOR`, terminals) |
 | `def_tools.py` | Entity JSON/CSV conversion (`sync-entities`) |
-| `asset_tools.py`, `gen_sprites.py`, `gen_textures.py` | Asset inspection and generation |
+| `asset_tools.py`, `gen_sprites.py`, `gen_textures.py`, `gen_sounds.py` | Asset inspection and generation |
+| `asset_provenance.py` | Checks that every file under `game/assets` is made, byte for byte, by a generator ([ASSET_CREDITS.md](ASSET_CREDITS.md)) |
 | `level_docs.py` | Level pages: checks that `docs/levels/levelNN.md` shows the shipped map byte for byte and regenerates its annotated entity grid (`python3 -m tools.devkit.level_docs [--write]`; [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#8-document-it)) |
 | `packager.py` | `package`: drives CMake, checks the staged package, writes the archive and `SHA256SUMS` |
 | `gen_icon.py` | The application icon (macOS `.iconset` for `iconutil`, Windows `.ico`, PNG); run by the build |

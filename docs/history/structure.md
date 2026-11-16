@@ -1,3 +1,11 @@
+> **Superseded: history only (archived 2026-11-16, Roadmap Phase 10).** An early sketch of the
+> frame pipeline. The current, verified description is [ARCHITECTURE.md](../ARCHITECTURE.md)
+> (frame loop, module map, rendering pipeline). The sketch below is **not verified** and differs
+> from the code in places, for example: the frame starts with the command bridge and then the
+> platform's events (not "SDL gets input" first), and the floor and ceiling are cast by the
+> raycaster, not drawn as "sky". [mermaid-diagram.png](mermaid-diagram.png) is a related
+> sketch from the first commit.
+
 # Engine Architecture and Pipeline
 
 ```text

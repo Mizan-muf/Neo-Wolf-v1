@@ -65,6 +65,8 @@ def write_tree(prefix: Path, info: dict, with_exe: bool = True, extra: Sequence[
         shutil.copy2(REPO_ROOT / "docs" / doc, prefix / "docs" / doc)
     (prefix / "LICENSES").mkdir(parents=True, exist_ok=True)
     (prefix / "LICENSES" / "SDL2-LICENSE.txt").write_text("zlib licence\n", encoding="utf-8")
+    (prefix / "LICENSES" / "SDL2-hidapi-LICENSE-bsd.txt").write_text("BSD licence\n", encoding="utf-8")
+    (prefix / "LICENSES" / "SDL2-yuv2rgb-LICENSE.txt").write_text("BSD licence\n", encoding="utf-8")
     shutil.copy2(REPO_ROOT / "third_party" / "nlohmann" / "LICENSE.MIT",
                  prefix / "LICENSES" / "nlohmann-json-LICENSE.MIT.txt")
     shutil.copy2(REPO_ROOT / "docs" / "THIRD_PARTY_LICENSES.md", prefix / "LICENSES" / "THIRD_PARTY_LICENSES.md")

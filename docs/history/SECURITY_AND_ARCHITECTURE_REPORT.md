@@ -1,3 +1,14 @@
+> **Superseded: history only (archived 2026-11-16, Roadmap Phase 10).** This report (dated
+> 2026-08-26, at commit `319d7af`) was not reproduced, and its verdict "PASSED (Production
+> Ready)" does not stand: the audit of 2026-11-15 found defects at the same commit (build,
+> content loading, AI, packaging; see [KNOWN_ISSUES.md](../KNOWN_ISSUES.md)). Several statements
+> below no longer match the code, for example: the bounded copy is `CopyBoundedString`, not
+> `strncpy`; not every C API argument is validated (`nw_engine_spawn_entity` accepts any type
+> value, `nw_engine_set_player_stats` any numbers); and the update loop does allocate (for
+> example `SyncSpritesWithEntities` builds a lookup table every frame). The current C API
+> contract, including validation, threading and ownership, is [C_API.md](../C_API.md); the
+> architecture is [ARCHITECTURE.md](../ARCHITECTURE.md). Treat every claim below as **unverified**.
+
 # Neo-Wolf-v1 — Architecture & Security Audit Report
 
 **Date:** August 26, 2026  

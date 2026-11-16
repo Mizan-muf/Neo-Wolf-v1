@@ -376,7 +376,7 @@ The mapping from the engine's sprite slots to files. Twelve required keys (Phase
 | `guard_dead`, `brute_dead`, `runner_dead` | their corpses | `game/assets/sprites/<key>.ppm` |
 | `health`, `ammo` | pickups | `game/assets/sprites/<key>.ppm` |
 | `key_red`, `key_blue`, `key_gold` | key cards | `game/assets/sprites/<key>.ppm` |
-| `decoration` | decorations | `game/assets/sprite_decor.ppm` (hand-made, pre-Phase 6) |
+| `decoration` | decorations | `game/assets/sprites/decoration.ppm` (the blue vase) |
 
 ```ini
 guard=game/assets/sprites/guard.ppm
@@ -390,7 +390,7 @@ ammo=game/assets/sprites/ammo.ppm
 key_red=game/assets/sprites/key_red.ppm
 key_blue=game/assets/sprites/key_blue.ppm
 key_gold=game/assets/sprites/key_gold.ppm
-decoration=game/assets/sprite_decor.ppm
+decoration=game/assets/sprites/decoration.ppm
 ```
 
 A missing key or file draws that sprite as the checkerboard (warning). The pre-Phase 6 keys

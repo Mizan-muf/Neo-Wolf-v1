@@ -1,3 +1,8 @@
+> **Superseded: history only (archived 2026-11-16, Roadmap Phase 10).** Early advice on when
+> to start writing tests, keyed to the phases of the original checklist. How tests are written,
+> registered and run today is in [TESTING.md](../TESTING.md) and
+> [CONTRIBUTING.md](../../CONTRIBUTING.md). Not maintained; not verified against the code.
+
 A good time is now, at late Phase 2 / start of Phase 3.
 
 Best strategy by checklist phase:

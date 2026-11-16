@@ -187,6 +187,14 @@ install(FILES "${PROJECT_SOURCE_DIR}/third_party/nlohmann/LICENSE.MIT"
         DESTINATION LICENSES RENAME "nlohmann-json-LICENSE.MIT.txt")
 if(NEOWOLF_SDL2_LICENSE_FILE)
     install(FILES "${NEOWOLF_SDL2_LICENSE_FILE}" DESTINATION LICENSES RENAME "SDL2-LICENSE.txt")
+    # Two components bundled in SDL's source are linked into the static build and are
+    # BSD-3-Clause, which asks for their notice in binary distributions (audit in
+    # docs/THIRD_PARTY_LICENSES.md): HIDAPI (game controllers) and yuv2rgb (YUV textures).
+    get_filename_component(neowolf_sdl2_source_dir "${NEOWOLF_SDL2_LICENSE_FILE}" DIRECTORY)
+    install(FILES "${neowolf_sdl2_source_dir}/src/hidapi/LICENSE-bsd.txt"
+            DESTINATION LICENSES RENAME "SDL2-hidapi-LICENSE-bsd.txt")
+    install(FILES "${neowolf_sdl2_source_dir}/src/video/yuv2rgb/LICENSE"
+            DESTINATION LICENSES RENAME "SDL2-yuv2rgb-LICENSE.txt")
 else()
     message(WARNING "SDL2's LICENSE.txt was not found (system SDL2?): the install tree lacks LICENSES/SDL2-LICENSE.txt.")
 endif()

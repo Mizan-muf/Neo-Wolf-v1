@@ -36,7 +36,7 @@ level has its own page:
 
 `GameState` (`engine/core/GameState.h`) has these values: `Menu` (0), `Gameplay` (1),
 `Paused` (2), `GameOver` (3), `Victory` (4, deprecated, never entered), `LevelComplete` (5) and
-`CampaignComplete` (6). The numbers are part of the C API.
+`CampaignComplete` (6). The numbers are part of the in-process C API ([C_API.md](C_API.md#gamestate)).
 
 ```text
             +-------------------------------------------------------+
@@ -106,6 +106,35 @@ started that way still unlocks the next one in the save.
   total, and the time spent in play on that level (pauses and menus do not count). The log line
   for a completed level also has the **score**: the sum of the killed enemies' `score` values
   from `gameplay.json` (it is not shown on screen yet).
+
+## The player and the weapon
+
+The values are the shipped `gameplay.json` (`player`, `weapon`;
+[CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#1-gameplayjson)); the code is
+`Engine::UpdateGameplay` (`engine/core/Engine.Update.cpp`), `engine/world/MovementRules.cpp` and
+`PerformPlayerAttack` (`engine/world/InteractionRules.cpp`).
+
+- **Movement:** 3.0 cells/s (`player.moveSpeed`) forward, back and sideways; moving diagonally
+  is not faster. Turning: 1.8 radians/s (`player.turnSpeed`). The view is 60° wide.
+- **Collision:** the player is a circle of radius 0.22 cells (`player.collisionRadius`). Walls,
+  closed doors, the exit switch and living enemies stop it; corpses, pickups, decorations and
+  triggers do not. Each move is tried along x and then along y in steps of at most 0.05 cells,
+  so walking into a wall at an angle slides along it instead of stopping. (Known issue C20: a
+  body that starts closer to a wall than its radius cannot slide along that wall.)
+- **Weapon:** a hitscan shot. One shot every 0.25 s at most (`weapon.fireRate`), one ammo per
+  shot, 35 damage (`weapon.damage`), range 12 cells (`weapon.range`). The shot travels from the
+  player's centre along the view direction and stops at the first wall or closed door; it hits
+  the nearest living enemy whose centre is within 0.45 cells of that line. With no ammo the HUD
+  shows `Out of Ammo!` and nothing is fired. The player starts with 24 ammo (`weapon.initialAmmo`,
+  at most `weapon.maxAmmo` 99) and 100 health (`player.initialHealth`, at most `player.maxHealth`
+  100). Every shot is a noise enemies can hear ([Enemy AI](#enemy-ai)).
+- **Pickups:** walking within 0.6 cells (centre to centre) of a health or ammo pickup collects
+  it, even when health or ammo is already full; the gain is capped at the maximum. The amount is
+  the placement's `value` or `pickups.<kind>.value` (health 25, ammo 12). Key cards: see
+  [Keys and locked doors](#keys-and-locked-doors).
+- **Particles** (cosmetic, `engine/particles/Particle.cpp`, at most 512 at a time): a spark at
+  the muzzle and where each shot ends, sparkles where a pickup is collected and where an enemy
+  dies, a spark on the player when an enemy hits, and dust drifting near the player.
 
 ## Enemies
 
@@ -259,7 +288,7 @@ event, once. **It no longer ends the level** (before Phase 5 it did); only the e
   the save.
 - `--pref-dir <dir>` or the `NEOWOLF_PREF_DIR` environment variable moves the log and the save
   to another folder; all automated runs use a temporary folder (known issue B15).
-- Through the C API (`nw_engine_init`) no per-user folder is set, so progress is neither
+- Through the C API (`nw_engine_init`, [C_API.md](C_API.md)) no per-user folder is set, so progress is neither
   loaded nor saved.
 
 ## Pausing

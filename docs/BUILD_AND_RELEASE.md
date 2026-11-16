@@ -9,10 +9,10 @@ or hardcoded library paths are needed.
 | Platform | Status | Guide | One command |
 |---|---|---|---|
 | macOS (universal arm64 + x86_64) | verified | [BUILD_MACOS.md](BUILD_MACOS.md) | `./build.sh` |
-| Windows (Visual Studio 2022+) | (not yet run) | [BUILD_WINDOWS.md](BUILD_WINDOWS.md) | `build.cmd` |
-| Linux | (not yet run) | see below | `./build.sh` |
+| Windows (Visual Studio 2022+) | built and tested headless in CI; not yet run on a Windows PC | [BUILD_WINDOWS.md](BUILD_WINDOWS.md) | `build.cmd` |
+| Linux | best effort: built and tested headless in CI (without desktop backends); not run on a desktop | see below | `./build.sh` |
 
-**Linux** (best effort, not yet run): install a C++17 compiler, CMake 3.25+, Ninja and Python 3,
+**Linux** (best effort, not run on a desktop): install a C++17 compiler, CMake 3.25+, Ninja and Python 3,
 plus the development packages SDL builds against for X11/Wayland video and audio. On
 Debian/Ubuntu that is for example `libx11-dev libxext-dev libxrandr-dev libxcursor-dev
 libxfixes-dev libxi-dev libxss-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev`

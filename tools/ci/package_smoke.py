@@ -50,6 +50,7 @@ from typing import Dict, List, Optional, Tuple
 ARCHIVE_NAME = re.compile(r"^neo-wolf-(?P<version>\d+\.\d+\.\d+)-(?P<platform>[a-z0-9_-]+)\.(?P<ext>zip|tar\.gz)$")
 FORBIDDEN_EXECUTABLES = ("neo_wolf_tests", "neo_wolf_autoplay")
 REQUIRED_FILES = ("README.txt", "LICENSE.md", "docs/CONTROLS.md", "docs/TROUBLESHOOTING.md", "LICENSES/SDL2-LICENSE.txt",
+                  "LICENSES/SDL2-hidapi-LICENSE-bsd.txt", "LICENSES/SDL2-yuv2rgb-LICENSE.txt",
                   "LICENSES/nlohmann-json-LICENSE.MIT.txt", "LICENSES/THIRD_PARTY_LICENSES.md")
 BUNDLE_ID = "io.github.mizan-muf.neowolf"
 COPYRIGHT = "Copyright (c) 2026 Mizan-muf"

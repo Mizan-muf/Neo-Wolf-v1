@@ -21,7 +21,7 @@ class TestGenSprites(unittest.TestCase):
         first = gen_sprites.generate()
         self.assertEqual(first, gen_sprites.generate())
         expected = {"guard", "brute", "runner", "guard_dead", "brute_dead", "runner_dead",
-                    "health", "ammo", "key_red", "key_blue", "key_gold"}
+                    "health", "ammo", "key_red", "key_blue", "key_gold", "decoration"}
         self.assertEqual({name[:-4] for name in first}, expected)
         for name, text in first.items():
             width, height, rows = pixels(text)
@@ -49,6 +49,9 @@ class TestGenSprites(unittest.TestCase):
         self.assertLess(runner[4], guard[4])
         for corpse in ("guard_dead", "brute_dead", "runner_dead"):
             self.assertGreaterEqual(box(corpse)[1], 16, corpse)  # lies in the lower half of the frame
+        vase = box("decoration")
+        self.assertEqual(vase[3], 31)  # stands on the floor
+        self.assertGreater(vase[3] - vase[1], 20)  # tall enough to read as a landmark
 
     def test_committed_sprites_are_up_to_date(self) -> None:
         self.assertEqual(gen_sprites.main(["--check"]), 0)

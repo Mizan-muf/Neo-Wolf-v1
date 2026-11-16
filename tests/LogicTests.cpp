@@ -928,7 +928,7 @@ void TestAssetInventoryAndErrorResilience() {
         "game/assets/themes/classic/wall_alt_b.ppm",
         "game/assets/themes/classic/floor.ppm",
         "game/assets/themes/classic/ceiling.ppm",
-        "game/assets/sprite_decor.ppm",
+        "game/assets/sprites/decoration.ppm",
     };
 
     for (const auto& relPath : textures) {

@@ -1,244 +1,159 @@
-# Neo-Wolf-v1
+# Neo-Wolf
 
 [![CI](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml/badge.svg?branch=completion%2Fv1)](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml)
 
-A high-performance **2.5D software-rendered raycasting game engine** written in modern C++17 with SDL2, featuring a data-driven content pipeline, native particle simulation, audio system, and a comprehensive **DevKit CLI toolchain** (`tools/devkit/`).
+A first-person shooter in the style of early-1990s raycasting games, with a 10-level
+campaign. The engine is written in C++17 on SDL2 and draws every frame in software into a
+320×240 image. Levels, enemies and gameplay values are plain files you can edit without
+recompiling. It builds on macOS and Windows (Linux best effort), and a headless bot proves in CI
+that every level can be finished.
 
-![Neo-Wolf in play: level 1, "Outpost Gate", with the HUD and the level banner](docs/images/screens/hud.png)
-
-How to play: [docs/GAMEPLAY.md](docs/GAMEPLAY.md) (campaign, exit switches, saves) and
-[docs/CONTROLS.md](docs/CONTROLS.md) (all keys).
-
----
+| Level 1, "Outpost Gate" | Level 5, "Catacombs" |
+|---|---|
+| ![Level 1 with the HUD and the level banner](docs/images/screens/hud.png) | ![Level 5: a dim crypt with a guard](docs/images/levels/level05-crypt.png) |
 
 ## Features
 
-- **Software Raycasting Engine**: Fast DDA (Digital Differential Analysis) raycaster with fish-eye distortion correction and directional wall shading.
-- **Textured Rendering**: Software-textured walls, floors, and ceilings with distance depth fog and per-cell ambient lighting.
-- **Billboard Sprites**: Occlusion-culled, distance-sorted 2.5D sprites for enemies, pickups, and decorations with transparent magenta color keying.
-- **Particle System**: Real-time particle simulation for wall sparks, pickup sparkles, and floating ambient dust motes.
-- **Sound System**: SDL2 16-bit PCM audio mixer with configurable master volume and event-driven SFX triggers (doors, pickups, weapon fire, enemy alerts).
-- **Campaign & Progression**: A level list (`game/defs/campaign.json`: the 10 levels of the Phase 8 design ([docs/levels/README.md](docs/levels/README.md)); all ten built in Phase 8, one page each in [docs/levels/](docs/levels/)), a main menu with New Game / Continue / Level Select / Quit, exit switches that complete a level, health and ammo carried between levels, restart from the level-entry snapshot on death, saved progress, and per-level texture themes. The state machine (`Menu`, `Gameplay`, `Paused`, `GameOver`, `LevelComplete`, `CampaignComplete`) is SDL-free and unit-tested ([docs/GAMEPLAY.md](docs/GAMEPLAY.md)).
-- **Gameplay Combat & AI**: Hitscan weapon attacks, ammo management, health and ammo pickups, three enemy types (guard, brute, runner) with line of sight, hearing and grid path finding (Idle -> Alert -> Chase -> Attack, Search, Dead), and red/blue/gold key cards with locked doors ([docs/GAMEPLAY.md](docs/GAMEPLAY.md)).
-- **C API Boundary & Interop Bridge**: Plain C ABI interface and bidirectional Command Bridge / Event Queue for decoupling gameplay scripting.
-- **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite/audio configuration files (`.cfg`), gameplay values (`gameplay.json`), and entity placements (`<level>.entities.json`, with an optional `.csv` export). Editing them changes the game without recompiling; an invalid `gameplay.json`, map or entity file stops the game with a message that names the file, entry and field. See [docs/CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md).
-- **DevKit CLI Toolchain**: Complete developer toolkit (`tools/devkit/`) for map inspection, reachability analysis, asset verification, procedural generation, CSV/JSON sync, system doctor diagnostics, and release packaging.
-- **Dual-Engine Test Suite**: 100% automated test coverage across native C++ logic/asset loaders and Python DevKit validation suite.
-- **Cross-Platform**: macOS (primary, verified), Windows (built and tested headless in CI; not yet played interactively on a Windows PC), Linux (best effort; built and tested headless in CI).
+- **Campaign:** 10 levels in four texture themes, a main menu (New Game, Continue, Level
+  Select, Quit), health and ammo carried between levels, restart from the level start on death,
+  saved progress and unlocked levels ([GAMEPLAY.md](docs/GAMEPLAY.md)).
+- **Combat and AI:** a hitscan weapon with limited ammo; three enemy types (guard, brute,
+  runner) that see you only with a clear line of sight, hear your shots through open doors,
+  path-find around walls and search for you when you break contact.
+- **Keys and doors:** red, blue and gold key cards and locked doors; doors you open and close
+  with `E`; an exit switch ends each level.
+- **Software renderer:** DDA raycasting with textured walls, floor and ceiling, distance
+  shading, authorable dark and dim areas, billboard sprites and simple particles; the image is
+  scaled to any window size with sharp pixels.
+- **Data-driven content:** text maps, JSON entity placements, `gameplay.json` for every stat,
+  `campaign.json` for the level list; invalid files are rejected with a message naming the
+  file and field ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md)).
+- **Tooling:** a Python DevKit that validates levels with the engine's rules (including "the
+  exit is reachable and keys come before their doors"), inspects maps, creates level stubs and
+  builds packages; a deterministic autoplay bot (`neo_wolf_autoplay`) that plays every level
+  through simulated input ([DEVKIT_GUIDE.md](docs/DEVKIT_GUIDE.md),
+  [TESTING.md](docs/TESTING.md#autoplay-bot)).
+- **Sound effects** for doors, pickups, shots and enemy alerts (no music). The game also runs
+  without an audio device.
 
----
+## Download & play
 
-## Quick Start (macOS)
+There are no published releases yet: the first GitHub release comes with the `v1.0.0` tag
+(Roadmap Phase 12). Until then, packages are built by the CI job `package` as the artifacts
+`neo-wolf-package-macOS` and `neo-wolf-package-Windows` of a workflow run (open a run under
+the repository's Actions tab). The job was added in Phase 9; what has and has not been checked
+about the packages is in [known issue D5](docs/KNOWN_ISSUES.md). You can also build a package
+yourself ([RELEASE.md](docs/RELEASE.md)).
 
-Needs the Xcode Command Line Tools, `brew install cmake ninja`, and Python 3. SDL2 is downloaded
-and linked statically by CMake, so there is nothing else to install. Details: [docs/BUILD_MACOS.md](docs/BUILD_MACOS.md).
+Each zip holds one folder with the game, `README.txt`, `LICENSE.md`, `docs/` and `LICENSES/`.
+Check a download against `SHA256SUMS` first ([RELEASE.md](docs/RELEASE.md#checksums)).
 
-### 1. Build and Run Tests
+- **macOS 10.15+**, Apple silicon and Intel (`neo-wolf-<version>-macos-universal.zip`): unzip
+  and open `NeoWolf.app`. The app is signed ad hoc but not notarized, so Gatekeeper blocks the
+  first start of a downloaded copy. On macOS 14 and older: Control-click the app → Open → Open.
+  On macOS 15 and newer: try to open it once, then System Settings → Privacy & Security →
+  Open Anyway. Or run `xattr -dr com.apple.quarantine NeoWolf.app`.
+- **Windows 10/11 x64** (`neo-wolf-<version>-windows-x64.zip`): extract the whole zip and run
+  `neo_wolf.exe`; no installer and no runtime to install. The exe is not code-signed, so
+  SmartScreen may say "Windows protected your PC": More info → Run anyway (or Properties →
+  Unblock on the zip before extracting).
+
+Problems starting it: [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#packaged-builds).
+
+## Build from source
+
+You need CMake 3.25+, Python 3 and a C++17 compiler. SDL2 is downloaded (a pinned, checksummed
+source release) and linked statically by CMake, so there is nothing else to install; the first
+configure needs internet access.
+
+**macOS** (Xcode Command Line Tools, `brew install cmake ninja`;
+[BUILD_MACOS.md](docs/BUILD_MACOS.md)):
+
 ```bash
-./build.sh          # configure + build + run all tests (or: make check)
+./build.sh                  # configure, build and run all tests (Release)
+./build/macos/neo_wolf      # play; works from any directory
 ```
 
-### 2. Launch Game
-```bash
-./build/macos/neo_wolf            # works from any directory: it finds the repository's game/ folder
-./build/macos/neo_wolf --help     # options: --data, --pref-dir, --level, --frames, --fullscreen, --version,
-                                  # developer tools --preview and --screenshot
-```
+**Windows** (Visual Studio 2022 or newer with *Desktop development with C++*, Python 3;
+[BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md); built and tested in CI, not yet on a Windows PC):
 
-If the game does not start, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (log file
-locations, missing content, no audio device, virtual machines).
-
----
-
-## Quick Start (Linux)
-
-**Best effort:** built and tested headless in CI (without desktop backends); not yet run on a Linux desktop. Needs a C++17
-compiler, CMake 3.25+, Ninja and Python 3. Ubuntu 22.04's packaged CMake (3.22) is too old for
-the presets: get a newer CMake (for example `pip install cmake`, or Kitware's apt repository).
-SDL2 is built from source by CMake (no `libsdl2-dev` needed), but that needs the X11/Wayland and
-audio development packages SDL builds against; see [docs/BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md).
-
-### 1. Build and Run Tests
-```bash
-./build.sh          # configure + build + run all tests (or: make check)
-```
-
-### 2. Launch Game
-```bash
-./build/linux/neo_wolf
-```
-
----
-
-## Quick Start (Windows)
-
-Needs Visual Studio 2022 or newer (any edition) with the *Desktop development with C++* workload,
-and Python 3. No vcpkg or SDL2 install is needed. Details: [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md)
-(built and tested headless in CI with MSVC; not yet played interactively on a Windows PC).
-
-### 1. Build and Run Tests
 ```cmd
-build.cmd Release
-```
-
-### 2. Launch Game
-```cmd
+build.cmd
 build\windows-msvc\Release\neo_wolf.exe
 ```
 
-Running a single test, test labels and adding tests: [docs/TESTING.md](docs/TESTING.md).
+**Linux** (best effort: built and tested headless in CI, never run on a desktop): install the
+X11/Wayland and audio development packages SDL builds against
+([BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md)), then `./build.sh` and
+`./build/linux/neo_wolf`.
 
----
-
-## DevKit CLI Toolchain (`tools/devkit/`)
-
-The DevKit CLI provides developer tools for map inspection, asset validation, level creation, and distribution packaging.
-
-```bash
-# Run system doctor to check environment & compilers
-./tools/devkit/neo_devkit doctor
-
-# Validate all project maps, assets, and definitions
-./tools/devkit/neo_devkit validate
-
-# Inspect a campaign level: map, entities, statistics, reachability (non-zero exit if not finishable)
-./tools/devkit/neo_devkit inspect-map --level level01
-
-# Inspect texture or audio asset metadata
-./tools/devkit/neo_devkit inspect-asset game/assets/sprites/guard.ppm
-./tools/devkit/neo_devkit inspect-asset game/assets/sfx_door_open.wav
-
-# Create a new level: map (exit switch X in the east wall) + entity stub + campaign entry
-# (step-by-step checklist: docs/LEVEL_AUTHORING.md)
-./tools/devkit/neo_devkit create-map --level-id level04 --width 20 --height 15 --style dungeon --register
-
-# Prove every campaign level can be finished: the headless autoplay bot (after building)
-build/macos/neo_wolf_autoplay --all --json /tmp/autoplay-report.json
-
-# Regenerate the per-level theme textures (deterministic; --check verifies them)
-python3 tools/devkit/gen_textures.py
-
-# Export the entity placement JSON files to CSV (JSON is canonical)
-./tools/devkit/neo_devkit sync-entities
-
-# Build this OS's release package (CMake package preset -> release/*.zip|.tar.gz + SHA256SUMS)
-./tools/devkit/neo_devkit package
-
-# Run DevKit unit test suite
-./tools/devkit/neo_devkit test
-```
-
----
-
-## Automated Test Suites
-
-Neo-Wolf has native, DevKit and game-level automated tests, all registered with CTest
-(`ctest --preset macos`; details in [docs/TESTING.md](docs/TESTING.md)):
-
-| Test Suite | Implementation | Target | Coverage |
-| :--- | :--- | :--- | :--- |
-| **Native Engine Tests** | C++17 (`tests/LogicTests.cpp`) | `build/macos/neo_wolf_tests` (Windows: `build\windows-msvc\Release\neo_wolf_tests.exe`) | Math helpers, raycaster DDA, collision sliding, entity interactions, PPM/WAV asset loaders, map perimeter enclosure, reachability flood-fill |
-| **DevKit Test Suite** | Python 3 (`tools/devkit/tests/`) | `neo_devkit test` | Map parser, reachability BFS, PPM token parser, WAV RIFF headers, CSV/JSON synchronizer, release packager, campaign validation rules on multi-level fixtures, engine/DevKit parsing parity, CLI commands |
-| **Autoplay Bot** | C++17 (`engine/autoplay/`, `neo_wolf_autoplay`) | `build/macos/neo_wolf_autoplay --all` | Plays every campaign level headless through simulated input (keys, doors, enemies) and reports per level: result, time, damage, kills, pickups, keys, shots |
-
-Run both test suites with one command:
-```bash
-make check
-```
-
----
-
-## Download and run (release packages)
-
-Release packages are built by CI for macOS and Windows (artifacts of the `package` job; GitHub
-releases from the `v1.0.0` tag on). The job is new in Phase 9 and has not run yet: the macOS
-package is verified locally, the Windows package only by CI ([known issue D5](docs/KNOWN_ISSUES.md)). Each zip has one folder with the game, `README.txt` (how to
-start it, controls, where saves and logs live), `LICENSE.md`, `docs/` and `LICENSES/`. Check a
-download against `SHA256SUMS` first.
-
-- **macOS 10.15+** (`neo-wolf-<version>-macos-universal.zip`, Apple silicon and Intel): unzip,
-  then open `NeoWolf.app`. It is signed ad hoc but not notarized, so the first start is blocked:
-  macOS 14 and older, Control-click → Open → Open; macOS 15 and newer, try once, then System
-  Settings → Privacy & Security → Open Anyway; or `xattr -dr com.apple.quarantine NeoWolf.app`.
-- **Windows 10/11 x64** (`neo-wolf-<version>-windows-x64.zip`): extract the whole zip, then run
-  `neo_wolf.exe` (no installer, no redistributable). It is not code-signed: if SmartScreen says
-  "Windows protected your PC", click More info → Run anyway.
-
-Building the packages yourself (`./package.sh`, `package.cmd`), their contents, checksums and
-the smoke test: [docs/RELEASE.md](docs/RELEASE.md). Problems: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#packaged-builds).
-
----
+`neo_wolf --help` lists the options (`--level N`, `--data`, `--fullscreen`, ...). How to run
+single tests, the bot and CI checks: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Controls
 
-The full list, per screen, is in [docs/CONTROLS.md](docs/CONTROLS.md) (it matches
-`PlatformSDL::MapKeyToActions` in `engine/platform/PlatformSDL.cpp`). In short:
-
 | Action | Keys |
-| :--- | :--- |
-| Move / strafe | `W` `S` or Up / Down; `A` `D` |
-| Turn | Left / Right arrows, `Q` |
+|---|---|
+| Move, strafe | `W` `S` or Up/Down arrows; `A` `D` |
+| Turn | Left/Right arrows (`Q` also turns left) |
 | Fire | `Space`, `F`, `Ctrl` |
-| Use (doors, exit switch) | `E` |
-| Pause | `P` or `Esc` (in pause: `Q` quits to the menu, `R` restarts the level) |
-| Restart level | `R` |
-| Minimap | `M` or `Tab` (off by default) |
-| Menus | `W`/`S` or arrows to choose, `Enter`/`Space` to select, `Esc` to go back |
+| Use a door or the exit switch | `E` |
+| Pause | `P` or `Esc` |
+| Restart the level | `R` |
+| Minimap | `M` or `Tab` |
+| Menus | `W`/`S` or arrows, `Enter`/`Space` to select, `Esc` back |
 | Fullscreen | `F11`, `Alt+Enter`; macOS also `Cmd+Ctrl+F` |
 
-The window can be resized freely; the 320×240 image is scaled with sharp (nearest-neighbour) pixels.
+Every key on every screen: [CONTROLS.md](docs/CONTROLS.md).
 
----
+## The campaign
 
-## Project Structure
+Ten levels, each adding one idea: Outpost Gate (tutorial), Old Cellars (key cards), Server
+Annex (enemies hear gunfire), Motor Pool (the brute), Catacombs (runners, a dim crypt), Relay
+Station (ambushes), Blackout Barracks (dark wings), Reactor Spine (a three-key chain), Sunken
+Archive (a non-linear hub) and Wolf's Den (the finale). The design, difficulty curve and each
+level's map and walkthrough: [docs/levels/README.md](docs/levels/README.md).
 
-```text
-/neo-wolf
-|-- engine/                 # Core engine subsystems
-|   |-- core/               # Engine lifecycle, App host, Math, Color, InputState, Time
-|   |-- platform/           # SDL2 platform abstraction and windowing
-|   |-- render/             # Software Framebuffer, Raycaster DDA, Sprite/Particle renderers
-|   |-- world/              # Map representation, Player, Entities, Collision & Interaction rules
-|   |-- assets/             # PPM TextureLoader, AssetManager, Content/Audio configs
-|   |-- audio/              # AudioSystem SDL audio device and playback
-|   |-- particles/          # Particle manager, emitters, and physics
-|   `-- ui/                 # HUD rendering, font glyphs, crosshair, pause screen
-|-- game/                   # Game content and definitions
-|   |-- assets/             # PPM textures/sprites and WAV sound effects
-|   |-- maps/               # ASCII grid map files (.map)
-|   `-- defs/               # campaign.json, gameplay.json, themes/, sprite/audio configs, entity placements
-|-- tools/                  # Developer toolchain
-|   `-- devkit/             # DevKit CLI: validator, doctor, map/asset tools, packager
-|-- docs/                   # Technical documentation
-|-- tests/                  # Native C++ test runner
-|-- src/                    # Main executable entry point
-|-- packaging/              # Info.plist and Windows .rc templates (cmake/Packaging.cmake)
-|-- Makefile                # Linux build & automation targets
-|-- build.sh / package.sh   # Unix build and packaging scripts
-|-- build.cmd / package.cmd # Windows build and packaging scripts
-`-- CMakeLists.txt          # CMake build configuration
-```
+## Documentation
 
----
+| Document | What it is for |
+|---|---|
+| [GAMEPLAY.md](docs/GAMEPLAY.md) | How the game plays: states, rules, enemies, keys, saves |
+| [CONTROLS.md](docs/CONTROLS.md) | Every key, per screen |
+| [levels/README.md](docs/levels/README.md) | The campaign design, with one page per level |
+| [levels/BUILD_NOTES.md](docs/levels/BUILD_NOTES.md) | History: the level builders' briefs |
+| [BUILD_MACOS.md](docs/BUILD_MACOS.md) | Building and running on macOS |
+| [BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) | Building and running on Windows |
+| [BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md) | Build overview for all platforms, Linux notes, validation |
+| [TESTING.md](docs/TESTING.md) | Test layers, running tests, the autoplay bot, CI |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Problems when running the game: logs, saves, content, sound, packages |
+| [RELEASE.md](docs/RELEASE.md) | Versioning, packages, checksums, the release checklist |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Modules, dependencies, the frame loop, rendering, test seams |
+| [C_API.md](docs/C_API.md) | The in-process C API and its command and event queues |
+| [CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md) | Every content file: `gameplay.json`, entity files, campaign, themes |
+| [MAP_FORMAT.md](docs/MAP_FORMAT.md) | The `.map` grid format |
+| [LEVEL_AUTHORING.md](docs/LEVEL_AUTHORING.md) | Step-by-step checklist for adding a level |
+| [ASSET_GUIDE.md](docs/ASSET_GUIDE.md) | Texture, sprite and sound formats and their generators |
+| [ASSET_CREDITS.md](docs/ASSET_CREDITS.md) | Where every asset comes from, and its licence |
+| [DEVKIT_GUIDE.md](docs/DEVKIT_GUIDE.md) | Every DevKit command and option |
+| [THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md) | Licences of SDL2 and nlohmann/json |
+| [ROADMAP.md](docs/ROADMAP.md) | The plan to v1.0 and what is verified (source of truth) |
+| [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | Open and resolved defects and gaps |
+| [Checklist.md](docs/Checklist.md) | History: the original 26-phase checklist, reconciled with the code |
+| [history/](docs/history/README.md) | Archived, superseded documents |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, version by version |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, conventions and commit style for contributors |
+| [third_party/README.md](third_party/README.md) | Vendored code: versions and checksums |
 
-## Documentation Index
+## Project status
 
-- [Gameplay: campaign, states, saves](docs/GAMEPLAY.md)
-- [Controls](docs/CONTROLS.md)
-- [Architecture Specification](docs/ARCHITECTURE.md)
-- [Map Format Specification](docs/MAP_FORMAT.md)
-- [Asset Pipeline Guide](docs/ASSET_GUIDE.md)
-- [Content Definitions Guide](docs/CONTENT_DEFINITIONS.md)
-- [DevKit CLI Toolchain Guide](docs/DEVKIT_GUIDE.md)
-- [Gameplay API & Mechanics](docs/GAMEPLAY_API.md)
-- [Build & Release Engineering](docs/BUILD_AND_RELEASE.md)
-- [Releases and packages](docs/RELEASE.md)
-- [Testing](docs/TESTING.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Known Issues](docs/KNOWN_ISSUES.md) and [Roadmap](docs/ROADMAP.md)
-- [Implementation Checklist](docs/Checklist.md)
-
----
+Work toward v1.0 follows [docs/ROADMAP.md](docs/ROADMAP.md). The build, CI, runtime fixes, data
+pipeline, campaign flow, AI, bot, all ten levels and packaging (Phases 1–9) are implemented;
+they are verified on macOS and headless in Windows and Linux CI, with the remaining gaps listed
+per phase in the roadmap. Still open: the documentation audit (Phase 10), a play-through by hand
+and on a real Windows PC (Phase 11), and the clean-code review and `v1.0.0` tag (Phase 12). Known defects and
+unverified areas are listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md); changes in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
@@ -250,3 +165,5 @@ use, Neo-Wolf is **source-available**, not "open source" in the OSI sense.
 
 Third-party components keep their own licences, which allow distributing the game this way:
 SDL2 (zlib) and nlohmann/json (MIT); see [docs/THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md).
+Asset origins: [docs/ASSET_CREDITS.md](docs/ASSET_CREDITS.md). Contributing:
+[CONTRIBUTING.md](CONTRIBUTING.md).
