@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -32,6 +33,9 @@ struct RaycasterRenderParams {
     const Texture* wallAltATexture = nullptr;
     const Texture* wallAltBTexture = nullptr;
     const Texture* doorTexture = nullptr;
+    // Closed doors with a lock (Map::GetDoorLock), indexed by KeyColorIndex: red, blue, gold.
+    // A null entry falls back to doorTexture.
+    std::array<const Texture*, kKeyColorCount> lockedDoorTextures{};
     const Texture* exitTexture = nullptr;
     const Texture* floorTexture = nullptr;
     const Texture* ceilingTexture = nullptr;

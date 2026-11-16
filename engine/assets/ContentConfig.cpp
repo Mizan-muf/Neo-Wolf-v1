@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "engine/core/Paths.h"
 
@@ -101,6 +102,9 @@ bool LoadThemeTextureAssignments(
     ok = RequireKey(values, "wall_alt_a", outAssignments.wallAltA, filePath, errors) && ok;
     ok = RequireKey(values, "wall_alt_b", outAssignments.wallAltB, filePath, errors) && ok;
     ok = RequireKey(values, "door", outAssignments.door, filePath, errors) && ok;
+    ok = RequireKey(values, "door_red", outAssignments.doorRed, filePath, errors) && ok;
+    ok = RequireKey(values, "door_blue", outAssignments.doorBlue, filePath, errors) && ok;
+    ok = RequireKey(values, "door_gold", outAssignments.doorGold, filePath, errors) && ok;
     ok = RequireKey(values, "floor", outAssignments.floor, filePath, errors) && ok;
     ok = RequireKey(values, "ceiling", outAssignments.ceiling, filePath, errors) && ok;
     ok = RequireKey(values, "exit", outAssignments.exit, filePath, errors) && ok;
@@ -117,8 +121,17 @@ bool LoadSpriteTextureDefinitions(
     }
 
     bool ok = true;
-    ok = RequireKey(values, "enemy", outDefinitions.enemy, filePath, errors) && ok;
-    ok = RequireKey(values, "pickup", outDefinitions.pickup, filePath, errors) && ok;
-    ok = RequireKey(values, "decoration", outDefinitions.decoration, filePath, errors) && ok;
+    for (int i = 0; i < kSpriteTextureCount; ++i) {
+        ok = RequireKey(values, kSpriteTextureKeys[i], outDefinitions.paths[static_cast<std::size_t>(i)], filePath,
+                        errors) && ok;
+    }
+    // Phase 6 renamed two keys; say so instead of only reporting them as missing.
+    for (const auto& renamed : {std::pair<const char*, const char*>{"enemy", "guard"}, {"pickup", "health"}}) {
+        if (values.count(renamed.first) != 0) {
+            errors.push_back(filePath + ": key '" + renamed.first + "' was renamed to '" + renamed.second +
+                             "' (Phase 6); it is ignored");
+            ok = false;
+        }
+    }
     return ok;
 }

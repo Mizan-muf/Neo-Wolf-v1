@@ -30,12 +30,11 @@ void Engine::Shutdown() {
     wallAltATexture_ = nullptr;
     wallAltBTexture_ = nullptr;
     doorTexture_ = nullptr;
+    lockedDoorTextures_ = {};
     exitTexture_ = nullptr;
     floorTexture_ = nullptr;
     ceilingTexture_ = nullptr;
-    enemySpriteTexture_ = nullptr;
-    pickupSpriteTexture_ = nullptr;
-    decorationSpriteTexture_ = nullptr;
+    spriteTextures_ = {};
     missingTexture_ = {};
     minimapVisible_ = false;
     debugOverlayVisible_ = false;
@@ -52,6 +51,8 @@ void Engine::Shutdown() {
     playerAmmo_ = gameplay_.weapon.initialAmmo;
     playerMaxHealth_ = gameplay_.player.maxHealth;
     playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
+    keys_.Clear();
+    pendingNoise_ = NoiseEvent{};
     hudMessage_.clear();
     hudMessageTimer_ = 0.0f;
     campaign_ = CampaignDefinition{};

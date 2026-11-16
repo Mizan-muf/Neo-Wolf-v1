@@ -46,7 +46,13 @@ VALID_TILE_CHARS = {
 # 'X' (Phase 5) is the exit switch: a solid wall cell, so it also closes the perimeter.
 SOLID_TILES = {"#", "A", "B", "X"}
 WALKABLE_TILES = {".", "D", "T"}
-THEME_KEYS = {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit"}
+THEME_KEYS = {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit", "door_red", "door_blue", "door_gold"}
+# sprites.cfg (engine: kSpriteTextureKeys in engine/assets/ContentConfig.h).
+SPRITE_KEYS = {
+    "guard", "brute", "runner", "guard_dead", "brute_dead", "runner_dead",
+    "health", "ammo", "key_red", "key_blue", "key_gold", "decoration",
+}
+RENAMED_SPRITE_KEYS = {"enemy": "guard", "pickup": "health"}  # Phase 6
 CAMPAIGN_LEVEL_FIELDS = ("id", "name", "map", "entities", "theme")
 VALID_ENTITY_TYPES = {"player", "enemy", "pickup", "door", "trigger", "decoration"}
 
@@ -381,14 +387,16 @@ def validate_cfg(file_path: Path, required_keys: Optional[Set[str]] = None) -> T
     return report, values
 
 
-PICKUP_KINDS = {"health", "ammo"}
+PICKUP_KINDS = {"health", "ammo", "key"}
+KEY_COLORS = ("red", "blue", "gold")
+ENEMY_VARIANTS = ("guard", "brute", "runner")
 MAX_PICKUP_VALUE = 10000  # engine: kMaxGameplayStat
 # Fields each entity type reads; any other field is ignored by the engine (warning there and here).
 ENTITY_FIELDS = {
     "player": {"type", "x", "y", "angle"},
     "enemy": {"type", "x", "y", "variant"},
-    "pickup": {"type", "x", "y", "kind", "value"},
-    "door": {"type", "x", "y", "mapX", "mapY"},
+    "pickup": {"type", "x", "y", "kind", "value", "key"},
+    "door": {"type", "x", "y", "mapX", "mapY", "lock"},
     "trigger": {"type", "x", "y", "mapX", "mapY"},
     "decoration": {"type", "x", "y"},
 }
@@ -436,9 +444,19 @@ def _check_entity(
     if etype == "pickup":
         kind = item.get("kind")
         if kind not in PICKUP_KINDS:
-            report.add_error(f"{label} (pickup): kind is required and must be 'health' or 'ammo', got {kind!r}")
+            report.add_error(f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}")
             ok = False
-        if "value" in item:
+        if kind == "key":
+            if item.get("key") not in KEY_COLORS:
+                report.add_error(
+                    f"{label} (pickup): a key pickup needs 'key': 'red', 'blue' or 'gold', got {item.get('key')!r}"
+                )
+                ok = False
+            if "value" in item:
+                report.add_warning(f"{label} (pickup): field 'value' is not used by a key pickup; ignored")
+        elif "key" in item:
+            report.add_warning(f"{label} (pickup): field 'key' only applies to pickups of kind 'key'; ignored")
+        if "value" in item and kind != "key":
             value = item["value"]
             if not _is_int(value) or not (1 <= value <= MAX_PICKUP_VALUE):
                 report.add_error(
@@ -452,9 +470,13 @@ def _check_entity(
 
     if etype == "enemy" and "variant" in item:
         variant = item["variant"]
-        if not isinstance(variant, str) or not variant:
-            report.add_error(f"{label} (enemy): variant must be a non-empty string, got {variant!r}")
+        if variant not in ENEMY_VARIANTS:
+            report.add_error(f"{label} (enemy): variant must be 'guard', 'brute' or 'runner', got {variant!r}")
             ok = False
+
+    if etype == "door" and "lock" in item and item["lock"] not in KEY_COLORS:
+        report.add_error(f"{label} (door): lock must be 'red', 'blue' or 'gold', got {item['lock']!r}")
+        ok = False
 
     if map_dimensions:
         mw, mh = map_dimensions
@@ -642,11 +664,17 @@ def validate_project(project_root: Path) -> ValidationReport:
         # Sprites cfg
         sprites_cfg = defs_dir / "sprites.cfg"
         if sprites_cfg.exists():
-            cfg_rep, spr_vals = validate_cfg(
-                sprites_cfg, {"enemy", "pickup", "decoration"}
-            )
+            cfg_rep, spr_vals = validate_cfg(sprites_cfg, SPRITE_KEYS)
             report.merge(cfg_rep)
             for key, rel_path in spr_vals.items():
+                if key in RENAMED_SPRITE_KEYS:
+                    report.add_error(
+                        f"sprites.cfg: key '{key}' was renamed to '{RENAMED_SPRITE_KEYS[key]}' (Phase 6); the engine ignores it"
+                    )
+                    continue
+                if key not in SPRITE_KEYS:
+                    report.add_warning(f"sprites.cfg: unknown key '{key}' ignored by the engine")
+                    continue
                 target = project_root / rel_path
                 if not target.exists():
                     report.add_error(
@@ -743,6 +771,91 @@ def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tup
     return total, usable
 
 
+@dataclass
+class LevelProgress:
+    """What analyse_level_progress found for one level."""
+    total_exits: int = 0
+    usable_exits: int = 0
+    locks: Dict[Tuple[int, int], str] = field(default_factory=dict)  # door cell -> lock colour
+    key_order: List[str] = field(default_factory=list)  # colours in the order they become reachable
+    problems: List[str] = field(default_factory=list)  # errors (lock without key, key behind its lock)
+
+
+def analyse_level_progress(rows: List[str], entities: List[dict], spawn_x: float, spawn_y: float) -> LevelProgress:
+    """Key-before-lock reachability (Roadmap Phase 6).
+
+    Breadth-first search from the spawn over walkable cells. Door cells (the map's 'D' tiles and
+    every door entity's mapX/mapY, which the engine turns into doors) are passable, except a
+    locked door, which becomes passable only once a key of its colour lies in a reached cell.
+    The search repeats until no new key is reached; the exit switches usable at the end count.
+    Problems: a lock colour with no key in the level, and a key that cannot be reached before
+    the door it opens (it is behind its own lock, or behind another lock that never opens)."""
+    result = LevelProgress()
+    height = len(rows)
+    width = len(rows[0]) if rows else 0
+    door_cells = set()
+    for e in entities:
+        if e.get("type") == "door" and _is_int(e.get("mapX")) and _is_int(e.get("mapY")):
+            cell = (e["mapX"], e["mapY"])
+            door_cells.add(cell)
+            if e.get("lock") in KEY_COLORS:
+                result.locks[cell] = e["lock"]
+    keys: List[Tuple[Tuple[int, int], str]] = []
+    for e in entities:
+        if e.get("type") == "pickup" and e.get("kind") == "key" and e.get("key") in KEY_COLORS:
+            if _is_number(e.get("x")) and _is_number(e.get("y")):
+                keys.append(((int(e["x"]), int(e["y"])), e["key"]))
+
+    for cell, color in sorted(result.locks.items()):
+        if not any(key_color == color for _, key_color in keys):
+            result.problems.append(f"the door at {cell} needs the {color} key, but the level has no {color} key")
+
+    def tile(x: int, y: int) -> str:
+        return rows[y][x] if 0 <= y < height and 0 <= x < len(rows[y]) else "#"
+
+    held: Set[str] = set()
+
+    def passable(x: int, y: int) -> bool:
+        if (x, y) in result.locks:
+            return result.locks[(x, y)] in held
+        return (x, y) in door_cells or tile(x, y) in WALKABLE_TILES
+
+    start = (int(spawn_x), int(spawn_y))
+    seen: Set[Tuple[int, int]] = set()
+    while True:
+        seen = set()
+        if passable(*start):
+            seen.add(start)
+            stack = [start]
+            while stack:
+                cx, cy = stack.pop()
+                for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    if (nx, ny) not in seen and passable(nx, ny):
+                        seen.add((nx, ny))
+                        stack.append((nx, ny))
+        new_keys = sorted({color for cell, color in keys if cell in seen} - held)
+        if not new_keys:
+            break
+        held.update(new_keys)
+        result.key_order.extend(new_keys)
+
+    for color in sorted({color for color in result.locks.values()} - held):
+        if any(key_color == color for _, key_color in keys):
+            result.problems.append(
+                f"the {color} key cannot be reached from the spawn before the door it opens "
+                f"(it is behind a {color} door, or behind another locked door that cannot be opened)"
+            )
+
+    for y in range(height):
+        for x in range(width):
+            if tile(x, y) != "X":
+                continue
+            result.total_exits += 1
+            if any(n in seen for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))):
+                result.usable_exits += 1
+    return result
+
+
 def validate_campaign(project_root: Path) -> ValidationReport:
     """Checks game/defs/campaign.json like the engine (fields, unique ids, files, themes) and
     that every level has at least one exit switch the player can reach from the spawn."""
@@ -794,20 +907,25 @@ def validate_campaign(project_root: Path) -> ValidationReport:
 
         try:
             entities = json.loads(entities_path.read_text(encoding="utf-8-sig")).get("entities", [])
-            spawn = next(e for e in entities if isinstance(e, dict) and e.get("type") == "player")
+            entities = [e for e in entities if isinstance(e, dict)]
+            spawn = next(e for e in entities if e.get("type") == "player")
             spawn_x, spawn_y = float(spawn["x"]), float(spawn["y"])
         except Exception:
             report.add_error(f"{label}: cannot read the player spawn from {level['entities']}")
             continue
-        total, usable = find_reachable_exits(_load_grid(map_path), spawn_x, spawn_y)
-        if total == 0:
+        progress = analyse_level_progress(_load_grid(map_path), entities, spawn_x, spawn_y)
+        for problem in progress.problems:
+            report.add_error(f"{label}: {problem}")
+        if progress.total_exits == 0:
             report.add_error(f"{label}: the map has no exit switch 'X'; the level cannot be completed")
-        elif usable == 0:
+        elif progress.usable_exits == 0:
             report.add_error(
                 f"{label}: no exit switch 'X' can be reached from the player spawn ({spawn_x}, {spawn_y})"
+                + (" with the keys that can be collected first" if progress.locks else "")
             )
         else:
-            report.add_info(f"{label}: {usable} of {total} exit switch(es) reachable")
+            keys = f"; keys in order: {', '.join(progress.key_order)}" if progress.key_order else ""
+            report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}")
 
     report.add_info(f"Campaign: {len(levels)} level(s)")
     return report

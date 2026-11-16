@@ -67,7 +67,7 @@ class TestDefTools(unittest.TestCase):
         json_to_csv(json_file, csv_file)
 
         lines = csv_file.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(lines[0], "# type,x,y,mapX,mapY,kind,value,angle,variant")
+        self.assertEqual(lines[0], "# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock")
         self.assertEqual(lines[3], "pickup,11.8,6.6,,,ammo,30")
         self.assertEqual(lines[4], "pickup,3.0,3.0,,,health")
         self.assertEqual(load_entity_csv(csv_file), entities)

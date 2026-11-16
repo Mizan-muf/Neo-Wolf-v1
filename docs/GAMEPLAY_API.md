@@ -61,8 +61,12 @@ void UpdateEntityInteractions(
   - Golden sparkle particles are spawned at the pickup's world position.
 
 ### 2. Door Interactions
-- When player presses `Interact` while facing a `Door` within reach (`distance <= 1.5f`):
-  - Door entity state toggles (`doorOpen = !doorOpen`).
+- When player presses `Interact` within 1.05 cells of a `Door` entity's position (and is not
+  using an exit switch with the same press):
+  - A locked door (`doorLock`) opens only if the player holds its key; otherwise the HUD shows
+    `NEED <COLOUR> KEY` (Phase 6).
+  - An open door does not close while the player or a living enemy overlaps its cell (`BLOCKED`).
+  - Otherwise the door entity state toggles (`doorOpen = !doorOpen`).
   - The map grid cell is updated to `TileType::Empty` when open or `TileType::Door` when closed.
   - Audio event `"door_open"` is triggered.
   - Hit spark particles are spawned at the door frame.
@@ -73,9 +77,11 @@ void UpdateEntityInteractions(
 - Pressing Interact while facing an exit switch (`X` tile) within 1.1 cells completes the level
   (`FindExitSwitchInReach`; [GAMEPLAY.md](GAMEPLAY.md#winning-and-losing-a-level)).
 
-### 4. Enemy Detection & Alert
-- Proximity detection monitors distance between player and active `Enemy` entities.
-- When an enemy is within detection range (`distance <= 3.75f`), the audio system plays `"enemy_alert"` (with a cooldown timer to prevent sound flooding).
+### 4. Enemy AI
+- Since Phase 6 enemies notice the player by line of sight within their `alertRadius` or by
+  hearing shots, wait their reaction time, then chase along a grid path and attack in range;
+  the alert sound (`"enemy_alert"`, at most every 2 s) plays when the chase starts. Rules and
+  state diagram: [GAMEPLAY.md](GAMEPLAY.md#enemy-ai).
 
 ---
 
@@ -126,3 +132,14 @@ campaign level number (1-based; 0 for a level loaded by path), `intArg2` = healt
 
 `nw_engine_init` uses the default `EngineOptions`: the main menu, level 1 loaded behind it, and
 no per-user folder (progress is neither loaded nor saved).
+
+## 7. C API notes for Phase 6
+
+- `EnemyState` gained `Search` (5), appended; the earlier values are unchanged.
+- `PickupType` gained `Key` (2), appended: the `PickupCollected` event's `intArg1` is 2 for a
+  key card.
+- A killed enemy stays in the entity list as a corpse: `nw_engine_get_entity` reports it with
+  `outActive` = 0, as before, but its sprite stays visible.
+- An enemy spawned with `nw_engine_spawn_entity` has the guard's built-in default stats (not
+  the values from `gameplay.json`) and no variant other than guard.
+- The `DamageEnemy` command flashes the enemy, and at 0 health leaves a corpse.

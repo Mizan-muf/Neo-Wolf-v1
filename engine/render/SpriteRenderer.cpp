@@ -18,25 +18,21 @@ struct SpriteRenderCandidate {
 };
 
 const Texture* ResolveTexture(const SpriteTextureSet& textures, const SpriteEntity& sprite) {
-    if (sprite.textureId == 0 && textures.enemy != nullptr) {
-        return textures.enemy;
+    if (sprite.textureId >= 0 && sprite.textureId < kSpriteTextureCount) {
+        const Texture* texture = textures.slots[static_cast<std::size_t>(sprite.textureId)];
+        if (texture != nullptr) {
+            return texture;
+        }
     }
-    if (sprite.textureId == 1 && textures.pickup != nullptr) {
-        return textures.pickup;
-    }
-    if (sprite.textureId == 2 && textures.decoration != nullptr) {
-        return textures.decoration;
-    }
+    return textures.missing;
+}
 
-    switch (sprite.type) {
-    case SpriteType::Enemy:
-        return (textures.enemy != nullptr) ? textures.enemy : textures.missing;
-    case SpriteType::Pickup:
-        return (textures.pickup != nullptr) ? textures.pickup : textures.missing;
-    case SpriteType::Decoration:
-    default:
-        return (textures.decoration != nullptr) ? textures.decoration : textures.missing;
+std::uint8_t ShadeChannel(std::uint8_t value, float shade, bool flash) {
+    float result = static_cast<float>(value) * shade;
+    if (flash) {
+        result += (255.0f - result) * kSpriteHitFlashStrength;
     }
+    return static_cast<std::uint8_t>(std::min(255.0f, result));
 }
 
 bool IsSpritePixelTransparent(std::uint32_t argb) {
@@ -155,11 +151,10 @@ void SpriteRenderer::Render(
                 const std::uint8_t r = static_cast<std::uint8_t>((color >> 16) & 0xFFu);
                 const std::uint8_t g = static_cast<std::uint8_t>((color >> 8) & 0xFFu);
                 const std::uint8_t b = static_cast<std::uint8_t>(color & 0xFFu);
-                const std::uint32_t shaded =
-                    (static_cast<std::uint32_t>(a) << 24) |
-                    (static_cast<std::uint32_t>(static_cast<std::uint8_t>(r * shade)) << 16) |
-                    (static_cast<std::uint32_t>(static_cast<std::uint8_t>(g * shade)) << 8) |
-                    static_cast<std::uint32_t>(static_cast<std::uint8_t>(b * shade));
+                const std::uint32_t shaded = (static_cast<std::uint32_t>(a) << 24) |
+                                             (static_cast<std::uint32_t>(ShadeChannel(r, shade, sprite.flash)) << 16) |
+                                             (static_cast<std::uint32_t>(ShadeChannel(g, shade, sprite.flash)) << 8) |
+                                             static_cast<std::uint32_t>(ShadeChannel(b, shade, sprite.flash));
                 framebuffer.PutPixel(stripe, y, shaded);
             }
         }

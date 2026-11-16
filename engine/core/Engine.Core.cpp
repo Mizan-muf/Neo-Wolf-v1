@@ -145,6 +145,8 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     playerAmmo_ = gameplay_.weapon.initialAmmo;
     playerMaxHealth_ = gameplay_.player.maxHealth;
     playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
+    keys_.Clear();  // keys belong to the level (also on restart, which reloads it)
+    pendingNoise_ = NoiseEvent{};
     ambientDustSpawnTimer_ = 0.0f;
     enemyAlertCooldown_ = 0.0f;
     playerAttackCooldown_ = 0.0f;
@@ -192,6 +194,11 @@ void Engine::PlayerAttack() {
     }
 
     audio_.PlayEffect("weapon_fire");
+    pendingNoise_ = NoiseEvent{true, player_.position, gameplay_.weapon.noiseRadius};
+    if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {
+        audio_.PlayEffect("enemy_alert");
+        enemyAlertCooldown_ = kEnemyAlertSoundCooldown;
+    }
 
     // Spawn muzzle flash / spark
     const Vec2 playerDir{std::cos(player_.directionAngleRadians), std::sin(player_.directionAngleRadians)};

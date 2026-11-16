@@ -13,6 +13,7 @@ bool Map::Resize(int width, int height) {
         height_ = 0;
         cells_.clear();
         lightLevels_.clear();
+        doorLocks_.clear();
         return false;
     }
 
@@ -20,6 +21,7 @@ bool Map::Resize(int width, int height) {
     height_ = height;
     cells_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), TileType::Empty);
     lightLevels_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), 1.0f);
+    doorLocks_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), KeyColor::None);
     return true;
 }
 
@@ -76,5 +78,20 @@ bool Map::SetLightLevel(int x, int y, float lightLevel) {
 
     lightLevels_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] =
         std::clamp(lightLevel, 0.0f, 1.0f);
+    return true;
+}
+
+KeyColor Map::GetDoorLock(int x, int y) const {
+    if (!IsInsideMap(x, y) || doorLocks_.empty()) {
+        return KeyColor::None;
+    }
+    return doorLocks_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)];
+}
+
+bool Map::SetDoorLock(int x, int y, KeyColor lock) {
+    if (!IsInsideMap(x, y) || doorLocks_.empty()) {
+        return false;
+    }
+    doorLocks_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] = lock;
     return true;
 }

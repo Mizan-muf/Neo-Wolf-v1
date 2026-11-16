@@ -19,7 +19,7 @@ How to play: [docs/GAMEPLAY.md](docs/GAMEPLAY.md) (campaign, exit switches, save
 - **Particle System**: Real-time particle simulation for wall sparks, pickup sparkles, and floating ambient dust motes.
 - **Sound System**: SDL2 16-bit PCM audio mixer with configurable master volume and event-driven SFX triggers (doors, pickups, weapon fire, enemy alerts).
 - **Campaign & Progression**: A level list (`game/defs/campaign.json`, 3 levels for now: level 1 plus two short placeholders until Roadmap Phase 8), a main menu with New Game / Continue / Level Select / Quit, exit switches that complete a level, health and ammo carried between levels, restart from the level-entry snapshot on death, saved progress, and per-level texture themes. The state machine (`Menu`, `Gameplay`, `Paused`, `GameOver`, `LevelComplete`, `CampaignComplete`) is SDL-free and unit-tested ([docs/GAMEPLAY.md](docs/GAMEPLAY.md)).
-- **Gameplay Combat & AI**: Hitscan weapon attacks, ammo management, health pickups, and enemy AI state machine (Idle -> Alert -> Chase -> Attack -> Dead).
+- **Gameplay Combat & AI**: Hitscan weapon attacks, ammo management, health and ammo pickups, three enemy types (guard, brute, runner) with line of sight, hearing and grid path finding (Idle -> Alert -> Chase -> Attack, Search, Dead), and red/blue/gold key cards with locked doors ([docs/GAMEPLAY.md](docs/GAMEPLAY.md)).
 - **C API Boundary & Interop Bridge**: Plain C ABI interface and bidirectional Command Bridge / Event Queue for decoupling gameplay scripting.
 - **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite/audio configuration files (`.cfg`), gameplay values (`gameplay.json`), and entity placements (`<level>.entities.json`, with an optional `.csv` export). Editing them changes the game without recompiling; an invalid `gameplay.json`, map or entity file stops the game with a message that names the file, entry and field. See [docs/CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md).
 - **DevKit CLI Toolchain**: Complete developer toolkit (`tools/devkit/`) for map inspection, reachability analysis, asset verification, procedural generation, CSV/JSON sync, system doctor diagnostics, and release packaging.
@@ -105,7 +105,7 @@ The DevKit CLI provides developer tools for map inspection, asset validation, le
 ./tools/devkit/neo_devkit inspect-map game/maps/level01.map --entities game/defs/level01.entities.csv
 
 # Inspect texture or audio asset metadata
-./tools/devkit/neo_devkit inspect-asset game/assets/sprite_enemy.ppm
+./tools/devkit/neo_devkit inspect-asset game/assets/sprites/guard.ppm
 ./tools/devkit/neo_devkit inspect-asset game/assets/sfx_door_open.wav
 
 # Create a new starter map template (with an exit switch X in the east wall)

@@ -16,7 +16,9 @@ enum class PreviewScreen : std::uint8_t {
     Pause,
     LevelComplete,
     GameOver,
-    CampaignComplete
+    CampaignComplete,
+    Enemies,  // Phase 6: the three enemy types, a corpse and a locked door in 3D
+    Items     // Phase 6: health, ammo and the three key cards; key icons in the HUD; minimap
 };
 
 inline const char* PreviewScreenName(PreviewScreen screen) {
@@ -39,6 +41,10 @@ inline const char* PreviewScreenName(PreviewScreen screen) {
         return "gameover";
     case PreviewScreen::CampaignComplete:
         return "campaigncomplete";
+    case PreviewScreen::Enemies:
+        return "enemies";
+    case PreviewScreen::Items:
+        return "items";
     }
     return "none";
 }
@@ -46,7 +52,8 @@ inline const char* PreviewScreenName(PreviewScreen screen) {
 // Every preview id, for help texts and tests.
 inline constexpr PreviewScreen kPreviewScreens[] = {
     PreviewScreen::Menu,  PreviewScreen::LevelSelect,   PreviewScreen::Hud,      PreviewScreen::Minimap,
-    PreviewScreen::Pause, PreviewScreen::LevelComplete, PreviewScreen::GameOver, PreviewScreen::CampaignComplete};
+    PreviewScreen::Pause, PreviewScreen::LevelComplete, PreviewScreen::GameOver, PreviewScreen::CampaignComplete,
+    PreviewScreen::Enemies, PreviewScreen::Items};
 
 inline bool ParsePreviewScreen(const std::string& name, PreviewScreen& out) {
     for (const PreviewScreen screen : kPreviewScreens) {

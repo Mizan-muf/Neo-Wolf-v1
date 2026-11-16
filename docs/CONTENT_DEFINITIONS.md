@@ -13,14 +13,15 @@ game/
 |   `-- level01.map ... level03.map  level grids (format: MAP_FORMAT.md)
 |-- defs/
 |   |-- campaign.json             the level list and order                     (required)
-|   |-- gameplay.json             player, weapon, enemy and pickup values      (required)
+|   |-- gameplay.json             player, weapon, enemy type and pickup values (required)
 |   |-- level01.entities.json     level 1 entity placements, canonical         (required by the campaign)
 |   |-- level01.entities.csv      the same placements as a CSV export          (optional)
 |   |-- level02/03.entities.*     the same for levels 2 and 3
 |   |-- themes/<id>.cfg           texture themes: bunker, stone, tech, classic
-|   |-- sprites.cfg               billboard sprite textures
+|   |-- sprites.cfg               billboard sprite textures (enemies, corpses, pickups, keys)
 |   `-- audio.cfg                 sound effects and master volume
 `-- assets/                       .ppm textures and .wav sounds (ASSET_GUIDE.md)
+    |-- sprites/                  generated sprites (tools/devkit/gen_sprites.py)
     `-- themes/<id>/              generated theme textures (tools/devkit/gen_textures.py)
 ```
 
@@ -53,8 +54,12 @@ sections (`damage`, `moveSpeed`, `health`) gives two independent values.
 ```json
 {
   "player":  { "initialHealth": 100, "maxHealth": 100, "moveSpeed": 3.0, "turnSpeed": 1.8, "collisionRadius": 0.22 },
-  "weapon":  { "damage": 35, "fireRate": 0.25, "range": 12.0, "initialAmmo": 24, "maxAmmo": 99 },
-  "enemy":   { "health": 50, "damage": 12, "moveSpeed": 1.6, "alertRadius": 6.5, "attackRadius": 1.1, "attackRate": 1.0 },
+  "weapon":  { "damage": 35, "fireRate": 0.25, "range": 12.0, "initialAmmo": 24, "maxAmmo": 99, "noiseRadius": 10.0 },
+  "enemies": {
+    "guard":  { "health": 50,  "damage": 12, "moveSpeed": 1.6, "alertRadius": 6.5, "attackRadius": 1.1, "attackRate": 1.0, "reactionTime": 0.5, "score": 100 },
+    "brute":  { "health": 140, "damage": 25, "moveSpeed": 1.0, "alertRadius": 5.5, "attackRadius": 1.3, "attackRate": 1.6, "reactionTime": 0.8, "score": 300 },
+    "runner": { "health": 25,  "damage": 6,  "moveSpeed": 2.8, "alertRadius": 8.0, "attackRadius": 1.0, "attackRate": 0.6, "reactionTime": 0.2, "score": 150 }
+  },
   "pickups": { "health": { "value": 25 }, "ammo": { "value": 12 } }
 }
 ```
@@ -81,12 +86,15 @@ cells (one cell = one map character), turn speed in radians per second, times in
 | `weapon.range` | number | > 0, ≤ 1000 (cells) | 12.0 | Maximum hitscan distance; a wall stops the shot earlier |
 | `weapon.initialAmmo` | integer | 0–10000, ≤ `weapon.maxAmmo` | 24 | Ammo for New Game, Continue, Level Select and `--level` (later levels inherit the previous level's ammo), and for levels loaded by path |
 | `weapon.maxAmmo` | integer | 0–10000 | 99 | Cap for ammo pickups, the command bridge's `AddAmmo` and the ammo carried to the next level |
-| `enemy.health` | integer | 1–10000 | 50 | Health (and maximum health) of every enemy (`BuildLevelFromPlacements`) |
-| `enemy.damage` | integer | 0–10000 | 12 | Health removed from the player per enemy attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
-| `enemy.moveSpeed` | number | 0–20 (cells/s) | 1.6 | Chase speed (0 = the enemy never moves) |
-| `enemy.alertRadius` | number | 0–1000 (cells) | 6.5 | An idle enemy starts chasing when the player is this close (there is no line-of-sight check yet: known issue C10) |
-| `enemy.attackRadius` | number | 0–1000 (cells) | 1.1 | The enemy attacks when the player is this close |
-| `enemy.attackRate` | number | > 0, ≤ 60 (s) | 1.0 | **Seconds between two attacks** of one enemy |
+| `weapon.noiseRadius` | number | 0–1000 (cells) | 10.0 | Enemies hear a shot when the path from the shooter to them through open cells is at most this long; closed doors block sound ([GAMEPLAY.md](GAMEPLAY.md#enemy-ai)) |
+| `enemies.<type>.health` | integer | 1–10000 | guard 50, brute 140, runner 25 | Health (and maximum health) of every enemy of that type (`ApplyEnemyArchetype`) |
+| `enemies.<type>.damage` | integer | 0–10000 | 12, 25, 6 | Health removed from the player per attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
+| `enemies.<type>.moveSpeed` | number | 0–20 (cells/s) | 1.6, 1.0, 2.8 | Chase speed (0 = the enemy never moves) |
+| `enemies.<type>.alertRadius` | number | 0–1000 (cells) | 6.5, 5.5, 8.0 | An idle enemy notices the player within this distance **with line of sight**; once alerted it sees up to twice as far |
+| `enemies.<type>.attackRadius` | number | 0–1000 (cells) | 1.1, 1.3, 1.0 | The enemy attacks when the player is this close and in sight |
+| `enemies.<type>.attackRate` | number | > 0, ≤ 60 (s) | 1.0, 1.6, 0.6 | **Seconds between two attacks** of one enemy |
+| `enemies.<type>.reactionTime` | number | 0–60 (s) | 0.5, 0.8, 0.2 | Time between noticing the player (Alert) and chasing; the alert sound plays at the end |
+| `enemies.<type>.score` | integer | 0–10000 | 100, 300, 150 | Points for a kill; the level's total is logged when the exit switch is used (not shown on screen yet) |
 | `pickups.health.value` | integer | 1–10000 | 25 | Health added by a `health` pickup that has no `value` of its own; shown in "HEALTH RESTORED (+N HP)" |
 | `pickups.ammo.value` | integer | 1–10000 | 12 | Ammo added by an `ammo` pickup that has no `value` of its own; shown in "AMMO REPLENISHED (+N AMMO)" |
 
@@ -109,7 +117,8 @@ window opens, when:
 - the top level or a section is not an object;
 - a value has the wrong type or is out of range
   (`weapon.damage must be an integer from 1 to 10000, got "35"`);
-- `player.initialHealth` > `player.maxHealth`, or `weapon.initialAmmo` > `weapon.maxAmmo`.
+- `player.initialHealth` > `player.maxHealth`, or `weapon.initialAmmo` > `weapon.maxAmmo`;
+- both `enemies` and the old `enemy` section are present.
 
 All problems are collected, not only the first. Each message starts with the file path. The
 log lists all of them; the error box shows the first three.
@@ -118,12 +127,18 @@ log lists all of them; the error box shows the first three.
 ignored, and the game starts. Check the log after editing: for a misspelt key the default is
 used.
 
-### Planned (Roadmap Phase 6)
+### Enemy types (`enemies`) and the old `enemy` section
 
-Named enemy archetypes will be added as `"enemies": { "guard": { ... }, "brute": { ... } }`,
-each with the same keys as `enemy`, selected by an enemy placement's `variant`. The loader is
-structured for this (one reader per enemy section). Today an `enemies` key is reported as
-unknown.
+`enemies` has one section per enemy type: `guard`, `brute`, `runner`
+([GAMEPLAY.md](GAMEPLAY.md#enemy-types)); each takes the keys above, and every key and section
+is optional (missing ones keep the defaults). Another name under `enemies` is an unknown key
+(warning). An enemy placement chooses its type with `"variant"`; without one it is a guard.
+
+**Backward compatibility.** Before Phase 6 the file had a single `enemy` section. It is still
+read, as `enemies.guard`, with a warning asking to move it (`section "enemy" is deprecated: it
+is read as "enemies.guard"`). Having both `enemy` and `enemies` is an error. The shipped file
+was migrated to `enemies`. The C++ field `GameplayDefinitions::enemy` became
+`GameplayDefinitions::enemies` (with `guard`, `brute`, `runner`).
 
 ---
 
@@ -138,13 +153,21 @@ walls; this file defines everything else.
   "level": "level01",
   "entities": [
     { "type": "player", "x": 2.5, "y": 2.5, "angle": 0 },
-    { "type": "enemy", "x": 6.5, "y": 2.8 },
+    { "type": "enemy", "x": 6.5, "y": 2.8, "variant": "guard" },
     { "type": "pickup", "x": 11.8, "y": 6.6, "kind": "health" },
     { "type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7 },
     { "type": "trigger", "x": 13.5, "y": 8.5, "mapX": 13, "mapY": 8 },
-    { "type": "decoration", "x": 4.2, "y": 8.8 }
+    { "type": "decoration", "x": 4.2, "y": 8.8 },
+    { "type": "pickup", "x": 2.5, "y": 6.5, "kind": "ammo" }
   ]
 }
+```
+
+A key card and the door it opens (level 2):
+
+```json
+    { "type": "pickup", "x": 7.5, "y": 5.3, "kind": "key", "key": "blue" },
+    { "type": "door", "x": 9.5, "y": 3.5, "mapX": 9, "mapY": 3, "lock": "blue" }
 ```
 
 ### Top level
@@ -167,9 +190,11 @@ centre of cell `(cx, cy)` is `(cx + 0.5, cy + 0.5)`, x grows to the right and y 
 | `x`, `y` | number | all | **yes** | Position. Must lie inside the map (checked when the level is built). |
 | `mapX`, `mapY` | integer ≥ 0 | `door`, `trigger` | **yes**, for those two | The map cell the entity controls; must lie inside the map |
 | `angle` | number (degrees) | `player` | no (default 0) | Initial view direction: 0 = +x (right on the map), 90 = +y (down on the map) |
-| `kind` | `"health"` or `"ammo"` | `pickup` | **yes**, for pickups | What the pickup restores |
-| `value` | integer 1–10000 | `pickup` | no | Amount restored; default `pickups.<kind>.value` from `gameplay.json` |
-| `variant` | non-empty string | `enemy` | no | Enemy archetype name. **Reserved for Phase 6**: accepted and stored, but today every enemy uses the `enemy` section of `gameplay.json`. |
+| `kind` | `"health"`, `"ammo"` or `"key"` | `pickup` | **yes**, for pickups | What the pickup gives |
+| `value` | integer 1–10000 | `pickup` (health, ammo) | no | Amount restored; default `pickups.<kind>.value` from `gameplay.json`. Ignored (warning) on a key |
+| `key` | `"red"`, `"blue"` or `"gold"` | `pickup` of kind `key` | **yes**, for key pickups | Which key card it is |
+| `lock` | `"red"`, `"blue"` or `"gold"` | `door` | no (default: unlocked) | The key needed to open the door ([GAMEPLAY.md](GAMEPLAY.md#keys-and-locked-doors)) |
+| `variant` | `"guard"`, `"brute"` or `"runner"` | `enemy` | no (default `"guard"`) | The enemy type: its stats come from `gameplay.json` `enemies.<variant>`. Any other value is an **error** (the level does not load) |
 
 A field that does not apply to the entity's type (e.g. `kind` on an enemy), and an unknown
 field, are warnings: logged and ignored.
@@ -182,9 +207,9 @@ level:
 | Type | Becomes | Behaviour |
 |---|---|---|
 | `player` | The camera and an invisible `Player` entity | Exactly **one** per level (none or several is an error). Speeds and radius from `gameplay.json`. |
-| `enemy` | `Enemy` entity + enemy sprite | Stats from the `enemy` section of `gameplay.json`. Chases and attacks the player; can be shot. |
-| `pickup` | `Pickup` entity + pickup sprite | Collected by walking within 0.6 cells of `x`/`y`. Health and ammo pickups share one sprite until Phase 6. |
-| `door` | `Door` entity; the map cell `(mapX, mapY)` becomes a closed door | The interact key (`E`) within 1.05 cells of `x`/`y` opens or closes it instantly. It does not close while the player overlaps the cell. |
+| `enemy` | `Enemy` entity + the sprite of its type | Stats from `gameplay.json` `enemies.<variant>`. Sees, hears, chases and attacks the player ([GAMEPLAY.md](GAMEPLAY.md#enemy-ai)); can be shot; when killed it stays as a corpse sprite that blocks nothing. |
+| `pickup` | `Pickup` entity + a sprite per kind (health, ammo, each key colour) | Collected by walking within 0.6 cells of `x`/`y`. A key adds its colour to the keys held in this level. |
+| `door` | `Door` entity; the map cell `(mapX, mapY)` becomes a closed door, drawn with the theme's locked-door texture when it has a `lock` | The interact key (`E`) within 1.05 cells of `x`/`y` opens or closes it instantly; a locked door opens only with its key. It does not close while the player or a living enemy overlaps the cell. |
 | `trigger` | `Trigger` entity; the cell `(mapX, mapY)` becomes a `T` tile | Walking within 0.8 cells of `x`/`y` shows `CHECKPOINT REACHED` and sends the `TriggerActivated` interop event, once. It does **not** end the level (since Phase 5); the exit switch, an `X` map tile, does ([MAP_FORMAT.md](MAP_FORMAT.md)). |
 | `decoration` | `Decoration` entity + decoration sprite | Nothing: not solid, not collectable, no interaction. Its sprite stays visible. |
 
@@ -198,8 +223,9 @@ The level load **fails**, and the current level (if any) stays as it was, when:
 - the file is missing or unreadable, or its extension is neither `.json` nor `.csv`;
 - the JSON is invalid, a key repeats in one object, or `entities` is missing or not an array;
 - an entity is not an object, has no or an unknown `type`, lacks `x`/`y` or has a non-number
-  there, is a pickup without a valid `kind`, is a door/trigger without `mapX`/`mapY`, or has a
-  value of the wrong type or range;
+  there, is a pickup without a valid `kind` (or a key pickup without a valid `key`), is a
+  door/trigger without `mapX`/`mapY`, has a `lock` or `variant` that is not one of the listed
+  values, or has a value of the wrong type or range;
 - there is not exactly one player, or a position or a door/trigger cell lies outside the map.
 
 If the first level fails to load, startup fails (error message, exit code 1). There is **no
@@ -211,7 +237,12 @@ Every message names the file, the entity and the field, for example:
 .../level01.entities.json: entities[2] (pickup): field "kind" is required ("health" or "ammo")
 .../level01.entities.json: entities[4] (door): map cell (16, 7) is outside the 16x12 map
 .../level01.entities.csv:5 (entity 3) (door): fields "mapX" and "mapY" are required (...)
+.../level03.entities.json: entities[7] (enemy): field "variant" must be "guard", "brute" or "runner", got "ninja"
+.../level02.entities.json: entities[6] (pickup): field "key" must be "red", "blue" or "gold", got "green"
 ```
+
+The engine does not check that a locked door's key exists in the level or can be reached;
+`validate --strict` does (below).
 
 ### The CSV export: `<level>.entities.csv`
 
@@ -220,17 +251,20 @@ the entity path ends in `.csv` (e.g. through the C API `nw_engine_load_level`), 
 rules and messages as for JSON. The game itself always loads the `.json` file.
 
 ```text
-# type,x,y,mapX,mapY,kind,value,angle,variant
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
 player,2.5,2.5,,,,,0
-enemy,6.5,2.8
+enemy,6.5,2.8,,,,,,guard
 pickup,11.8,6.6,,,health
 door,8.5,7.5,8,7
+pickup,7.5,5.3,,,key,,,,blue
+door,9.5,3.5,9,3,,,,,,blue
 ```
 
-- Columns, in order: `type,x,y,mapX,mapY,kind,value,angle,variant`. At least `type,x,y`;
-  trailing columns may be left out; an empty column means "not given".
+- Columns, in order: `type,x,y,mapX,mapY,kind,value,angle,variant,key,lock` (`key` and `lock`
+  were appended in Phase 6). At least `type,x,y`; trailing columns may be left out; an empty
+  column means "not given".
 - Lines starting with `#` (after leading spaces) and blank lines are skipped. Columns after
-  the ninth are ignored with a warning.
+  the eleventh are ignored with a warning.
 - There is no quoting: values cannot contain commas.
 
 Generate the CSV from the JSON with the DevKit. JSON → CSV is the default direction, and it
@@ -242,7 +276,11 @@ python3 tools/devkit/devkit.py sync-entities --from-csv  # the reverse; overwrit
 ```
 
 `validate --strict` checks both files with the engine's rules (types, required `kind`,
-`mapX`/`mapY` for doors and triggers, value ranges, bounds, exactly one player). Test
+`mapX`/`mapY` for doors and triggers, value ranges, bounds, exactly one player, `variant`,
+`key` and `lock` values). For every campaign level it also checks that each lock colour has a
+key of that colour in the level and that the keys can be collected before the doors they open:
+a breadth-first search from the spawn treats a locked door as passable only once its key has
+been reached, and the exit switch must be reachable at the end. Test
 `entity_placements_json_csv` checks that the shipped JSON and CSV are equivalent.
 
 ---
@@ -260,18 +298,41 @@ the game still starts.
 
 ### Theme files (`themes/<id>.cfg`)
 
-See [Themes](#themes) below. Seven required keys: `wall` (`#` tiles), `wall_alt_a` (`A`),
-`wall_alt_b` (`B`), `door` (closed doors), `floor`, `ceiling` and `exit` (`X` exit switches).
+See [Themes](#themes) below. Ten required keys: `wall` (`#` tiles), `wall_alt_a` (`A`),
+`wall_alt_b` (`B`), `door` (closed doors), `door_red`, `door_blue`, `door_gold` (closed doors
+locked with that key, Phase 6), `floor`, `ceiling` and `exit` (`X` exit switches).
 
 ### `sprites.cfg`
 
-Three required keys: `enemy`, `pickup` (health and ammo), `decoration`.
+The mapping from the engine's sprite slots to files. Twelve required keys (Phase 6):
+
+| Key | Drawn for | File (generated by `tools/devkit/gen_sprites.py`) |
+|---|---|---|
+| `guard`, `brute`, `runner` | living enemies of that type | `game/assets/sprites/<key>.ppm` |
+| `guard_dead`, `brute_dead`, `runner_dead` | their corpses | `game/assets/sprites/<key>.ppm` |
+| `health`, `ammo` | pickups | `game/assets/sprites/<key>.ppm` |
+| `key_red`, `key_blue`, `key_gold` | key cards | `game/assets/sprites/<key>.ppm` |
+| `decoration` | decorations | `game/assets/sprite_decor.ppm` (hand-made, pre-Phase 6) |
 
 ```ini
-enemy=game/assets/sprite_enemy.ppm
-pickup=game/assets/sprite_pickup.ppm
+guard=game/assets/sprites/guard.ppm
+brute=game/assets/sprites/brute.ppm
+runner=game/assets/sprites/runner.ppm
+guard_dead=game/assets/sprites/guard_dead.ppm
+brute_dead=game/assets/sprites/brute_dead.ppm
+runner_dead=game/assets/sprites/runner_dead.ppm
+health=game/assets/sprites/health.ppm
+ammo=game/assets/sprites/ammo.ppm
+key_red=game/assets/sprites/key_red.ppm
+key_blue=game/assets/sprites/key_blue.ppm
+key_gold=game/assets/sprites/key_gold.ppm
 decoration=game/assets/sprite_decor.ppm
 ```
+
+A missing key or file draws that sprite as the checkerboard (warning). The pre-Phase 6 keys
+`enemy` and `pickup` were renamed to `guard` and `health`; the engine ignores them with a
+warning that names the new key, and `validate` reports them as errors. Transparency and sizes:
+[ASSET_GUIDE.md](ASSET_GUIDE.md#5-sprites).
 
 ### `audio.cfg`
 
@@ -299,6 +360,19 @@ used it (`validate` checked that its paths existed, `doctor` listed it as a requ
 Those two checks were removed, and `doctor` now requires `gameplay.json` and
 `level01.entities.json` instead. The level list returned in Phase 5 as `game/defs/campaign.json`
 (below), which the engine reads.
+
+## Changed in Phase 6
+
+- `gameplay.json`: the `enemy` section became `enemies.guard` (the old section is still read,
+  with a warning), with new `enemies.brute` and `enemies.runner`, new keys `reactionTime` and
+  `score`, and `weapon.noiseRadius`.
+- Entity placements: `variant` is now checked (`guard`, `brute`, `runner`); new pickup kind
+  `key` with the field `key`; new door field `lock`. The CSV export gained the columns `key`
+  and `lock`.
+- `sprites.cfg`: twelve keys instead of three (`enemy` → `guard`, `pickup` → `health`).
+  `game/assets/sprite_enemy.ppm` and `sprite_pickup.ppm` were deleted; their replacements are
+  generated into `game/assets/sprites/`.
+- Theme files: three new required keys `door_red`, `door_blue`, `door_gold`.
 
 ## Changed in Phase 5
 
@@ -339,8 +413,9 @@ three. Test `campaign_manifest_validation`; the DevKit's `validate` checks it to
 Errors: the file cannot be read; invalid JSON or a repeated key; a missing or mistyped field;
 an empty `levels`; a repeated or malformed id; a missing map, entity or theme file. Unknown keys
 are warnings. A title or name longer than 32 characters is a warning and is shortened on
-screen. The shipped campaign has 3 levels; `level02` and `level03` are **placeholders** that
-only exercise progression and are replaced in Roadmap Phase 8.
+screen. The shipped campaign has 3 levels; `level02` and `level03` are **placeholders** (level 2
+adds a blue key and a blue locked door in front of the exit, level 3 a brute and a runner) and
+are replaced in Roadmap Phase 8.
 
 Every campaign level must contain at least one exit switch (`X`) that the player can reach
 (DevKit rule, [MAP_FORMAT.md](MAP_FORMAT.md#devkit-rules-stricter-than-the-engine)).
@@ -348,13 +423,17 @@ Every campaign level must contain at least one exit switch (`X`) that the player
 ## Themes
 
 A theme gives a level its look: `game/defs/themes/<id>.cfg`, in the key/value format above,
-with the seven keys `wall`, `wall_alt_a`, `wall_alt_b`, `door`, `floor`, `ceiling`, `exit`.
+with the ten keys `wall`, `wall_alt_a`, `wall_alt_b`, `door`, `door_red`, `door_blue`,
+`door_gold`, `floor`, `ceiling`, `exit`.
 
 ```ini
 wall=game/assets/themes/bunker/wall.ppm
 wall_alt_a=game/assets/themes/bunker/wall_alt_a.ppm
 wall_alt_b=game/assets/themes/bunker/wall_alt_b.ppm
 door=game/assets/themes/bunker/door.ppm
+door_red=game/assets/themes/bunker/door_red.ppm
+door_blue=game/assets/themes/bunker/door_blue.ppm
+door_gold=game/assets/themes/bunker/door_gold.ppm
 floor=game/assets/themes/bunker/floor.ppm
 ceiling=game/assets/themes/bunker/ceiling.ppm
 exit=game/assets/themes/bunker/exit.ppm
@@ -365,10 +444,13 @@ exit=game/assets/themes/bunker/exit.ppm
 | `bunker` | concrete, olive steel, hazard stripes, blast door (generated, 32×32) | level01 |
 | `stone` | stone bricks, moss, granite, wooden door (generated, 32×32) | level02 |
 | `tech` | blue panels, circuits, server racks, sliding door (generated, 32×32) | level03 |
-| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch | no level yet |
+| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch and locked doors | no level yet |
+
+Each full theme's locked doors are its own door with a band in the lock's colour (see
+[ASSET_GUIDE.md](ASSET_GUIDE.md#4-texture-themes)).
 
 When a level with a different theme loads, `Engine::ApplyTheme` reads the theme file, loads
-all seven textures first and then replaces them in the asset manager; a texture that fails
+all ten textures first and then replaces them in the asset manager; a texture that fails
 becomes the checkerboard (warning in the log). The engine's cached texture pointers stay valid
 (the asset manager keeps each texture in a stable map node) and are refreshed after every swap.
 Sprites (`sprites.cfg`) are shared by all themes. Test `theme_loading_and_swap`.

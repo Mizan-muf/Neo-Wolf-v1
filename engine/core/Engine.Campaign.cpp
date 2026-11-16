@@ -11,6 +11,7 @@
 #include "engine/core/Log.h"
 #include "engine/core/Paths.h"
 #include "engine/core/Progress.h"
+#include "engine/world/LevelBuilder.h"
 
 namespace {
 constexpr float kLevelBannerSeconds = 3.0f;
@@ -23,6 +24,8 @@ struct ThemeSlot {
 constexpr ThemeSlot kThemeSlots[] = {
     {"wall", &ThemeTextureAssignments::wall},       {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
     {"wall_alt_b", &ThemeTextureAssignments::wallAltB}, {"door", &ThemeTextureAssignments::door},
+    {"door_red", &ThemeTextureAssignments::doorRed}, {"door_blue", &ThemeTextureAssignments::doorBlue},
+    {"door_gold", &ThemeTextureAssignments::doorGold},
     {"floor", &ThemeTextureAssignments::floor},     {"ceiling", &ThemeTextureAssignments::ceiling},
     {"exit", &ThemeTextureAssignments::exit},
 };
@@ -116,12 +119,14 @@ void Engine::RefreshTexturePointers() {
     wallAltATexture_ = assets_.GetTexture("wall_alt_a");
     wallAltBTexture_ = assets_.GetTexture("wall_alt_b");
     doorTexture_ = assets_.GetTexture("door");
+    lockedDoorTextures_ = {assets_.GetTexture("door_red"), assets_.GetTexture("door_blue"),
+                           assets_.GetTexture("door_gold")};
     floorTexture_ = assets_.GetTexture("floor");
     ceilingTexture_ = assets_.GetTexture("ceiling");
     exitTexture_ = assets_.GetTexture("exit");
-    enemySpriteTexture_ = assets_.GetTexture("enemy");
-    pickupSpriteTexture_ = assets_.GetTexture("pickup");
-    decorationSpriteTexture_ = assets_.GetTexture("decoration");
+    for (int i = 0; i < kSpriteTextureCount; ++i) {
+        spriteTextures_[static_cast<std::size_t>(i)] = assets_.GetTexture(kSpriteTextureKeys[i]);
+    }
 }
 
 bool Engine::ApplyTheme(const std::string& themeId) {
@@ -203,6 +208,7 @@ LevelResults Engine::CurrentLevelResults() const {
     for (const Entity& entity : entityManager_.Entities()) {
         if (entity.type == EntityType::Enemy && entity.enemyState == EnemyState::Dead) {
             ++results.kills;
+            results.score += entity.score;
         } else if (entity.type == EntityType::Pickup && entity.collected) {
             ++results.pickups;
         }
@@ -240,10 +246,11 @@ bool Engine::SetupPreview(PreviewScreen screen) {
     flow_.SetProgress(true, 2);
     simulationFrozen_ = true;
 
-    const auto startLevelOne = [this]() {
-        ExecuteFlowRequests({flow_.StartLevelDirect(0)});
+    const auto startLevel = [this](int index) {
+        ExecuteFlowRequests({flow_.StartLevelDirect(index)});
         return flow_.State() == GameState::Gameplay;
     };
+    const auto startLevelOne = [&startLevel]() { return startLevel(0); };
 
     switch (screen) {
     case PreviewScreen::None:
@@ -298,7 +305,80 @@ bool Engine::SetupPreview(PreviewScreen screen) {
     case PreviewScreen::CampaignComplete:
         flow_.ForceState(GameState::CampaignComplete);
         break;
+    case PreviewScreen::Enemies:
+    case PreviewScreen::Items:
+        // Level 1's open hall: the preview locks its door and replaces the enemies and pickups
+        // with a fixed line-up in front of the player.
+        if (!startLevelOne()) {
+            return false;
+        }
+        SetupShowcase(screen == PreviewScreen::Enemies);
+        break;
     }
     PublishStateChange();
     return true;
+}
+
+void Engine::SetupShowcase(bool enemies) {
+    std::vector<int> removed;
+    Entity* door = nullptr;
+    for (Entity& entity : entityManager_.Entities()) {
+        if (entity.type == EntityType::Enemy || entity.type == EntityType::Pickup) {
+            removed.push_back(entity.id);
+        } else if (entity.type == EntityType::Door && door == nullptr) {
+            door = &entity;
+        }
+    }
+    const KeyColor lock = enemies ? KeyColor::Blue : KeyColor::Red;
+    if (door != nullptr) {
+        door->doorLock = lock;
+        map_.SetDoorLock(door->mapX, door->mapY, lock);
+    }
+    for (const int id : removed) {
+        entityManager_.DestroyEntity(id);
+    }
+    levelBannerTimer_ = 0.0f;
+    playerHealth_ = 82;
+    playerAmmo_ = 31;
+    // Looking east along the hall at the (locked) door.
+    player_.position = {2.5f, 7.5f};
+    player_.directionAngleRadians = 0.0f;
+
+    if (enemies) {
+        // One enemy of each type and a guard's corpse on the floor.
+        const struct {
+            EnemyVariant variant;
+            Vec2 position;
+        } lineUp[] = {{EnemyVariant::Guard, {6.0f, 6.0f}}, {EnemyVariant::Runner, {5.5f, 6.95f}},
+                      {EnemyVariant::Brute, {5.8f, 8.9f}}, {EnemyVariant::Guard, {4.6f, 8.0f}}};
+        for (const auto& placement : lineUp) {
+            Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, placement.position);
+            ApplyEnemyArchetype(enemy, placement.variant, gameplay_.enemies);
+        }
+        Entity& corpse = entityManager_.Entities().back();
+        corpse.enemyState = EnemyState::Dead;
+        corpse.active = false;
+        ShowMessage("NEED BLUE KEY", 60.0f);
+    } else {
+        // Health, ammo and the three key cards; every key held; minimap on.
+        const struct {
+            PickupType kind;
+            KeyColor key;
+            Vec2 position;
+        } items[] = {{PickupType::Health, KeyColor::None, {7.0f, 5.6f}}, {PickupType::Key, KeyColor::Red, {7.0f, 6.4f}},
+                     {PickupType::Key, KeyColor::Blue, {7.0f, 7.5f}},     {PickupType::Key, KeyColor::Gold, {7.0f, 8.6f}},
+                     {PickupType::Ammo, KeyColor::None, {7.0f, 9.4f}}};
+        for (const auto& item : items) {
+            Entity& pickup = entityManager_.CreateEntity(EntityType::Pickup, item.position);
+            pickup.pickupType = item.kind;
+            pickup.keyColor = item.key;
+            pickup.pickupValue = item.kind == PickupType::Ammo ? gameplay_.pickups.ammo.value : gameplay_.pickups.health.value;
+        }
+        for (const KeyColor color : kKeyColors) {
+            keys_.Add(color);
+        }
+        minimapVisible_ = true;
+        ShowMessage("GOLD KEY CARD", 60.0f);
+    }
+    SyncSpritesWithEntities(entityManager_, sprites_);
 }

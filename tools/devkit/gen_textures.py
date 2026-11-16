@@ -4,9 +4,17 @@
 Writes 32x32 plain-text PPM (P3) textures to game/assets/themes/<theme>/:
 
     wall.ppm  wall_alt_a.ppm  wall_alt_b.ppm  door.ppm  floor.ppm  ceiling.ppm  exit.ppm
+    door_red.ppm  door_blue.ppm  door_gold.ppm   (locked doors, Roadmap Phase 6)
 
-for the themes "bunker", "stone" and "tech", plus game/assets/themes/classic/exit.ppm (the
-exit switch for the "classic" theme, which otherwise uses the original textures).
+for the themes "bunker", "stone" and "tech", plus game/assets/themes/classic/exit.ppm and
+door_<colour>.ppm (the "classic" theme otherwise uses the original textures).
+
+A locked door is the theme's door with a band in the lock's colour across the middle, and on
+it the colour's initial (R, B, G) and a keyhole, so it differs from a plain door, and the
+three locks from each other, by shape as well as colour.
+
+Billboard sprites (enemies, corpses, pickups, keys) come from the sibling generator
+tools/devkit/gen_sprites.py.
 
 Standard library only. Every texture uses its own random.Random seeded from SEED and the
 texture's name (zlib.crc32, not Python's salted hash()), so the output is byte-for-byte
@@ -87,7 +95,13 @@ LETTERS = {
     "X": ["101", "101", "010", "101", "101"],
     "I": ["111", "010", "010", "010", "111"],
     "T": ["111", "010", "010", "010", "010"],
+    "R": ["110", "101", "110", "101", "101"],
+    "B": ["110", "101", "110", "101", "110"],
+    "G": ["011", "100", "101", "101", "011"],
 }
+
+# Lock colours (Phase 6), shared with gen_sprites.py and the engine's HUD (KeyCardColor).
+LOCK_COLORS: Dict[str, Color] = {"red": (220, 45, 40), "blue": (45, 105, 240), "gold": (240, 190, 30)}
 
 
 def draw_word(img: Image, word: str, x0: int, y0: int, c: Color) -> None:
@@ -133,6 +147,23 @@ def exit_switch(img: Image, rng: random.Random, plate: Color, trim: Color) -> No
     img.rect(11, 15, 3, 3, (60, 255, 90))
     for sx, sy in ((3, 3), (28, 3), (3, 28), (28, 28)):
         img.set(sx, sy, shade(trim, 1.2))
+
+
+def locked_door(base: Image, color: Color, letter: str) -> Image:
+    """The theme's door with a coloured band (rows 11-20), the lock's initial and a keyhole."""
+    img = Image()
+    for y in range(SIZE):
+        for x in range(SIZE):
+            img.set(x, y, base.get(x, y))
+    img.rect(0, 11, SIZE, 10, color)
+    img.rect(0, 11, SIZE, 1, shade(color, 0.45))
+    img.rect(0, 20, SIZE, 1, shade(color, 0.45))
+    # A light plate with the letter, and a dark keyhole beside it.
+    img.rect(9, 12, 7, 8, (235, 235, 230))
+    draw_word(img, letter, 11, 13, (20, 20, 24))
+    img.rect(19, 13, 3, 3, (16, 16, 18))
+    img.rect(20, 16, 1, 3, (16, 16, 18))
+    return img
 
 
 # --- Themes --------------------------------------------------------------------------------
@@ -282,7 +313,13 @@ def tech(name: str, rng: random.Random) -> Image:
 
 
 def classic(name: str, rng: random.Random) -> Image:
-    # The classic theme reuses the original textures; only its exit switch is generated.
+    # The classic theme reuses the original textures; only its exit switch and locked doors
+    # are generated (the locked doors on a plain grey door).
+    if name.startswith("door_"):
+        base = Image()
+        noisy_fill(base, rng, (112, 112, 120), 5)
+        base.frame(0, 0, SIZE, SIZE, (60, 60, 66))
+        return base
     return exit_switch_image(rng, (110, 110, 120), (180, 180, 190))
 
 
@@ -292,12 +329,13 @@ def exit_switch_image(rng: random.Random, plate: Color, trim: Color) -> Image:
     return img
 
 
-SLOTS = ["wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit"]
+LOCKED_DOOR_SLOTS = [f"door_{color}" for color in LOCK_COLORS]
+SLOTS = ["wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit"] + LOCKED_DOOR_SLOTS
 THEMES: Dict[str, Tuple[Callable[[str, random.Random], Image], List[str]]] = {
     "bunker": (bunker, SLOTS),
     "stone": (stone, SLOTS),
     "tech": (tech, SLOTS),
-    "classic": (classic, ["exit"]),
+    "classic": (classic, ["exit"] + LOCKED_DOOR_SLOTS),
 }
 
 
@@ -307,8 +345,16 @@ def generate() -> Dict[str, str]:
     for theme, (draw, slots) in THEMES.items():
         for slot in slots:
             key = f"{theme}/{slot}"
-            rng = random.Random(SEED ^ zlib.crc32(key.encode("utf-8")))
-            image = draw(slot, rng)
+            if slot in LOCKED_DOOR_SLOTS:
+                # The theme's own door (same seed, so the same pixels) plus the lock band.
+                door_key = f"{theme}/door"
+                base = draw("door" if theme != "classic" else slot,
+                            random.Random(SEED ^ zlib.crc32(door_key.encode("utf-8"))))
+                color = slot[len("door_"):]
+                image = locked_door(base, LOCK_COLORS[color], color[0].upper())
+            else:
+                rng = random.Random(SEED ^ zlib.crc32(key.encode("utf-8")))
+                image = draw(slot, rng)
             files[f"{key}.ppm"] = image.ppm(f"Neo-Wolf theme '{theme}', {slot}: generated by "
                                             f"tools/devkit/gen_textures.py (seed {SEED})")
     return files

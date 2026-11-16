@@ -1,15 +1,22 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <string>
 #include <vector>
 
-// A texture theme: game/defs/themes/<id>.cfg (docs/CONTENT_DEFINITIONS.md). Seven required
-// keys, each a content-relative .ppm path.
+#include "engine/world/Sprite.h"
+
+// A texture theme: game/defs/themes/<id>.cfg (docs/CONTENT_DEFINITIONS.md). Ten required keys,
+// each a content-relative .ppm path.
 struct ThemeTextureAssignments {
     std::string wall;      // '#'
     std::string wallAltA;  // 'A'
     std::string wallAltB;  // 'B'
     std::string door;      // 'D' (closed doors)
+    std::string doorRed;   // closed doors locked with the red key (Phase 6)
+    std::string doorBlue;  // ... the blue key
+    std::string doorGold;  // ... the gold key
     std::string floor;
     std::string ceiling;
     std::string exit;      // 'X' (exit switch)
@@ -18,10 +25,16 @@ struct ThemeTextureAssignments {
 // "game/defs/themes/<themeId>.cfg" (content-relative).
 std::string ThemeConfigPath(const std::string& themeId);
 
+// sprites.cfg keys, in SpriteTextureId order (all required).
+inline constexpr const char* kSpriteTextureKeys[kSpriteTextureCount] = {
+    "guard",      "health",     "decoration", "brute", "runner",   "guard_dead",
+    "brute_dead", "runner_dead", "ammo",      "key_red", "key_blue", "key_gold"};
+
+// Content-relative .ppm paths, indexed by SpriteTextureId.
 struct SpriteTextureDefinitions {
-    std::string enemy;
-    std::string pickup;
-    std::string decoration;
+    std::array<std::string, kSpriteTextureCount> paths{};
+
+    const std::string& Path(SpriteTextureId id) const { return paths[static_cast<std::size_t>(id)]; }
 };
 
 // Reads a theme file. A syntax error makes the whole file unusable (false, nothing set); a

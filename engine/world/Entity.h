@@ -4,7 +4,9 @@
 #include <vector>
 
 #include "engine/core/Vec2.h"
+#include "engine/core/Vec2i.h"
 #include "engine/world/GameplayDefinitions.h"
+#include "engine/world/KeyColor.h"
 
 enum class EntityType : std::uint8_t {
     Player = 0,
@@ -15,17 +17,21 @@ enum class EntityType : std::uint8_t {
     Decoration  // static billboard, no interaction (appended: the C API exposes these values)
 };
 
+// Enemy AI states (engine/world/EnemyAi.h, docs/GAMEPLAY.md "Enemy AI"). Values are part of
+// the C API: append only.
 enum class EnemyState : std::uint8_t {
     Idle = 0,
-    Alert,
-    Chase,
-    Attack,
-    Dead
+    Alert,   // noticed the player: waits its reaction time, then chases
+    Chase,   // follows a path to the player's last known position
+    Attack,  // in attack range with line of sight
+    Dead,    // a corpse: drawn on the floor, blocks nothing
+    Search   // lost the player: goes to the last known position, then gives up (Idle)
 };
 
 enum class PickupType : std::uint8_t {
     Health = 0,
-    Ammo
+    Ammo,
+    Key  // a key card (Entity::keyColor)
 };
 
 struct Entity {
@@ -42,7 +48,8 @@ struct Entity {
     bool collected = false;
 
     // Enemy AI & combat stats. Levels set them from gameplay.json (BuildLevelFromPlacements);
-    // these fallback defaults only reach entities created another way (C API, tests).
+    // these fallback defaults (the guard) only reach entities created another way (C API, tests).
+    EnemyVariant variant = EnemyVariant::Guard;
     int health = kDefaultEnemyDefinition.health;
     int maxHealth = kDefaultEnemyDefinition.health;
     int damage = kDefaultEnemyDefinition.damage;
@@ -51,11 +58,25 @@ struct Entity {
     float attackCooldown = 0.0f;
     float attackRate = kDefaultEnemyDefinition.attackRate;
     float moveSpeed = kDefaultEnemyDefinition.moveSpeed;
+    float reactionTime = kDefaultEnemyDefinition.reactionTime;
+    int score = kDefaultEnemyDefinition.score;
     EnemyState enemyState = EnemyState::Idle;
+
+    // Enemy AI working state (engine/world/EnemyAi.cpp).
+    float stateTimer = 0.0f;        // Alert: reaction time left; Search: time left before giving up
+    float lostTimer = 0.0f;         // Chase: seconds without line of sight to the player
+    float repathTimer = 0.0f;       // seconds until the path may be recomputed
+    float hitFlashTimer = 0.0f;     // > 0: the sprite flashes (just hit)
+    float stuckTimer = 0.0f;        // seconds of moving with (almost) no progress
+    Vec2 lastKnownPlayerPosition{};
+    std::vector<Vec2i> path{};      // cells still to walk, nearest first
+    Vec2i pathGoal{-1, -1};         // the cell the path leads to
 
     // Pickup kind and amount (from the entity file and gameplay.json for levels).
     PickupType pickupType = PickupType::Health;
     int pickupValue = kDefaultPickupDefinitions.health.value;
+    KeyColor keyColor = KeyColor::None;   // pickup of kind Key: which key
+    KeyColor doorLock = KeyColor::None;   // door: the key needed to open it (None = unlocked)
 };
 
 class EntityManager {

@@ -11,19 +11,22 @@ game/assets/
 |-- wall_alt_b.ppm        # Secondary wall variant B texture
 |-- floor.ppm             # Floor plane texture
 |-- ceiling.ppm           # Ceiling plane texture
-|-- sprite_enemy.ppm      # Enemy billboard sprite texture
-|-- sprite_pickup.ppm     # Collectible item sprite texture
-|-- sprite_decor.ppm      # Ambient decoration sprite texture
+|-- sprite_decor.ppm      # Ambient decoration sprite texture (16x16, hand-made)
 |-- sfx_door_open.wav     # Door open sound effect
 |-- sfx_pickup.wav        # Item pickup sound effect
 |-- sfx_enemy_alert.wav   # Enemy agro / alert sound effect
 |-- sfx_weapon_fire.wav   # Weapon discharge sound effect
+|-- sprites/              # Generated billboard sprites (section 5): enemies, corpses, pickups, keys
 `-- themes/               # Generated per-level texture themes (section 4)
-    |-- bunker/           # wall, wall_alt_a, wall_alt_b, door, floor, ceiling, exit (.ppm, 32x32)
+    |-- bunker/           # wall, wall_alt_a, wall_alt_b, door, door_red, door_blue, door_gold,
+    |                     # floor, ceiling, exit (.ppm, 32x32)
     |-- stone/
     |-- tech/
-    `-- classic/          # exit.ppm only (the classic theme uses the original textures above)
+    `-- classic/          # exit.ppm and door_<colour>.ppm (otherwise the original textures above)
 ```
+
+`sprite_enemy.ppm` and `sprite_pickup.ppm` were deleted in Phase 6; `game/assets/sprites/`
+replaces them.
 
 The original 8×8 wall, floor and ceiling textures above belong to the `classic` theme
 (`game/defs/themes/classic.cfg`). Which textures a level uses is decided by its theme
@@ -54,7 +57,7 @@ P3
 ```
 
 ### Color Key Transparency for Sprites
-For billboard sprites (`sprite_enemy.ppm`, `sprite_pickup.ppm`, `sprite_decor.ppm`), the pure magenta color `RGB(255, 0, 255)` (`#FF00FF`) is designated as the **alpha mask / transparent color key**.
+For billboard sprites (`game/assets/sprites/*.ppm`, `sprite_decor.ppm`), the pure magenta color `RGB(255, 0, 255)` (`#FF00FF`) is designated as the **alpha mask / transparent color key**.
 - Pixels matching `R=255, G=0, B=255` are discarded by `SpriteRenderer` during depth-testing and framebuffer blitting.
 
 ---
@@ -78,19 +81,10 @@ The DevKit CLI provides procedural generation and inspection utilities for asset
 
 ### Inspecting Texture Metadata
 ```bash
-./tools/devkit/neo_devkit inspect-asset game/assets/sprite_enemy.ppm
+./tools/devkit/neo_devkit inspect-asset game/assets/sprite_decor.ppm
 ```
-Output:
-```text
---- PPM Texture Inspector: sprite_enemy.ppm ---
-  format                   : P3
-  width                    : 16
-  height                   : 16
-  maxval                   : 255
-  is_power_of_two          : True
-  average_color_rgb        : (241.7, 49.3, 177.8)
-  color_key_magenta_pixels : 129 (50.4% transparent)
-```
+The output lists the format, width, height, maximum value, whether the size is a power of two,
+the average colour and how many pixels are the magenta colour key (transparent).
 
 ### Inspecting Audio Files
 ```bash
@@ -114,14 +108,15 @@ Output:
 ## 4. Texture Themes
 
 Each campaign level has a texture theme (`"theme"` in `game/defs/campaign.json`). A theme file,
-`game/defs/themes/<id>.cfg`, names seven textures: `wall`, `wall_alt_a`, `wall_alt_b`, `door`,
-`floor`, `ceiling` and `exit` (the exit switch, map tile `X`). Format and loading:
+`game/defs/themes/<id>.cfg`, names ten textures: `wall`, `wall_alt_a`, `wall_alt_b`, `door`,
+`door_red`, `door_blue`, `door_gold` (doors locked with that key, Phase 6), `floor`, `ceiling`
+and `exit` (the exit switch, map tile `X`). Format and loading:
 [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#themes).
 
 ### The generator: `tools/devkit/gen_textures.py`
 
-The textures of the `bunker`, `stone` and `tech` themes, and the exit switch of the `classic`
-theme, are drawn by a Python script:
+The textures of the `bunker`, `stone` and `tech` themes, and the exit switch and locked doors
+of the `classic` theme, are drawn by a Python script:
 
 ```bash
 python3 tools/devkit/gen_textures.py            # (re)write game/assets/themes/<theme>/*.ppm
@@ -135,9 +130,14 @@ python3 tools/devkit/gen_textures.py --out /tmp/themes   # write somewhere else
   process and is not used). Running the script again, on any OS or Python 3 version, writes the
   same bytes; files are written with `\n` line endings.
 - **Output:** 32×32 plain-text PPM (`P3`, max value 255) with a comment line naming the theme,
-  the slot and the seed; 22 files, about 12 KB each.
+  the slot and the seed; 34 files, about 12 KB each.
 - The exit switch has the same layout in every theme (an "EXIT" label, a lever box, a green
   lamp) so it is recognisable by its shape, not only its colour.
+- **Locked doors** (Phase 6) are the theme's own `door` texture (drawn from the same seed, so
+  pixel for pixel the same) with a band in the lock's colour across rows 11–20, a light plate
+  with the colour's initial (R, B, G) and a dark keyhole: distinct from a plain door, and from
+  each other, by shape as well as colour. The lock colours (`LOCK_COLORS`) are shared with the
+  sprite generator. The `classic` theme's locked doors use a plain grey door underneath.
 - DevKit test `test_gen_textures` checks that two runs are identical and that the committed
   files match the generator (`--check`), so the script and the files cannot drift apart.
 
@@ -146,10 +146,69 @@ result in the game (`neo_wolf --level N`, or `--preview hud --screenshot out.bmp
 and commit both the script and the regenerated `.ppm` files. To add a theme, add a function and
 an entry in `THEMES`, run the script, and add `game/defs/themes/<id>.cfg`.
 
+---
+
+## 5. Sprites
+
+![The generated sprites](images/sprites.png)
+
+*Guard, brute, runner, their corpses, health, ammo, and the red, blue and gold key cards
+(magenta shown as a grey checkerboard).*
+
+Billboard sprites are drawn facing the camera, **one map cell tall from the floor to the
+ceiling**, square, and depth-tested against the walls (`SpriteRenderer`). Rules for sprite
+images:
+
+- PPM `P3`, any size; the generated ones are **32×32**. They are sampled nearest-neighbour.
+- Pure magenta `RGB(255, 0, 255)` is transparent (the colour key); every other colour is
+  drawn, shaded by distance and the cell's light.
+- A standing figure has its feet on the **bottom row**; an object lying on the floor (a
+  corpse, a medkit) uses only the lower rows, so it appears on the floor.
+- A hit enemy is drawn brightened for 0.15 s (the hit flash, done by the renderer; there is no
+  separate image).
+
+`game/defs/sprites.cfg` maps each sprite slot to a file
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#spritescfg)):
+
+| Slot (`sprites.cfg` key) | File | Look |
+|---|---|---|
+| `guard` | `sprites/guard.ppm` | upright olive soldier with helmet and rifle, 29 rows tall |
+| `brute` | `sprites/brute.ppm` | fills the whole frame: dark red armour, wide metal shoulders, yellow visor |
+| `runner` | `sprites/runner.ppm` | small (23 rows), slim, mid-stride; cyan suit, orange visor, blade |
+| `guard_dead`, `brute_dead`, `runner_dead` | `sprites/<slot>.ppm` | the body lying in a pool of blood, in the lower third of the frame |
+| `health` | `sprites/health.ppm` | white medkit with a red cross |
+| `ammo` | `sprites/ammo.ppm` | olive ammo box with brass cartridges |
+| `key_red`, `key_blue`, `key_gold` | `sprites/<slot>.ppm` | a key card in its colour with its initial (R, B, G), floating over a shadow |
+| `decoration` | `sprite_decor.ppm` | the pre-Phase 6 decoration (16×16) |
+
+The enemies are told apart at 320×240 by **silhouette** (size and outline) as well as colour,
+and every figure has a dark 1-pixel outline so it stands out against any wall. The key cards
+carry their initial, so they do not depend on colour alone. Reference screenshots:
+[GAMEPLAY.md](GAMEPLAY.md#enemies).
+
+### The generator: `tools/devkit/gen_sprites.py`
+
+```bash
+python3 tools/devkit/gen_sprites.py            # (re)write game/assets/sprites/*.ppm
+python3 tools/devkit/gen_sprites.py --check    # exit 1 if a committed sprite differs
+python3 tools/devkit/gen_sprites.py --out /tmp/sprites
+```
+
+The same rules as `gen_textures.py`: standard library only, deterministic (one
+`random.Random` per sprite, seeded from `SEED` and `zlib.crc32` of the name), `\n` line
+endings, a comment line naming the sprite and the seed; 11 files. DevKit test
+`test_gen_sprites` checks determinism, the 32×32 size and the magenta background, that the
+three enemies differ in size and bulk, that the corpses lie in the lower half, and that the
+committed files match (`--check`). To change a sprite, edit its drawing function, run the
+script, check it in the game (`neo_wolf --preview enemies --frames 5 --screenshot out.bmp`, or
+`--preview items`), and commit the script and the regenerated files.
+
+---
+
 ### Licence and provenance
 
-The generated textures are made from scratch by this repository's own script: no third-party
+The generated textures and sprites are made from scratch by this repository's own script: no third-party
 images, fonts or texture packs are used, so there is nothing to attribute and no third-party
 licence applies to them. They fall under the project's own licence (still to be chosen by the
 owner: Roadmap decision 5). The provenance of the older assets in `game/assets/` (the 8×8
-textures, sprites and sounds) is still undocumented (known issue X4).
+textures, the decoration sprite and the sounds) is still undocumented (known issue X4).

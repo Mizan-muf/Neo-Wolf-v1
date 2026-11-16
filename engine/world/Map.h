@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "engine/world/KeyColor.h"
+
 enum class TileType : std::uint8_t {
     Empty = 0,
     Wall,
@@ -31,10 +33,15 @@ public:
     bool IsWall(int x, int y) const;
     float GetLightLevel(int x, int y) const;
     bool SetLightLevel(int x, int y, float lightLevel);
+    // The lock of the door in a cell (Phase 6), for drawing: None for unlocked doors and every
+    // other cell. The door entity holds the same value and decides whether the door opens.
+    KeyColor GetDoorLock(int x, int y) const;
+    bool SetDoorLock(int x, int y, KeyColor lock);
 
 private:
     int width_ = 0;
     int height_ = 0;
     std::vector<TileType> cells_{};
     std::vector<float> lightLevels_{};
+    std::vector<KeyColor> doorLocks_{};
 };

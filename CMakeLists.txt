@@ -167,6 +167,7 @@ add_library(neowolf_engine STATIC
     engine/render/Raycaster.cpp
     engine/render/SpriteRenderer.cpp
     engine/ui/UiRenderer.cpp
+    engine/world/EnemyAi.cpp
     engine/world/Entity.cpp
     engine/world/EntityPlacementLoader.cpp
     engine/world/InteractionRules.cpp
@@ -174,6 +175,7 @@ add_library(neowolf_engine STATIC
     engine/world/Map.cpp
     engine/world/MapLoader.cpp
     engine/world/MovementRules.cpp
+    engine/world/Navigation.cpp
 )
 target_include_directories(neowolf_engine PUBLIC ${PROJECT_SOURCE_DIR})
 target_compile_features(neowolf_engine PUBLIC cxx_std_17)
@@ -258,6 +260,17 @@ if(NEOWOLF_BUILD_TESTS)
         new_game_resets_world
         key_bindings
         wall_texture_orientation
+        line_of_sight
+        enemy_hearing
+        enemy_pathfinding
+        enemy_archetypes_from_data
+        entity_variant_validation
+        locked_doors_and_keys
+        door_close_blocked
+        corpse_and_hit_flash
+        enemy_separation
+        hud_key_icons_layout
+        ai_stress_20_enemies
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -302,7 +315,7 @@ if(NEOWOLF_BUILD_TESTS)
     endfunction()
 
     neowolf_add_game_test(game_smoke_frames 0
-        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* 3 level\\(s\\).*Renderer: .*Level entities: 6 entities.*Ran 120 frame"
+        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* 3 level\\(s\\).*Renderer: .*Level entities: 7 entities.*Ran 120 frame"
         --frames 120)
     set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
     file(MAKE_DIRECTORY "${NEOWOLF_EMPTY_DATA_DIR}")
@@ -332,7 +345,7 @@ if(NEOWOLF_BUILD_TESTS)
     neowolf_add_game_test(game_smoke_level_out_of_range 1 "--level 4: the campaign has 3 level"
         --level 4 --frames 10)
     # Screen previews (developer tool): each renders and saves a screenshot.
-    foreach(screen menu levelselect hud minimap pause levelcomplete gameover campaigncomplete)
+    foreach(screen menu levelselect hud minimap pause levelcomplete gameover campaigncomplete enemies items)
         neowolf_add_game_test(game_preview_${screen} 0 "Preview: ${screen} .*Screenshot saved"
             --preview ${screen} --frames 5 --screenshot "${CMAKE_BINARY_DIR}/test-shots/${screen}.bmp")
     endforeach()

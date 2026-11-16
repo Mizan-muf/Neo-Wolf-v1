@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "engine/render/Raycaster.h"
+#include "engine/world/EnemyAi.h"
 #include "engine/world/MovementRules.h"
 
 ExitSwitchHit FindExitSwitchInReach(const Map& map, const Player& player) {
@@ -35,6 +36,18 @@ void SyncPlayerEntity(EntityManager& entityManager, const Player& player) {
     }
 }
 
+bool IsDoorwayOccupied(const EntityManager& entityManager, const Player& player, int cellX, int cellY) {
+    if (IsCircleOverlappingCell(player.position, player.collisionRadius, cellX, cellY)) {
+        return true;
+    }
+    for (const Entity& entity : entityManager.Entities()) {
+        if (IsEnemyAlive(entity) && IsCircleOverlappingCell(entity.position, kEnemyRadius, cellX, cellY)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void UpdateEntityInteractions(
     EntityManager& entityManager,
     Map& map,
@@ -44,10 +57,24 @@ void UpdateEntityInteractions(
     int maxHealth,
     int maxAmmo,
     bool interactPressed,
+    KeyRing& keys,
     GameplayEvents& outEvents) {
     constexpr float kPickupRadiusSq = 0.60f * 0.60f;
     constexpr float kTriggerRadiusSq = 0.80f * 0.80f;
     constexpr float kDoorInteractRadiusSq = 1.05f * 1.05f;
+
+    // Interact uses the exit switch the player faces in preference to a door within reach (a
+    // door only needs the player nearby, so one next to the exit would otherwise swallow the
+    // press). A press that is not used on the exit goes to the doors.
+    if (interactPressed) {
+        const ExitSwitchHit exitHit = FindExitSwitchInReach(map, player);
+        if (exitHit.found) {
+            outEvents.exitActivated = true;
+            outEvents.exitMapX = exitHit.mapX;
+            outEvents.exitMapY = exitHit.mapY;
+        }
+    }
+    const bool doorPress = interactPressed && !outEvents.exitActivated;
 
     for (Entity& entity : entityManager.Entities()) {
         if (!entity.active) {
@@ -68,6 +95,9 @@ void UpdateEntityInteractions(
                     playerHealth = std::min(maxHealth, playerHealth + entity.pickupValue);
                 } else if (entity.pickupType == PickupType::Ammo) {
                     playerAmmo = std::min(maxAmmo, playerAmmo + entity.pickupValue);
+                } else if (entity.pickupType == PickupType::Key) {
+                    keys.Add(entity.keyColor);
+                    outEvents.pickupKey = entity.keyColor;
                 }
             }
             continue;
@@ -82,88 +112,48 @@ void UpdateEntityInteractions(
             continue;
         }
 
-        if (entity.type == EntityType::Door && interactPressed) {
-            if (DistanceSquared(entity.position, player.position) <= kDoorInteractRadiusSq) {
-                if (entity.doorOpen) {
-                    if (!IsCircleOverlappingCell(player.position, player.collisionRadius, entity.mapX, entity.mapY)) {
-                        entity.doorOpen = false;
-                        map.SetCell(entity.mapX, entity.mapY, TileType::Door);
-                        outEvents.doorToggled = true;
-                        outEvents.doorOpened = false;
-                        outEvents.doorMapX = entity.mapX;
-                        outEvents.doorMapY = entity.mapY;
-                    }
-                } else {
-                    entity.doorOpen = true;
-                    map.SetCell(entity.mapX, entity.mapY, TileType::Empty);
-                    outEvents.doorToggled = true;
-                    outEvents.doorOpened = true;
-                    outEvents.doorMapX = entity.mapX;
-                    outEvents.doorMapY = entity.mapY;
-                }
+        if (entity.type == EntityType::Door && doorPress) {
+            if (DistanceSquared(entity.position, player.position) > kDoorInteractRadiusSq) {
+                continue;
             }
-        }
-    }
-
-    if (interactPressed && !outEvents.doorToggled) {
-        const ExitSwitchHit exitHit = FindExitSwitchInReach(map, player);
-        if (exitHit.found) {
-            outEvents.exitActivated = true;
-            outEvents.exitMapX = exitHit.mapX;
-            outEvents.exitMapY = exitHit.mapY;
+            outEvents.doorMapX = entity.mapX;
+            outEvents.doorMapY = entity.mapY;
+            if (entity.doorOpen) {
+                if (IsDoorwayOccupied(entityManager, player, entity.mapX, entity.mapY)) {
+                    outEvents.doorBlocked = true;
+                    continue;
+                }
+                entity.doorOpen = false;
+                map.SetCell(entity.mapX, entity.mapY, TileType::Door);
+                outEvents.doorToggled = true;
+                outEvents.doorOpened = false;
+            } else {
+                if (entity.doorLock != KeyColor::None && !keys.Has(entity.doorLock)) {
+                    outEvents.doorNeedsKey = entity.doorLock;
+                    continue;
+                }
+                entity.doorOpen = true;
+                map.SetCell(entity.mapX, entity.mapY, TileType::Empty);
+                outEvents.doorToggled = true;
+                outEvents.doorOpened = true;
+            }
         }
     }
 }
 
-void UpdateEnemyAi(
+void UpdateEntityInteractions(
     EntityManager& entityManager,
-    const Map& map,
+    Map& map,
     const Player& player,
     int& playerHealth,
-    float deltaSeconds,
+    int& playerAmmo,
+    int maxHealth,
+    int maxAmmo,
+    bool interactPressed,
     GameplayEvents& outEvents) {
-    for (Entity& entity : entityManager.Entities()) {
-        if (!entity.active || entity.type != EntityType::Enemy || entity.enemyState == EnemyState::Dead) {
-            continue;
-        }
-
-        entity.attackCooldown = std::max(0.0f, entity.attackCooldown - deltaSeconds);
-
-        const Vec2 toPlayer = player.position - entity.position;
-        const float distSq = toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y;
-        const float dist = std::sqrt(distSq);
-
-        if (entity.enemyState == EnemyState::Idle) {
-            if (dist <= entity.alertRadius) {
-                entity.enemyState = EnemyState::Chase;
-                outEvents.enemyAlerted = true;
-                outEvents.alertedEnemyId = entity.id;
-            }
-        }
-
-        if (entity.enemyState == EnemyState::Alert || entity.enemyState == EnemyState::Chase) {
-            if (dist > entity.attackRadius && dist > 1e-4f) {
-                const Vec2 dir{toPlayer.x / dist, toPlayer.y / dist};
-                const Vec2 move = dir * (entity.moveSpeed * deltaSeconds);
-                entity.position = MoveWithSliding(map, entity.position, move, 0.25f);
-            }
-
-            // Check attack range
-            const Vec2 updatedToPlayer = player.position - entity.position;
-            const float updatedDist = std::sqrt(updatedToPlayer.x * updatedToPlayer.x + updatedToPlayer.y * updatedToPlayer.y);
-            if (updatedDist <= entity.attackRadius) {
-                if (entity.attackCooldown <= 0.0f) {
-                    playerHealth = std::max(0, playerHealth - entity.damage);
-                    entity.attackCooldown = entity.attackRate;
-                    outEvents.playerDamaged = true;
-                    outEvents.playerDamageAmount = entity.damage;
-                    if (playerHealth <= 0) {
-                        outEvents.playerDied = true;
-                    }
-                }
-            }
-        }
-    }
+    KeyRing noKeys{};
+    UpdateEntityInteractions(entityManager, map, player, playerHealth, playerAmmo, maxHealth, maxAmmo, interactPressed,
+                             noKeys, outEvents);
 }
 
 bool PerformPlayerAttack(
@@ -197,7 +187,7 @@ bool PerformPlayerAttack(
     constexpr float kEnemyHitRadiusSq = 0.45f * 0.45f;
 
     for (Entity& entity : entityManager.Entities()) {
-        if (!entity.active || entity.type != EntityType::Enemy || entity.enemyState == EnemyState::Dead) {
+        if (!IsEnemyAlive(entity)) {
             continue;
         }
 
@@ -217,7 +207,10 @@ bool PerformPlayerAttack(
 
     if (closestEnemy != nullptr) {
         closestEnemy->health = std::max(0, closestEnemy->health - damage);
-        closestEnemy->enemyState = EnemyState::Chase; // alert on shot
+        if (AlertEnemyByDamage(*closestEnemy, player.position)) {
+            outEvents.enemyAlerted = true;
+            outEvents.alertedEnemyId = closestEnemy->id;
+        }
         outEvents.attackHit = true;
         outEvents.enemyDamaged = true;
         outEvents.damagedEnemyId = closestEnemy->id;
@@ -226,9 +219,11 @@ bool PerformPlayerAttack(
         outEvents.hitPosition = player.position + playerDir * closestDist;
 
         if (closestEnemy->health <= 0) {
+            // Dead: inactive (no AI, no collisions, cannot be shot) but still visible, drawn
+            // with the corpse sprite (SyncSpritesWithEntities).
             closestEnemy->enemyState = EnemyState::Dead;
             closestEnemy->active = false;
-            closestEnemy->visible = false;
+            closestEnemy->path.clear();
             outEvents.enemyDied = true;
             outEvents.deadEnemyId = closestEnemy->id;
         }

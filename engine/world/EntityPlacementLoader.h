@@ -6,6 +6,8 @@
 
 #include "engine/core/Vec2.h"
 #include "engine/world/Entity.h"
+#include "engine/world/GameplayDefinitions.h"
+#include "engine/world/KeyColor.h"
 
 enum class PlacementType {
     Player = 0,
@@ -23,9 +25,11 @@ struct EntityPlacement {
     int mapX = -1;                      // door/trigger: the map cell it controls (required)
     int mapY = -1;
     float angleDegrees = 0.0f;          // player: initial view direction (0 = +x, 90 = +y)
-    PickupType pickupKind = PickupType::Health;  // pickup: "kind" (required)
+    PickupType pickupKind = PickupType::Health;  // pickup: "kind" (required): health, ammo or key
     std::optional<int> pickupValue{};   // pickup: "value"; empty = gameplay.json pickups.<kind>.value
-    std::string variant{};              // enemy: reserved for enemy archetypes (Roadmap Phase 6)
+    KeyColor key = KeyColor::None;      // pickup of kind "key": "key" (required): red, blue or gold
+    KeyColor lock = KeyColor::None;     // door: "lock" (optional): red, blue or gold
+    EnemyVariant variant = EnemyVariant::Guard;  // enemy: "variant" (optional): guard, brute or runner
     std::string source{};               // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
@@ -34,7 +38,7 @@ const char* PlacementTypeName(PlacementType type);
 
 // Loads a level's entity placements. The format follows the extension (case-insensitive):
 //   .json  the canonical format: {"level": "...", "entities": [{"type": ..., "x": ..., ...}]}
-//   .csv   the legacy table: type,x,y[,mapX,mapY[,kind[,value[,angle[,variant]]]]]
+//   .csv   the legacy table: type,x,y[,mapX,mapY[,kind[,value[,angle[,variant[,key[,lock]]]]]]]
 //          (an empty column means "not given").
 // Every problem is reported with the file name, the entity (index, and line for CSV) and the
 // field. Errors (unreadable file, bad syntax, unknown type, missing or invalid required field)

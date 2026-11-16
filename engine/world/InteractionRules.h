@@ -2,6 +2,7 @@
 
 #include "engine/core/Vec2.h"
 #include "engine/world/Entity.h"
+#include "engine/world/KeyColor.h"
 #include "engine/world/Map.h"
 #include "engine/world/Player.h"
 
@@ -13,11 +14,14 @@ struct GameplayEvents {
     bool pickupCollected = false;
     PickupType pickupType = PickupType::Health;
     int pickupValue = 0;
+    KeyColor pickupKey = KeyColor::None;  // a key card was collected
 
     bool doorToggled = false;
     bool doorOpened = false;
     int doorMapX = -1;
     int doorMapY = -1;
+    bool doorBlocked = false;              // a close was refused: the player or an enemy is in the doorway
+    KeyColor doorNeedsKey = KeyColor::None;  // an open was refused: the door is locked and the key is missing
 
     bool triggerActivated = false;
     int triggerId = -1;
@@ -60,8 +64,25 @@ ExitSwitchHit FindExitSwitchInReach(const Map& map, const Player& player);
 
 void SyncPlayerEntity(EntityManager& entityManager, const Player& player);
 
-// Pickups (walk over), triggers (walk over: one interop event and a HUD message, nothing
-// else), doors and the exit switch (both with Interact).
+// Pickups (walk over; a key pickup adds its key to `keys`), triggers (walk over: one interop
+// event and a HUD message, nothing else), doors and the exit switch (both with Interact).
+// A locked door opens only while `keys` holds its colour (else outEvents.doorNeedsKey). A door
+// does not close while the player or a living enemy overlaps its cell (outEvents.doorBlocked);
+// corpses do not block it. An Interact press that activates an exit switch (FindExitSwitchInReach)
+// is not also used on a door.
+void UpdateEntityInteractions(
+    EntityManager& entityManager,
+    Map& map,
+    const Player& player,
+    int& playerHealth,
+    int& playerAmmo,
+    int maxHealth,
+    int maxAmmo,
+    bool interactPressed,
+    KeyRing& keys,
+    GameplayEvents& outEvents);
+
+// The same without key cards (every locked door stays shut), for callers that have none.
 void UpdateEntityInteractions(
     EntityManager& entityManager,
     Map& map,
@@ -73,14 +94,13 @@ void UpdateEntityInteractions(
     bool interactPressed,
     GameplayEvents& outEvents);
 
-void UpdateEnemyAi(
-    EntityManager& entityManager,
-    const Map& map,
-    const Player& player,
-    int& playerHealth,
-    float deltaSeconds,
-    GameplayEvents& outEvents);
+// True when a door in (cellX, cellY) cannot close: the player's body or a living enemy's
+// overlaps the cell.
+bool IsDoorwayOccupied(const EntityManager& entityManager, const Player& player, int cellX, int cellY);
 
+// Hitscan shot along the view direction: the nearest living enemy within `maxRange` and in
+// front of the first wall takes `damage`. A hit enemy flashes and starts chasing (alerted, no
+// reaction delay); at 0 health it dies and stays as a corpse. Enemy AI: EnemyAi.h.
 bool PerformPlayerAttack(
     EntityManager& entityManager,
     const Map& map,

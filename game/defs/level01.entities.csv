@@ -1,7 +1,8 @@
-# type,x,y,mapX,mapY,kind,value,angle,variant
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
 player,2.5,2.5,,,,,0
-enemy,6.5,2.8
+enemy,6.5,2.8,,,,,,guard
 pickup,11.8,6.6,,,health
 door,8.5,7.5,8,7
 trigger,13.5,8.5,13,8
 decoration,4.2,8.8
+pickup,2.5,6.5,,,ammo

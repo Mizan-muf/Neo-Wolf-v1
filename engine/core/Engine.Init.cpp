@@ -165,9 +165,9 @@ bool Engine::Init(const EngineOptions& options) {
             assets_.SetTexture(id, missingTexture_);
         }
     };
-    loadTextureWithFallback("enemy", spriteDefinitions.enemy);
-    loadTextureWithFallback("pickup", spriteDefinitions.pickup);
-    loadTextureWithFallback("decoration", spriteDefinitions.decoration);
+    for (int i = 0; i < kSpriteTextureCount; ++i) {
+        loadTextureWithFallback(kSpriteTextureKeys[i], spriteDefinitions.paths[static_cast<std::size_t>(i)]);
+    }
     RefreshTexturePointers();
 
     // 9. Sounds (skipped when there is no audio device).

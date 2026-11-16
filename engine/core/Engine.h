@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -18,8 +19,10 @@
 #include "engine/particles/Particle.h"
 #include "engine/render/Framebuffer.h"
 #include "engine/render/Raycaster.h"
+#include "engine/world/EnemyAi.h"
 #include "engine/world/Entity.h"
 #include "engine/world/GameplayDefinitions.h"
+#include "engine/world/KeyColor.h"
 #include "engine/world/Map.h"
 #include "engine/world/Player.h"
 #include "engine/world/Sprite.h"
@@ -122,12 +125,11 @@ public:
     const Texture* wallAltATexture_ = nullptr;
     const Texture* wallAltBTexture_ = nullptr;
     const Texture* doorTexture_ = nullptr;
+    std::array<const Texture*, kKeyColorCount> lockedDoorTextures_{};  // red, blue, gold (theme)
     const Texture* exitTexture_ = nullptr;
     const Texture* floorTexture_ = nullptr;
     const Texture* ceilingTexture_ = nullptr;
-    const Texture* enemySpriteTexture_ = nullptr;
-    const Texture* pickupSpriteTexture_ = nullptr;
-    const Texture* decorationSpriteTexture_ = nullptr;
+    std::array<const Texture*, kSpriteTextureCount> spriteTextures_{};  // by SpriteTextureId (sprites.cfg)
     bool minimapVisible_ = false;       // M / Tab (off by default, C9)
     bool debugOverlayVisible_ = false;  // F3
     std::vector<RaycastHit> latestRayHits_{};
@@ -143,6 +145,8 @@ public:
     int playerAmmo_ = kDefaultWeaponDefinition.initialAmmo;
     int playerMaxHealth_ = kDefaultPlayerDefinition.maxHealth;
     int playerMaxAmmo_ = kDefaultWeaponDefinition.maxAmmo;
+    KeyRing keys_{};                   // key cards held; cleared on every level load and restart
+    NoiseEvent pendingNoise_{};        // the last shot, heard by enemies in the next AI update
     std::string hudMessage_{};
     float hudMessageTimer_ = 0.0f;
     std::filesystem::path contentRoot_{};
@@ -173,6 +177,8 @@ private:
     // Pushes a StateChanged event (and logs) if the flow's state differs from the last one.
     void PublishStateChange();
     void RefreshTexturePointers();
+    // Previews "enemies" / "items": replaces the level's enemies and pickups with a line-up.
+    void SetupShowcase(bool enemies);
     void RenderWorld();
     void RenderUi();
 };

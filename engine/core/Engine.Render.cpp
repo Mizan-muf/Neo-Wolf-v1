@@ -81,6 +81,7 @@ void Engine::RenderWorld() {
     rayParams.wallAltATexture = wallAltATexture_;
     rayParams.wallAltBTexture = wallAltBTexture_;
     rayParams.doorTexture = doorTexture_;
+    rayParams.lockedDoorTextures = lockedDoorTextures_;
     rayParams.exitTexture = exitTexture_;
     rayParams.floorTexture = floorTexture_;
     rayParams.ceilingTexture = ceilingTexture_;
@@ -94,9 +95,7 @@ void Engine::RenderWorld() {
     }
 
     SpriteTextureSet spriteTextures{};
-    spriteTextures.enemy = enemySpriteTexture_;
-    spriteTextures.pickup = pickupSpriteTexture_;
-    spriteTextures.decoration = decorationSpriteTexture_;
+    spriteTextures.slots = spriteTextures_;
     spriteTextures.missing = &missingTexture_;
 
     SpriteRenderer::Render(
@@ -165,6 +164,7 @@ void Engine::RenderUi() {
     hud.showLevelBanner = state == GameState::Gameplay && levelBannerTimer_ > 0.0f;
     hud.message = state == GameState::Gameplay ? hudMessage_ : std::string();
     hud.reservedLeft = reservedLeft;
+    hud.keys = keys_;
     UiRenderer::DrawHud(framebuffer_, hud);
 
     if (debugOverlayVisible_) {

@@ -58,7 +58,7 @@ Window keys, handled by the platform layer and never passed to the game:
 | `A`/`D` | Strafe left / right |
 | Left/Right, `Q` | Turn |
 | `Space`, `F`, `Ctrl` | Fire |
-| `E` | Open/close a door within reach; use an exit switch within 1.1 cells that you face |
+| `E` | Use an exit switch within 1.1 cells that you face; otherwise open/close a door within reach (a locked door needs its key card; a door does not close on you or an enemy) |
 | `P` or `Esc` | Pause |
 | `R` | Restart the level (with the health and ammo you entered it with) |
 | `M` or `Tab` | Minimap on/off (off by default) |

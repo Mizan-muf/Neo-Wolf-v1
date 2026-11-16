@@ -4,6 +4,7 @@
 
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
+#include "engine/world/EnemyAi.h"
 
 void CommandBridge::EnqueueCommand(const InteropCommand& cmd) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -116,13 +117,14 @@ void CommandBridge::ProcessCommands(Engine& engine) {
             break;
         case InteropCommandType::DamageEnemy: {
             Entity* enemy = engine.entityManager_.GetEntityById(cmd.intArg1);
-            if (enemy != nullptr && enemy->type == EntityType::Enemy) {
+            if (enemy != nullptr && IsEnemyAlive(*enemy)) {
                 enemy->health -= cmd.intArg2;
+                enemy->hitFlashTimer = kEnemyHitFlashSeconds;
                 if (enemy->health <= 0) {
                     enemy->health = 0;
-                    enemy->enemyState = EnemyState::Dead;
+                    enemy->enemyState = EnemyState::Dead;  // stays visible as a corpse
                     enemy->active = false;
-                    enemy->visible = false;
+                    enemy->path.clear();
                 }
             }
             break;

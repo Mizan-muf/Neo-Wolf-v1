@@ -27,6 +27,7 @@ struct LevelResults {
     int pickups = 0;
     int totalPickups = 0;
     double seconds = 0.0;
+    int score = 0;  // sum of the killed enemies' gameplay.json "score" (logged; not shown yet)
 };
 
 // What the simulation reported this frame.

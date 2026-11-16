@@ -42,8 +42,11 @@ Any other character, including lower-case letters, spaces and tabs, is an error.
 **Doors.** A `door` entity turns its cell `(mapX, mapY)` into a closed door when the level is
 built, whatever the map has there (normally `D`). Pressing the interact key (`E`) within 1.05
 cells of the door entity's `x`/`y` toggles it **instantly**: the cell becomes empty (open) or a
-door again (closed). There is no sliding animation. A door does not close while the player
-overlaps its cell. (Doors can still close on enemies: known issue C10.)
+door again (closed). There is no sliding animation. A door does not close while the player or
+a living enemy overlaps its cell (the HUD shows `BLOCKED`; a corpse does not block). A door
+entity with a `lock` colour opens only for a player holding that key and is drawn with the
+theme's `door_<colour>` texture; the map itself has no separate tile for locked doors (still
+`D`). Enemies never open doors: for their paths, sight and hearing a closed door is a wall.
 
 **Exit switch (`X`).** A solid wall cell drawn with the theme's `exit` texture. The player
 completes the level by pressing `E` within **1.1 cells** of its face while roughly facing it:
@@ -106,7 +109,9 @@ these as **errors** even though the engine would load the map:
 - the map has no walkable cell (`.`, `D` or `T`);
 - a **campaign level** (listed in `campaign.json`) has no exit switch `X`, or none of its exit
   switches has a walkable neighbour cell that the player can reach from the spawn (doors count
-  as passable). Phase 7 extends these checks.
+  as passable, a locked door only once its key can be collected first);
+- a campaign level has a door `lock` colour without a key card of that colour, or a key that
+  cannot be collected before the door it opens (Phase 6). Phase 7 extends these checks.
 
 The DevKit also handles lines differently: it strips spaces from every line, so it skips
 whitespace-only lines and indented `;` comments that the engine rejects (Roadmap Phase 7 aligns

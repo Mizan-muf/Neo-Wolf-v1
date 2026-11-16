@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tools.devkit.validator import (
+    analyse_level_progress,
     find_reachable_exits,
     validate_campaign,
     validate_cfg,
@@ -62,6 +63,73 @@ class TestValidator(unittest.TestCase):
         walled = ["#######", "#..#..X", "#..#..#", "#######"]
         self.assertEqual(find_reachable_exits(walled, 1.5, 1.5), (1, 0))
         self.assertEqual(find_reachable_exits(["####", "#..#", "####"], 1.5, 1.5), (0, 0))
+
+    def test_key_before_lock_reachability(self) -> None:
+        # Spawn | blue door | room with the red key | red door | exit.
+        rows = ["##########", "#..D..D..X", "##########"]
+        player = {"type": "player", "x": 1.5, "y": 1.5}
+        blue_door = {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "blue"}
+        red_door = {"type": "door", "x": 6.5, "y": 1.5, "mapX": 6, "mapY": 1, "lock": "red"}
+        blue_key = {"type": "pickup", "x": 2.5, "y": 1.5, "kind": "key", "key": "blue"}
+        red_key = {"type": "pickup", "x": 5.5, "y": 1.5, "kind": "key", "key": "red"}
+
+        good = analyse_level_progress(rows, [player, blue_door, red_door, blue_key, red_key], 1.5, 1.5)
+        self.assertEqual(good.problems, [])
+        self.assertEqual(good.key_order, ["blue", "red"])
+        self.assertEqual((good.total_exits, good.usable_exits), (1, 1))
+
+        # The red key behind its own door: never reachable, and the exit is not either.
+        behind = dict(red_key, x=7.5)
+        bad = analyse_level_progress(rows, [player, blue_door, red_door, blue_key, behind], 1.5, 1.5)
+        self.assertEqual(bad.usable_exits, 0)
+        self.assertTrue(any("red key cannot be reached" in p for p in bad.problems), bad.problems)
+
+        # A lock colour with no key at all.
+        missing = analyse_level_progress(rows, [player, blue_door, red_door, blue_key], 1.5, 1.5)
+        self.assertTrue(any("needs the red key, but the level has no red key" in p for p in missing.problems))
+
+        # Without locks every door is passable (the pre-Phase 6 rule).
+        unlocked = analyse_level_progress(rows, [player, dict(blue_door, lock=None), {"type": "door", "x": 6.5,
+                                                 "y": 1.5, "mapX": 6, "mapY": 1}], 1.5, 1.5)
+        self.assertEqual((unlocked.usable_exits, unlocked.problems), (1, []))
+
+    def test_campaign_reports_lock_problems(self) -> None:
+        root = self._write_campaign("#######\n#..D..X\n#######\n")
+        (root / "game" / "defs" / "l1.entities.json").write_text(json.dumps({"entities": [
+            {"type": "player", "x": 1.5, "y": 1.5},
+            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "gold"},
+        ]}), encoding="utf-8")
+        report = validate_campaign(root)
+        self.assertTrue(any("needs the gold key" in e for e in report.errors), report.errors)
+        self.assertTrue(any("with the keys that can be collected first" in e for e in report.errors), report.errors)
+
+    def test_entity_variants_keys_and_locks(self) -> None:
+        json_file = self.dir_path / "v.entities.json"
+        json_file.write_text(json.dumps({"entities": [
+            {"type": "player", "x": 1.5, "y": 1.5},
+            {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "brute"},
+            {"type": "enemy", "x": 2.0, "y": 2.0, "variant": "ninja"},
+            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "blue"},
+            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key", "key": "green"},
+            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "key"},
+            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "blue"},
+            {"type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "purple"},
+            {"type": "pickup", "x": 2.0, "y": 2.0, "kind": "ammo", "key": "red"},
+        ]}), encoding="utf-8")
+        report, entities = validate_entity_json(json_file, (8, 8))
+        self.assertEqual(len(report.errors), 4, report.errors)
+        self.assertTrue(any("entities[2]" in e and "variant must be 'guard', 'brute' or 'runner'" in e for e in report.errors))
+        self.assertTrue(any("entities[4]" in e and "'green'" in e for e in report.errors))
+        self.assertTrue(any("entities[5]" in e and "needs 'key'" in e for e in report.errors))
+        self.assertTrue(any("entities[7]" in e and "lock must be" in e for e in report.errors))
+        self.assertTrue(any("entities[8]" in w and "only applies to pickups of kind 'key'" in w for w in report.warnings))
+        self.assertEqual(len(entities), 5)
+
+    def test_sprites_cfg_renamed_keys(self) -> None:
+        root = Path(__file__).resolve().parents[3]
+        report = validate_project(root)
+        self.assertTrue(report.is_valid, report.errors)
+        self.assertFalse(any("sprites.cfg" in w for w in report.warnings), report.warnings)
 
     def _write_campaign(self, map_text: str) -> Path:
         root = self.dir_path / "content"

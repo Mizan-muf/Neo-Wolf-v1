@@ -8,13 +8,10 @@
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
+#include "engine/world/EnemyAi.h"
 #include "engine/world/InteractionRules.h"
 #include "engine/world/LevelBuilder.h"
 #include "engine/world/MovementRules.h"
-
-namespace {
-constexpr float kEnemyAlertSoundCooldown = 2.0f;
-} // namespace
 
 void Engine::Update(double deltaSeconds) {
     if (!running_) {
@@ -145,6 +142,7 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         playerMaxHealth_,
         playerMaxAmmo_,
         input_.WasPressed(InputAction::Interact),
+        keys_,
         events);
 
     if (events.pickupCollected) {
@@ -153,8 +151,10 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         const std::string amount = std::to_string(events.pickupValue);
         if (events.pickupType == PickupType::Health) {
             ShowMessage("HEALTH RESTORED (+" + amount + " HP)", 1.5f);
-        } else {
+        } else if (events.pickupType == PickupType::Ammo) {
             ShowMessage("AMMO REPLENISHED (+" + amount + " AMMO)", 1.5f);
+        } else {
+            ShowMessage(std::string(KeyColorLabel(events.pickupKey)) + " KEY CARD", 2.0f);
         }
 
         InteropEvent pEvt{};
@@ -162,6 +162,12 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         pEvt.intArg1 = static_cast<int>(events.pickupType);
         pEvt.intArg2 = events.pickupValue;
         bridge_.PushEvent(pEvt);
+    }
+
+    if (events.doorNeedsKey != KeyColor::None) {
+        ShowMessage("NEED " + std::string(KeyColorLabel(events.doorNeedsKey)) + " KEY", 1.5f);
+    } else if (events.doorBlocked) {
+        ShowMessage("BLOCKED", 1.0f);
     }
 
     if (events.doorToggled) {
@@ -187,8 +193,8 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         LogInfo("Exit switch at (" + std::to_string(events.exitMapX) + ", " + std::to_string(events.exitMapY) +
                 ") used: level complete (enemies " + std::to_string(results.kills) + "/" +
                 std::to_string(results.totalEnemies) + ", pickups " + std::to_string(results.pickups) + "/" +
-                std::to_string(results.totalPickups) + ", health " + std::to_string(playerHealth_) + ", ammo " +
-                std::to_string(playerAmmo_) + ").");
+                std::to_string(results.totalPickups) + ", score " + std::to_string(results.score) + ", health " +
+                std::to_string(playerHealth_) + ", ammo " + std::to_string(playerAmmo_) + ").");
         ShowMessage("EXIT SWITCH ACTIVATED", 2.0f);
         InteropEvent lEvt{};
         lEvt.type = InteropEventType::LevelCompleted;
@@ -202,8 +208,9 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         return;
     }
 
-    // Enemy AI & Combat
-    UpdateEnemyAi(entityManager_, map_, player_, playerHealth_, dt, events);
+    // Enemy AI & Combat (the last shot is heard once, then forgotten).
+    UpdateEnemyAi(entityManager_, map_, player_, playerHealth_, dt, events, &pendingNoise_);
+    pendingNoise_ = NoiseEvent{};
 
     if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {
         audio_.PlayEffect("enemy_alert");

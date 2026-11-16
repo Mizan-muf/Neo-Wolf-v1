@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "engine/core/GameFlow.h"
+#include "engine/world/KeyColor.h"
 
 class Framebuffer;
 class Map;
@@ -25,10 +26,15 @@ inline constexpr int kGlyphWidth = 5;    // per scale unit
 inline constexpr int kGlyphHeight = 7;
 inline constexpr int kGlyphAdvance = 6;  // glyph width + 1 pixel spacing
 inline constexpr int kHudBarHeight = 14;
-// Phase 6 key-card icons: this many slots of kKeyCardSlotWidth pixels are kept free in the
-// HUD bar, between the ammo counter and the level label.
+// Key-card icons (Phase 6): one slot per key colour (red, blue, gold, in that order) of
+// kKeyCardSlotWidth pixels in the HUD bar, between the ammo counter and the level label. A
+// held key is drawn as a card of kKeyCardWidth x kKeyCardHeight in its colour with its
+// initial (R, B, G) on it, so the keys differ by more than colour.
 inline constexpr int kKeyCardSlots = 3;
 inline constexpr int kKeyCardSlotWidth = 14;
+inline constexpr int kKeyCardWidth = 12;
+inline constexpr int kKeyCardHeight = 10;
+inline constexpr int kKeyCardsOffset = 64;  // from the ammo label's x
 } // namespace UiLayout
 
 namespace UiRenderer {
@@ -49,7 +55,19 @@ struct HudView {
     bool showLevelBanner = false;  // large "LEVEL N / name" banner at level start
     std::string message;           // pickups, hits, checkpoints...
     int reservedLeft = 0;          // the minimap's right edge when it is shown: the banner moves right of it
+    KeyRing keys{};                // key cards held (icons in the bar)
 };
+
+struct UiRect {
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
+// Where the HUD draws the card for `color` (red, blue or gold).
+UiRect KeyCardRect(int framebufferWidth, int framebufferHeight, KeyColor color);
+// The colour of a key card (HUD, minimap).
+std::uint32_t KeyCardColor(KeyColor color);
 void DrawHud(Framebuffer& framebuffer, const HudView& view);
 void DrawCrosshair(Framebuffer& framebuffer);
 void DrawDebugOverlay(Framebuffer& framebuffer, float fps, float playerX, float playerY, float angleDegrees,
@@ -96,7 +114,8 @@ std::string FormatDuration(double seconds);
 // top-left corner. Small maps are scaled to fill it; maps too big for kMinimapMinCell pixels
 // per cell are drawn at that size, centred on the player and cut at the panel edge. Exit
 // switches are drawn as an "X" cross on a green cell, not by colour alone; the player is a
-// dot with a direction tick.
+// dot with a direction tick. Key cards are drawn as a small key shape in their colour, locked
+// doors as a cell in the lock's colour crossed by a dark bar (shape and colour, Phase 6).
 inline constexpr int kMinimapMinCell = 3;
 inline constexpr int kMinimapMaxCell = 8;
 struct MinimapLayout {

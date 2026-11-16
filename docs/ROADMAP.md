@@ -85,12 +85,13 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - **Done when:** transition tests pass and the full campaign flow can be played on macOS. **Partly met:** the transition tests pass and the whole campaign is completed through the real engine by the scripted bot on macOS; a manual play-through in a window is still open (C13).
 
 ## Phase 6 — Gameplay depth
-- [ ] Enemy line of sight; `Alert` and `Attack` states used; no waking through walls; doors cannot close on enemies
-- [ ] 3 enemy types (guard, brute, fast) defined in `gameplay.json`; separate ammo sprite
-- [ ] Key cards and locked doors
-- [ ] Tests for AI and enemy types
-- [ ] Docs: `GAMEPLAY.md`, `ARCHITECTURE.md`
-- **Done when:** AI behaviour is covered by tests and the enemy types are distinct in play
+> Status: implemented; ticked items are verified on macOS (build with 0 warnings in our code, `ci-macos` with `-Werror`, 79 CTest tests: 58 native + registry, 18 headless game runs, DevKit (39 tests) + `validate --strict`), by a MinGW cross-compile with 0 warnings and a clang `-Wshadow-all` check of our sources. Played by the headless scripted bot (`campaign_playthrough`: fetches level 2's blue key, fights level 3's brute and runner) and checked in screenshots (`docs/images/screens/enemies.png`, `items.png`), not yet by hand in a window (KNOWN_ISSUES C13). Windows (MSVC) and Linux: pending the CI run for this commit. Known issues C10 and C11 are resolved; C15–C17 were recorded.
+- [x] Enemy line of sight; `Alert` and `Attack` states used; no waking through walls; doors cannot close on enemies (sight through the raycaster's DDA, hearing through open cells, grid path finding with cell-centre steering, separation, `Search` state; `BLOCKED` message; tests `line_of_sight`, `enemy_ai_behavior`, `enemy_hearing`, `enemy_pathfinding`, `enemy_separation`, `door_close_blocked`, `ai_stress_20_enemies`)
+- [x] 3 enemy types (guard, brute, fast) defined in `gameplay.json`; separate ammo sprite (`enemies.guard`/`brute`/`runner`, the fast one is the runner; `variant` validated; generated sprites and corpses for each, separate health, ammo and key sprites, `tools/devkit/gen_sprites.py`; tests `enemy_archetypes_from_data`, `entity_variant_validation`, `corpse_and_hit_flash`, DevKit `test_gen_sprites`)
+- [x] Key cards and locked doors (red/blue/gold; per-colour door textures in every theme; HUD key cards; key shapes on the minimap; keys reset per level; DevKit key-before-lock reachability; tests `locked_doors_and_keys`, `hud_key_icons_layout`, DevKit `test_validator`; level 2 uses a blue key and door)
+- [x] Tests for AI and enemy types (the tests above, all registered in `NEOWOLF_NATIVE_TESTS`)
+- [x] Docs: `GAMEPLAY.md`, `ARCHITECTURE.md` (plus `CONTENT_DEFINITIONS.md`, `MAP_FORMAT.md`, `ASSET_GUIDE.md`, `DEVKIT_GUIDE.md`, `TESTING.md`, `KNOWN_ISSUES.md`)
+- **Done when:** AI behaviour is covered by tests and the enemy types are distinct in play. **Partly met:** the AI is covered by tests and the three types differ in stats, silhouette and colour in screenshots and in the bot's play-through; they have not yet been seen in play by a person (C13).
 
 ## Phase 7 — Verification tooling
 - [ ] Headless autoplay bot: real engine, simulated input, plans a path to the exit, opens doors and unlocks them with keys, shoots enemies; reports win/loss, time and damage per level

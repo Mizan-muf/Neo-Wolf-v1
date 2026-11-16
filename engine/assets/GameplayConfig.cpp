@@ -174,11 +174,11 @@ void ReadWeapon(GameplayReader& reader, const json& section, WeaponDefinition& w
     reader.Float(section, path, "range", kPositiveDistance, weapon.range);
     reader.Int(section, path, "initialAmmo", kNonNegativeStat, weapon.initialAmmo);
     reader.Int(section, path, "maxAmmo", kNonNegativeStat, weapon.maxAmmo);
-    reader.WarnUnknownKeys(section, path, {"damage", "fireRate", "range", "initialAmmo", "maxAmmo"});
+    reader.Float(section, path, "noiseRadius", kDistance, weapon.noiseRadius);
+    reader.WarnUnknownKeys(section, path, {"damage", "fireRate", "range", "initialAmmo", "maxAmmo", "noiseRadius"});
 }
 
-// One enemy archetype. Phase 6 reuses this for every entry of an "enemies" object, with
-// path "enemies.<name>".
+// One enemy archetype: "enemies.<variant>" (or the legacy "enemy" section).
 void ReadEnemy(GameplayReader& reader, const json& section, const std::string& path, EnemyDefinition& enemy) {
     reader.Int(section, path, "health", kPositiveStat, enemy.health);
     reader.Int(section, path, "damage", kNonNegativeStat, enemy.damage);
@@ -186,7 +186,38 @@ void ReadEnemy(GameplayReader& reader, const json& section, const std::string& p
     reader.Float(section, path, "alertRadius", kDistance, enemy.alertRadius);
     reader.Float(section, path, "attackRadius", kDistance, enemy.attackRadius);
     reader.Float(section, path, "attackRate", kPositiveCooldown, enemy.attackRate);
-    reader.WarnUnknownKeys(section, path, {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate"});
+    reader.Float(section, path, "reactionTime", kCooldown, enemy.reactionTime);
+    reader.Int(section, path, "score", kNonNegativeStat, enemy.score);
+    reader.WarnUnknownKeys(section, path,
+                           {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate",
+                            "reactionTime", "score"});
+}
+
+void ReadEnemies(GameplayReader& reader, const json& document, EnemyDefinitions& enemies) {
+    const json* legacy = reader.Section(document, "", "enemy");
+    const json* archetypes = reader.Section(document, "", "enemies");
+    if (legacy != nullptr && archetypes != nullptr) {
+        reader.Error("use either \"enemies\" or the old \"enemy\" section, not both (\"enemy\" is now "
+                     "\"enemies.guard\")");
+        return;
+    }
+    if (legacy != nullptr) {
+        // Before Phase 6 there was one enemy type; its section still defines the guard.
+        reader.Warning("section \"enemy\" is deprecated: it is read as \"enemies.guard\" (move it there)");
+        ReadEnemy(reader, *legacy, "enemy", enemies.guard);
+        return;
+    }
+    if (archetypes == nullptr) {
+        return;
+    }
+    EnemyDefinition* const targets[kEnemyVariantCount] = {&enemies.guard, &enemies.brute, &enemies.runner};
+    for (int i = 0; i < kEnemyVariantCount; ++i) {
+        const char* name = EnemyVariantName(kEnemyVariants[i]);
+        if (const json* section = reader.Section(*archetypes, "enemies", name)) {
+            ReadEnemy(reader, *section, std::string("enemies.") + name, *targets[i]);
+        }
+    }
+    reader.WarnUnknownKeys(*archetypes, "enemies", {"guard", "brute", "runner"});
 }
 
 void ReadPickup(GameplayReader& reader, const json& pickups, const char* key, PickupDefinition& pickup) {
@@ -226,15 +257,13 @@ bool ParseGameplayDefinitions(
     if (const json* weapon = reader.Section(document, "", "weapon")) {
         ReadWeapon(reader, *weapon, definitions.weapon);
     }
-    if (const json* enemy = reader.Section(document, "", "enemy")) {
-        ReadEnemy(reader, *enemy, "enemy", definitions.enemy);
-    }
+    ReadEnemies(reader, document, definitions.enemies);
     if (const json* pickups = reader.Section(document, "", "pickups")) {
         ReadPickup(reader, *pickups, "health", definitions.pickups.health);
         ReadPickup(reader, *pickups, "ammo", definitions.pickups.ammo);
         reader.WarnUnknownKeys(*pickups, "pickups", {"health", "ammo"});
     }
-    reader.WarnUnknownKeys(document, "", {"player", "weapon", "enemy", "pickups"});
+    reader.WarnUnknownKeys(document, "", {"player", "weapon", "enemy", "enemies", "pickups"});
 
     if (errors.size() == errorsBefore) {
         // Cross-field rules, checked once every value is known.
@@ -270,20 +299,26 @@ bool LoadGameplayDefinitions(
 std::string DescribeGameplayDefinitions(const GameplayDefinitions& definitions) {
     const PlayerDefinition& player = definitions.player;
     const WeaponDefinition& weapon = definitions.weapon;
-    const EnemyDefinition& enemy = definitions.enemy;
     char buffer[512] = {};
     std::snprintf(buffer, sizeof(buffer),
                   "player health %d/%d, move %.2f, turn %.2f, radius %.2f; "
-                  "weapon damage %d, fire interval %.2f s, range %.1f, ammo %d/%d; "
-                  "enemy health %d, damage %d, move %.2f, alert %.1f, attack %.1f every %.2f s; "
-                  "pickups health +%d, ammo +%d",
+                  "weapon damage %d, fire interval %.2f s, range %.1f, ammo %d/%d, noise %.1f; ",
                   player.initialHealth, player.maxHealth, static_cast<double>(player.moveSpeed),
                   static_cast<double>(player.turnSpeed), static_cast<double>(player.collisionRadius),
                   weapon.damage, static_cast<double>(weapon.fireRate), static_cast<double>(weapon.range),
-                  weapon.initialAmmo, weapon.maxAmmo,
-                  enemy.health, enemy.damage, static_cast<double>(enemy.moveSpeed),
-                  static_cast<double>(enemy.alertRadius), static_cast<double>(enemy.attackRadius),
-                  static_cast<double>(enemy.attackRate),
-                  definitions.pickups.health.value, definitions.pickups.ammo.value);
-    return buffer;
+                  weapon.initialAmmo, weapon.maxAmmo, static_cast<double>(weapon.noiseRadius));
+    std::string text = buffer;
+    for (const EnemyVariant variant : kEnemyVariants) {
+        const EnemyDefinition& enemy = definitions.enemies.For(variant);
+        std::snprintf(buffer, sizeof(buffer),
+                      "%s health %d, damage %d, move %.2f, alert %.1f, attack %.1f every %.2f s, reaction %.2f s, "
+                      "score %d; ",
+                      EnemyVariantName(variant), enemy.health, enemy.damage, static_cast<double>(enemy.moveSpeed),
+                      static_cast<double>(enemy.alertRadius), static_cast<double>(enemy.attackRadius),
+                      static_cast<double>(enemy.attackRate), static_cast<double>(enemy.reactionTime), enemy.score);
+        text += buffer;
+    }
+    std::snprintf(buffer, sizeof(buffer), "pickups health +%d, ammo +%d", definitions.pickups.health.value,
+                  definitions.pickups.ammo.value);
+    return text + buffer;
 }

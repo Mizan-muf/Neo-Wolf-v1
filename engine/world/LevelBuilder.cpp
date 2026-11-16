@@ -8,39 +8,66 @@
 #include <vector>
 
 #include "engine/core/MathUtils.h"
+#include "engine/world/EnemyAi.h"
 
 namespace {
-// Sprite texture slots, as resolved by SpriteRenderer (0 enemy, 1 pickup, 2 decoration).
-constexpr int kEnemySpriteTexture = 0;
-constexpr int kPickupSpriteTexture = 1;
-constexpr int kDecorationSpriteTexture = 2;
-
-// The sprite an entity type is drawn with; false for types without a sprite.
-bool SpriteForEntityType(EntityType type, SpriteType& outType, int& outTexture) {
-    switch (type) {
-    case EntityType::Enemy:
-        outType = SpriteType::Enemy;
-        outTexture = kEnemySpriteTexture;
+// The sprite an entity is drawn with; false for types without a sprite. Enemies change to
+// their corpse texture when they die.
+bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId& outTexture) {
+    switch (entity.type) {
+    case EntityType::Enemy: {
+        const bool dead = IsEnemyCorpse(entity);
+        outType = dead ? SpriteType::Corpse : SpriteType::Enemy;
+        switch (entity.variant) {
+        case EnemyVariant::Brute:
+            outTexture = dead ? SpriteTextureId::BruteDead : SpriteTextureId::Brute;
+            break;
+        case EnemyVariant::Runner:
+            outTexture = dead ? SpriteTextureId::RunnerDead : SpriteTextureId::Runner;
+            break;
+        case EnemyVariant::Guard:
+            outTexture = dead ? SpriteTextureId::GuardDead : SpriteTextureId::Guard;
+            break;
+        }
         return true;
+    }
     case EntityType::Pickup:
-        outType = SpriteType::Pickup;
-        outTexture = kPickupSpriteTexture;
+        outType = entity.pickupType == PickupType::Key ? SpriteType::Key : SpriteType::Pickup;
+        switch (entity.pickupType) {
+        case PickupType::Ammo:
+            outTexture = SpriteTextureId::Ammo;
+            break;
+        case PickupType::Key:
+            outTexture = entity.keyColor == KeyColor::Blue   ? SpriteTextureId::KeyBlue
+                         : entity.keyColor == KeyColor::Gold ? SpriteTextureId::KeyGold
+                                                             : SpriteTextureId::KeyRed;
+            break;
+        case PickupType::Health:
+            outTexture = SpriteTextureId::Health;
+            break;
+        }
         return true;
     case EntityType::Decoration:
         outType = SpriteType::Decoration;
-        outTexture = kDecorationSpriteTexture;
+        outTexture = SpriteTextureId::Decoration;
         return true;
     default:
         return false;
     }
 }
 
+// Visible: alive/uncollected entities, and corpses (inactive but still drawn).
+bool IsSpriteShown(const Entity& entity) {
+    return entity.visible && (entity.active || IsEnemyCorpse(entity));
+}
+
 void AddSprite(const Entity& entity, std::vector<SpriteEntity>& sprites) {
     SpriteType type = SpriteType::Decoration;
-    int texture = 0;
-    if (SpriteForEntityType(entity.type, type, texture)) {
-        const bool shown = entity.active && entity.visible;
-        sprites.push_back(SpriteEntity{entity.position, texture, entity.id, type, entity.active, shown});
+    SpriteTextureId texture = SpriteTextureId::Decoration;
+    if (SpriteForEntity(entity, type, texture)) {
+        sprites.push_back(SpriteEntity{entity.position, static_cast<int>(texture), entity.id, type,
+                                       entity.active || IsEnemyCorpse(entity), IsSpriteShown(entity),
+                                       entity.hitFlashTimer > 0.0f});
     }
 }
 
@@ -107,26 +134,22 @@ bool BuildLevelFromPlacements(
             break;
         }
         case PlacementType::Enemy: {
-            // placement.variant selects an archetype from Phase 6 on; today every enemy uses
-            // the default "enemy" definition.
-            const EnemyDefinition& stats = gameplay.enemy;
             Entity& entity = level.entities.CreateEntity(EntityType::Enemy, placement.position);
-            entity.health = stats.health;
-            entity.maxHealth = stats.health;
-            entity.damage = stats.damage;
-            entity.moveSpeed = stats.moveSpeed;
-            entity.alertRadius = stats.alertRadius;
-            entity.attackRadius = stats.attackRadius;
-            entity.attackRate = stats.attackRate;
+            ApplyEnemyArchetype(entity, placement.variant, gameplay.enemies);
             AddSprite(entity, level.sprites);
             break;
         }
         case PlacementType::Pickup: {
             Entity& entity = level.entities.CreateEntity(EntityType::Pickup, placement.position);
             entity.pickupType = placement.pickupKind;
-            const PickupDefinition& definition = placement.pickupKind == PickupType::Ammo ? gameplay.pickups.ammo
-                                                                                         : gameplay.pickups.health;
-            entity.pickupValue = placement.pickupValue.value_or(definition.value);
+            if (placement.pickupKind == PickupType::Key) {
+                entity.keyColor = placement.key;
+                entity.pickupValue = 0;
+            } else {
+                const PickupDefinition& definition = placement.pickupKind == PickupType::Ammo ? gameplay.pickups.ammo
+                                                                                             : gameplay.pickups.health;
+                entity.pickupValue = placement.pickupValue.value_or(definition.value);
+            }
             AddSprite(entity, level.sprites);
             break;
         }
@@ -135,6 +158,7 @@ bool BuildLevelFromPlacements(
             entity.mapX = placement.mapX;
             entity.mapY = placement.mapY;
             entity.doorOpen = false;
+            entity.doorLock = placement.lock;
             break;
         }
         case PlacementType::Trigger: {
@@ -156,6 +180,7 @@ bool BuildLevelFromPlacements(
     for (const Entity& entity : level.entities.Entities()) {
         if (entity.type == EntityType::Door) {
             map.SetCell(entity.mapX, entity.mapY, TileType::Door);
+            map.SetDoorLock(entity.mapX, entity.mapY, entity.doorLock);
         } else if (entity.type == EntityType::Trigger) {
             map.SetCell(entity.mapX, entity.mapY, TileType::Trigger);
         }
@@ -180,9 +205,16 @@ void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEn
             continue;  // entity destroyed: drop its sprite
         }
         const Entity& entity = *it->second;
+        SpriteType type = sprite.type;
+        SpriteTextureId texture = static_cast<SpriteTextureId>(sprite.textureId);
+        if (SpriteForEntity(entity, type, texture)) {
+            sprite.type = type;  // e.g. an enemy that died becomes a corpse
+            sprite.textureId = static_cast<int>(texture);
+        }
         sprite.position = entity.position;
-        sprite.active = entity.active;
-        sprite.visible = entity.active && entity.visible;
+        sprite.active = entity.active || IsEnemyCorpse(entity);
+        sprite.visible = IsSpriteShown(entity);
+        sprite.flash = entity.hitFlashTimer > 0.0f;
         withSprite.insert(sprite.entityId);
         sprites[kept++] = sprite;
     }
@@ -193,6 +225,20 @@ void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEn
             AddSprite(entity, sprites);
         }
     }
+}
+
+void ApplyEnemyArchetype(Entity& enemy, EnemyVariant variant, const EnemyDefinitions& enemies) {
+    const EnemyDefinition& stats = enemies.For(variant);
+    enemy.variant = variant;
+    enemy.health = stats.health;
+    enemy.maxHealth = stats.health;
+    enemy.damage = stats.damage;
+    enemy.moveSpeed = stats.moveSpeed;
+    enemy.alertRadius = stats.alertRadius;
+    enemy.attackRadius = stats.attackRadius;
+    enemy.attackRate = stats.attackRate;
+    enemy.reactionTime = stats.reactionTime;
+    enemy.score = stats.score;
 }
 
 std::string DescribeLevelContents(const LevelContents& contents) {

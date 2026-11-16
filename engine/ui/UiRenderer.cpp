@@ -221,7 +221,16 @@ void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
     DrawText(framebuffer, ammoX, textY, "AMMO", kText);
     DrawText(framebuffer, ammoX + TextWidth("AMMO ", 1), textY, std::to_string(view.ammo),
              view.ammo == 0 ? kWarn : kValue);
-    // (ammoX + 64 ... + kKeyCardSlots * kKeyCardSlotWidth is reserved for key cards.)
+    for (const KeyColor color : kKeyColors) {
+        if (!view.keys.Has(color)) {
+            continue;
+        }
+        const UiRect card = KeyCardRect(width, height, color);
+        DrawPanel(framebuffer, card.x, card.y, card.width, card.height, KeyCardColor(color), Rgb(20, 20, 24));
+        const char letter[2] = {KeyColorLabel(color)[0], '\0'};
+        DrawText(framebuffer, card.x + (card.width - UiLayout::kGlyphWidth) / 2,
+                 card.y + (card.height - UiLayout::kGlyphHeight) / 2, letter, Rgb(16, 16, 20));
+    }
     if (view.levelNumber > 0) {
         const std::string compact = "LEVEL " + std::to_string(view.levelNumber);
         DrawText(framebuffer, barX + barW - 6 - TextWidth(compact, 1), textY, compact, kGold);
@@ -253,6 +262,33 @@ void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
         DrawTextCentered(framebuffer, boxX + boxW / 2, boxY + 5, title, kGold, 2);
         DrawTextCentered(framebuffer, boxX + boxW / 2, boxY + 5 + 2 * kLineHeight + 4, name, kText);
     }
+}
+
+UiRenderer::UiRect UiRenderer::KeyCardRect(int framebufferWidth, int framebufferHeight, KeyColor color) {
+    (void)framebufferWidth;  // the bar starts at the left margin at every width
+    const int barY = framebufferHeight - kMargin - UiLayout::kHudBarHeight;
+    const int ammoX = kMargin + 6 + 80;  // as in DrawHud
+    const int slot = std::max(0, KeyColorIndex(color));
+    UiRect rect{};
+    rect.x = ammoX + UiLayout::kKeyCardsOffset + slot * UiLayout::kKeyCardSlotWidth;
+    rect.y = barY + (UiLayout::kHudBarHeight - UiLayout::kKeyCardHeight) / 2;
+    rect.width = UiLayout::kKeyCardWidth;
+    rect.height = UiLayout::kKeyCardHeight;
+    return rect;
+}
+
+std::uint32_t UiRenderer::KeyCardColor(KeyColor color) {
+    switch (color) {
+    case KeyColor::Red:
+        return Rgb(235, 60, 50);
+    case KeyColor::Blue:
+        return Rgb(70, 130, 255);
+    case KeyColor::Gold:
+        return Rgb(250, 200, 40);
+    case KeyColor::None:
+        break;
+    }
+    return Rgb(128, 128, 128);
 }
 
 void UiRenderer::DrawCrosshair(Framebuffer& framebuffer) {
@@ -520,6 +556,7 @@ int UiRenderer::DrawMinimap(Framebuffer& framebuffer, const Map& map, const Play
     const int lastY = std::min(map.Height() - 1, (clipY + clipSize - layout.originY) / cell);
     const int gap = cell >= 5 ? 1 : 0;  // a grid line between cells once they are big enough
     std::vector<std::pair<int, int>> exits;
+    std::vector<std::pair<int, int>> lockedDoors;
     for (int y = firstY; y <= lastY; ++y) {
         for (int x = firstX; x <= lastX; ++x) {
             std::uint32_t color = 0;
@@ -534,6 +571,10 @@ int UiRenderer::DrawMinimap(Framebuffer& framebuffer, const Map& map, const Play
                 color = Rgb(102, 102, 170);
                 break;
             case TileType::Door:
+                if (map.GetDoorLock(x, y) != KeyColor::None) {
+                    lockedDoors.emplace_back(x, y);
+                    continue;  // drawn on top below
+                }
                 color = Rgb(204, 136, 51);
                 break;
             case TileType::Trigger:
@@ -574,8 +615,31 @@ int UiRenderer::DrawMinimap(Framebuffer& framebuffer, const Map& map, const Play
                        std::clamp(centerY, clipY + markerArm, clipY + clipSize - 1 - markerArm));
     }
 
+    // Locked doors: the lock's colour crossed by a dark bar (not by colour alone).
+    for (const auto& doorCell : lockedDoors) {
+        const int x0 = layout.originX + doorCell.first * cell;
+        const int y0 = layout.originY + doorCell.second * cell;
+        fill(x0, y0, cell - gap, cell - gap, KeyCardColor(map.GetDoorLock(doorCell.first, doorCell.second)));
+        fill(x0, y0 + (cell - gap) / 2, cell - gap, 1, Rgb(16, 16, 20));
+    }
+
     for (const SpriteEntity& sprite : sprites) {
-        if (!sprite.active || !sprite.visible) {
+        if (!sprite.active || !sprite.visible || sprite.type == SpriteType::Corpse) {
+            continue;
+        }
+        const int sx = layout.originX + static_cast<int>(sprite.position.x * static_cast<float>(cell));
+        const int sy = layout.originY + static_cast<int>(sprite.position.y * static_cast<float>(cell));
+        if (sprite.type == SpriteType::Key) {
+            // A key: a 3x3 ring with a shaft and a tooth, in the key's colour.
+            const KeyColor keyColor = sprite.textureId == static_cast<int>(SpriteTextureId::KeyBlue)   ? KeyColor::Blue
+                                      : sprite.textureId == static_cast<int>(SpriteTextureId::KeyGold) ? KeyColor::Gold
+                                                                                                       : KeyColor::Red;
+            const std::uint32_t keyRgb = KeyCardColor(keyColor);
+            fill(sx - 3, sy - 1, 3, 1, keyRgb);
+            fill(sx - 3, sy + 1, 3, 1, keyRgb);
+            fill(sx - 3, sy, 1, 1, keyRgb);
+            fill(sx - 1, sy, 4, 1, keyRgb);
+            fill(sx + 2, sy + 1, 1, 1, keyRgb);
             continue;
         }
         std::uint32_t color = Rgb(80, 220, 80);  // pickup
@@ -584,8 +648,6 @@ int UiRenderer::DrawMinimap(Framebuffer& framebuffer, const Map& map, const Play
         } else if (sprite.type == SpriteType::Decoration) {
             color = Rgb(150, 150, 150);
         }
-        const int sx = layout.originX + static_cast<int>(sprite.position.x * static_cast<float>(cell));
-        const int sy = layout.originY + static_cast<int>(sprite.position.y * static_cast<float>(cell));
         fill(sx - 1, sy - 1, 3, 3, color);
     }
 

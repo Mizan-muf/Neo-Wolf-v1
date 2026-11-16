@@ -24,6 +24,8 @@ CSV_COLUMNS: List[Tuple[str, type]] = [
     ("value", int),
     ("angle", float),
     ("variant", str),
+    ("key", str),
+    ("lock", str),
 ]
 CSV_HEADER = "# " + ",".join(name for name, _ in CSV_COLUMNS)
 

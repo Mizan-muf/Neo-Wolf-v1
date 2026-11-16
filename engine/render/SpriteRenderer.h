@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <vector>
 
@@ -10,12 +11,16 @@ class Texture;
 class Map;
 struct Player;
 
+// One texture per SpriteTextureId slot (sprites.cfg); a null slot is drawn with `missing`.
 struct SpriteTextureSet {
-    const Texture* enemy = nullptr;
-    const Texture* pickup = nullptr;
-    const Texture* decoration = nullptr;
+    std::array<const Texture*, kSpriteTextureCount> slots{};
     const Texture* missing = nullptr;
+
+    void Set(SpriteTextureId id, const Texture* texture) { slots[static_cast<std::size_t>(id)] = texture; }
 };
+
+// A sprite of an enemy that was just hit is drawn this much closer to white (0-1).
+inline constexpr float kSpriteHitFlashStrength = 0.65f;
 
 class SpriteRenderer {
 public:

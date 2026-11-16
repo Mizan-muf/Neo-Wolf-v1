@@ -240,6 +240,12 @@ void Raycaster::RenderWalls(
         const int yEnd = yStart + projectedWallHeight - 1;
 
         const Texture* texture = ResolveTextureForTile(params, hit.tileType);
+        if (hit.tileType == TileType::Door) {
+            const int lock = KeyColorIndex(map.GetDoorLock(hit.mapX, hit.mapY));
+            if (lock >= 0 && params.lockedDoorTextures[static_cast<std::size_t>(lock)] != nullptr) {
+                texture = params.lockedDoorTextures[static_cast<std::size_t>(lock)];
+            }
+        }
         if (texture == nullptr || texture->Width() <= 0 || texture->Height() <= 0) {
             continue;
         }

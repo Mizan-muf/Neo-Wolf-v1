@@ -157,37 +157,78 @@ bool ReadPlacement(const json& object, const std::string& where, EntityPlacement
         inapplicable("angle", "player");
     }
 
+    // Reads an optional key colour field ("key" or "lock"). Returns false only on an error.
+    const auto readKeyColor = [&](const char* key, KeyColor& value, bool required) {
+        const auto it = object.find(key);
+        if (it == object.end()) {
+            if (required) {
+                diag.errors.push_back(at + ": field \"" + key + "\" is required (\"red\", \"blue\" or \"gold\")");
+                return false;
+            }
+            return true;
+        }
+        if (!it->is_string() || !ParseKeyColor(it->get<std::string>(), value)) {
+            diag.errors.push_back(at + ": field \"" + key + "\" must be \"red\", \"blue\" or \"gold\", got " +
+                                  DescribeJsonValue(*it));
+            return false;
+        }
+        return true;
+    };
+
     if (out.type == PlacementType::Pickup) {
         const auto kindIt = object.find("kind");
+        const std::string kind = kindIt != object.end() && kindIt->is_string() ? kindIt->get<std::string>() : "";
         if (kindIt == object.end()) {
-            diag.errors.push_back(at + ": field \"kind\" is required (\"health\" or \"ammo\")");
+            diag.errors.push_back(at + ": field \"kind\" is required (\"health\", \"ammo\" or \"key\")");
             ok = false;
-        } else if (kindIt->is_string() && kindIt->get<std::string>() == "health") {
+        } else if (kind == "health") {
             out.pickupKind = PickupType::Health;
-        } else if (kindIt->is_string() && kindIt->get<std::string>() == "ammo") {
+        } else if (kind == "ammo") {
             out.pickupKind = PickupType::Ammo;
+        } else if (kind == "key") {
+            out.pickupKind = PickupType::Key;
         } else {
-            diag.errors.push_back(at + ": field \"kind\" must be \"health\" or \"ammo\", got " +
+            diag.errors.push_back(at + ": field \"kind\" must be \"health\", \"ammo\" or \"key\", got " +
                                   DescribeJsonValue(*kindIt));
             ok = false;
         }
-        int value = 0;
-        ok = ReadInteger(object, "value", at, 1, kMaxGameplayStat, value, present, diag) && ok;
-        if (present) {
-            out.pickupValue = value;
+        if (kind == "key") {
+            ok = readKeyColor("key", out.key, true) && ok;
+            inapplicable("value", "health and ammo pickups");
+        } else {
+            inapplicable("key", "pickups of kind \"key\"");
+            int value = 0;
+            ok = ReadInteger(object, "value", at, 1, kMaxGameplayStat, value, present, diag) && ok;
+            if (present) {
+                out.pickupValue = value;
+            }
         }
     } else {
         inapplicable("kind", "pickup");
         inapplicable("value", "pickup");
+        inapplicable("key", "pickups of kind \"key\"");
+    }
+
+    if (out.type == PlacementType::Door) {
+        ok = readKeyColor("lock", out.lock, false) && ok;
+    } else {
+        inapplicable("lock", "door");
     }
 
     if (out.type == PlacementType::Enemy) {
         const auto variantIt = object.find("variant");
         if (variantIt != object.end()) {
-            if (variantIt->is_string() && !variantIt->get<std::string>().empty()) {
-                out.variant = variantIt->get<std::string>();
-            } else {
-                diag.errors.push_back(at + ": field \"variant\" must be a non-empty string, got " +
+            bool known = false;
+            if (variantIt->is_string()) {
+                for (const EnemyVariant variant : kEnemyVariants) {
+                    if (variantIt->get<std::string>() == EnemyVariantName(variant)) {
+                        out.variant = variant;
+                        known = true;
+                    }
+                }
+            }
+            if (!known) {
+                diag.errors.push_back(at + ": field \"variant\" must be \"guard\", \"brute\" or \"runner\", got " +
                                       DescribeJsonValue(*variantIt));
                 ok = false;
             }
@@ -196,7 +237,8 @@ bool ReadPlacement(const json& object, const std::string& where, EntityPlacement
         inapplicable("variant", "enemy");
     }
 
-    static const char* const kKnownFields[] = {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant"};
+    static const char* const kKnownFields[] = {"type", "x",     "y",       "mapX", "mapY", "angle",
+                                               "kind", "value", "variant", "key",  "lock"};
     for (auto it = object.begin(); it != object.end(); ++it) {
         bool known = false;
         for (const char* field : kKnownFields) {
@@ -221,6 +263,7 @@ constexpr CsvColumn kCsvColumns[] = {
     {"type", CsvColumnType::Text},     {"x", CsvColumnType::Number},     {"y", CsvColumnType::Number},
     {"mapX", CsvColumnType::Integer},  {"mapY", CsvColumnType::Integer}, {"kind", CsvColumnType::Text},
     {"value", CsvColumnType::Integer}, {"angle", CsvColumnType::Number}, {"variant", CsvColumnType::Text},
+    {"key", CsvColumnType::Text},      {"lock", CsvColumnType::Text},
 };
 constexpr std::size_t kCsvColumnCount = sizeof(kCsvColumns) / sizeof(kCsvColumns[0]);
 
@@ -380,7 +423,7 @@ bool ParseEntityPlacementsCsv(
         }
         if (cells.size() > kCsvColumnCount) {
             warnings.push_back(where + ": " + std::to_string(cells.size() - kCsvColumnCount) +
-                               " extra column(s) after \"variant\" ignored");
+                               " extra column(s) after \"lock\" ignored");
         }
 
         json object = json::object();
