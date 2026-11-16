@@ -205,6 +205,7 @@ target_compile_definitions(neowolf_engine PRIVATE NEOWOLF_VERSION="${PROJECT_VER
 add_library(neowolf_autoplay STATIC
     engine/autoplay/AutoplayBot.cpp
     engine/autoplay/AutoplayReport.cpp
+    engine/autoplay/AutoplayTrace.cpp
 )
 target_link_libraries(neowolf_autoplay
     PUBLIC  neowolf_engine

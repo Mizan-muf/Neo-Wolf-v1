@@ -28,7 +28,7 @@ All engine code is in `engine/<module>/` and is compiled into one static library
 | `ui` | Everything drawn on top of the world or instead of it: menu, level select, HUD, pause, level-complete, game-over and credits screens, minimap, crosshair, debug overlay, and the built-in bitmap font, all laid out from the framebuffer size. | `UiRenderer.*` |
 | `particles` | A pool of at most 512 particles (position, velocity, lifetime, colour, size) and the preset effects (hit spark, pickup sparkle, ambient dust). | `Particle.*` |
 | `interop` | The in-process C API (`nw_engine_*`) and the thread-safe command and event queues (`CommandBridge`). No shared library is built; see [C_API.md](C_API.md). | `EngineInterop.*`, `CommandBridge.*` |
-| `autoplay` | The headless bot that plays the real engine through simulated input, and its JSON/trace report (static library `neowolf_autoplay`, tool `neo_wolf_autoplay`). | `AutoplayBot.*`, `AutoplayReport.*` |
+| `autoplay` | The headless bot that plays the real engine through simulated input, and its JSON/trace report (static library `neowolf_autoplay`, tool `neo_wolf_autoplay`). | `AutoplayBot.*`, `AutoplayReport.*`, `AutoplayTrace.*` |
 
 The entry points are `src/main.cpp` (the game: parses the command line, then `App::Run`; on
 Windows it reads the UTF-16 command line and attaches to the parent console for `--help`) and

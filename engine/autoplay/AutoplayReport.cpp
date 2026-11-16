@@ -1,5 +1,7 @@
 #include "engine/autoplay/AutoplayReport.h"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -14,9 +16,11 @@
 
 namespace {
 constexpr double kMaxTimeLimitSeconds = 24.0 * 3600.0;
+// Longer text is rejected before it is converted (so it cannot overflow); "007" is level 7.
+constexpr std::size_t kMaxLevelDigits = 3;
 
 bool ParseLevel(const std::string& text, int& out) {
-    if (text.empty() || text.size() > 3) {
+    if (text.empty() || text.size() > kMaxLevelDigits) {
         return false;
     }
     int value = 0;
@@ -53,9 +57,9 @@ double Round3(double value) {
 }
 
 std::string Fixed(double value, int decimals) {
-    char buffer[48] = {};
-    std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
-    return buffer;
+    std::array<char, 48> buffer{};
+    std::snprintf(buffer.data(), buffer.size(), "%.*f", decimals, value);
+    return buffer.data();
 }
 
 std::string Join(const std::vector<std::string>& items, const char* separator, const char* empty) {
@@ -80,6 +84,118 @@ std::string Pad(const std::string& text, std::size_t width, bool right) {
 std::string Fraction(int a, int b) {
     return std::to_string(a) + "/" + std::to_string(b);
 }
+
+bool TakesValue(const std::string& option) {
+    return option == "--level" || option == "--data" || option == "--pref-dir" || option == "--time-limit" ||
+           option == "--json" || option == "--trace";
+}
+
+// Stores the value of an option that takes one; returns why it is invalid, or "" when it is fine.
+std::string ApplyOptionValue(AutoplayCommandLine& result, const std::string& option, const std::string& value) {
+    if (option == "--level") {
+        if (result.level != 0) {
+            return "--level given twice";
+        }
+        if (!ParseLevel(value, result.level)) {
+            return "--level must be a campaign level number from " + std::to_string(kMinLevel) + " to " +
+                   std::to_string(kMaxLevel) + ", got '" + value + "'";
+        }
+    } else if (option == "--data") {
+        result.dataDir = value;
+    } else if (option == "--pref-dir") {
+        result.prefDir = value;
+    } else if (option == "--time-limit") {
+        if (!ParseSeconds(value, result.timeLimitSeconds)) {
+            return "--time-limit must be a number of seconds above 0 (at most " + Fixed(kMaxTimeLimitSeconds, 0) +
+                   "), got '" + value + "'";
+        }
+    } else if (option == "--json") {
+        result.jsonPath = value;
+    } else {
+        result.tracePath = value;
+    }
+    if (value.empty()) {
+        return option + " needs a non-empty value";
+    }
+    return "";
+}
+
+// The table's first line: campaign, mode, time limit and step.
+std::string TableHeading(const AutoplayRunReport& report) {
+    std::ostringstream out;
+    out << "Neo-Wolf autoplay: \"" << report.campaignTitle << "\", " << report.campaignLevels << " level(s); "
+        << (report.wholeCampaign ? "whole campaign (--all)" : "one level") << ", time limit "
+        << Fixed(report.timeLimitSeconds, 0) << " s per level, step "
+        << (report.fixedStepSeconds > 0.0 ? "1/" + Fixed(1.0 / report.fixedStepSeconds, 0) : std::string("?"))
+        << " s\n";
+    return out.str();
+}
+
+// A level's cells in the table; a level that was not played shows "-" for every result.
+std::vector<std::string> LevelRow(const AutoplayLevelReport& level) {
+    std::vector<std::string> row = {std::to_string(level.levelNumber), level.id, AutoplayResultName(level.result)};
+    std::vector<std::string> results = {Fixed(level.gameSeconds, 2),
+                                        std::to_string(level.frames),
+                                        std::to_string(level.damageTaken),
+                                        std::to_string(level.healthEnd),
+                                        std::to_string(level.ammoEnd),
+                                        Fraction(level.kills, level.totalEnemies),
+                                        Fraction(level.pickups, level.totalPickups),
+                                        Join(level.keysUsed, ",", "-"),
+                                        std::to_string(level.shotsFired)};
+    if (level.result == AutoplayResult::NotPlayed) {
+        std::fill(results.begin(), results.end(), "-");
+    }
+    row.insert(row.end(), results.begin(), results.end());
+    return row;
+}
+
+// Rows of cells as text columns two spaces apart, each as wide as its widest cell; no trailing spaces.
+std::string FormatColumns(const std::vector<std::vector<std::string>>& rows, const std::vector<bool>& rightAligned) {
+    std::vector<std::size_t> widths(rightAligned.size(), 0);
+    for (const auto& row : rows) {
+        for (std::size_t c = 0; c < row.size(); ++c) {
+            widths[c] = std::max(widths[c], row[c].size());
+        }
+    }
+    std::string text;
+    for (const auto& row : rows) {
+        std::string line;
+        for (std::size_t c = 0; c < row.size(); ++c) {
+            line += (c == 0 ? "" : "  ") + Pad(row[c], widths[c], rightAligned[c]);
+        }
+        while (!line.empty() && line.back() == ' ') {
+            line.pop_back();
+        }
+        text += line + "\n";
+    }
+    return text;
+}
+
+// Below the table: why levels failed, the carry-over check and the overall result.
+std::string TableSummary(const AutoplayRunReport& report) {
+    std::ostringstream out;
+    for (const AutoplayLevelReport& level : report.levels) {
+        if (!level.reason.empty()) {
+            out << "  level " << level.levelNumber << " (" << level.id << "): " << level.reason << "\n";
+        }
+    }
+    if (report.carryOverChecked) {
+        if (report.carryOverProblems.empty()) {
+            out << "Carry-over: OK (each level started with the previous level's health and ammo; progress saved)\n";
+        }
+        for (const std::string& problem : report.carryOverProblems) {
+            out << "Carry-over: FAILED: " << problem << "\n";
+        }
+    }
+    const auto completed =
+        std::count_if(report.levels.begin(), report.levels.end(),
+                      [](const AutoplayLevelReport& level) { return level.result == AutoplayResult::Complete; });
+    out << "Result: " << (report.Success() ? "PASS" : "FAIL") << " (" << completed << " of " << report.levels.size()
+        << " level(s) completed" << (report.wholeCampaign && report.campaignCompleted ? ", campaign complete" : "")
+        << ")\n";
+    return out.str();
+}
 }  // namespace
 
 AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& args) {
@@ -91,7 +207,6 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
     };
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& arg = args[i];
-        const bool hasValue = i + 1 < args.size();
         if (arg == "--help" || arg == "-h") {
             result.action = AutoplayCommandLine::Action::ShowHelp;
             return result;
@@ -104,36 +219,13 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
             result.all = true;
         } else if (arg == "--verbose") {
             result.verbose = true;
-        } else if (arg == "--level" || arg == "--data" || arg == "--pref-dir" || arg == "--time-limit" ||
-                   arg == "--json" || arg == "--trace") {
-            if (!hasValue) {
+        } else if (TakesValue(arg)) {
+            if (i + 1 >= args.size()) {
                 return fail(arg + " needs a value");
             }
-            const std::string& value = args[++i];
-            if (arg == "--level") {
-                if (result.level != 0) {
-                    return fail("--level given twice");
-                }
-                if (!ParseLevel(value, result.level)) {
-                    return fail("--level must be a campaign level number from " + std::to_string(kMinLevel) + " to " +
-                                std::to_string(kMaxLevel) + ", got '" + value + "'");
-                }
-            } else if (arg == "--data") {
-                result.dataDir = value;
-            } else if (arg == "--pref-dir") {
-                result.prefDir = value;
-            } else if (arg == "--time-limit") {
-                if (!ParseSeconds(value, result.timeLimitSeconds)) {
-                    return fail("--time-limit must be a number of seconds above 0 (at most 86400), got '" + value +
-                                "'");
-                }
-            } else if (arg == "--json") {
-                result.jsonPath = value;
-            } else {
-                result.tracePath = value;
-            }
-            if (value.empty()) {
-                return fail(arg + " needs a non-empty value");
+            const std::string error = ApplyOptionValue(result, arg, args[++i]);
+            if (!error.empty()) {
+                return fail(error);
             }
         } else {
             return fail("unknown option '" + arg + "'");
@@ -175,74 +267,17 @@ std::string AutoplayUsage(std::string_view programName) {
 }
 
 std::string FormatAutoplayTable(const AutoplayRunReport& report) {
-    std::ostringstream out;
-    out << "Neo-Wolf autoplay: \"" << report.campaignTitle << "\", " << report.campaignLevels << " level(s); "
-        << (report.wholeCampaign ? "whole campaign (--all)" : "one level") << ", time limit "
-        << Fixed(report.timeLimitSeconds, 0) << " s per level, step "
-        << (report.fixedStepSeconds > 0.0 ? "1/" + Fixed(1.0 / report.fixedStepSeconds, 0) : std::string("?"))
-        << " s\n";
+    const std::string text = TableHeading(report);
     if (!report.error.empty()) {
-        out << "ERROR: " << report.error << "\n";
-        return out.str();
+        return text + "ERROR: " + report.error + "\n";
     }
-
-    const std::vector<std::string> header = {"#",  "Level", "Result", "Time s",  "Frames", "Damage",
-                                             "HP", "Ammo",  "Kills",  "Pickups", "Keys",   "Shots"};
-    const std::vector<bool> right = {true, false, false, true, true, true, true, true, true, true, false, true};
-    std::vector<std::vector<std::string>> rows;
+    std::vector<std::vector<std::string>> rows = {
+        {"#", "Level", "Result", "Time s", "Frames", "Damage", "HP", "Ammo", "Kills", "Pickups", "Keys", "Shots"}};
     for (const AutoplayLevelReport& level : report.levels) {
-        const bool played = level.result != AutoplayResult::NotPlayed;
-        rows.push_back(
-            {std::to_string(level.levelNumber), level.id, AutoplayResultName(level.result),
-             played ? Fixed(level.gameSeconds, 2) : "-", played ? std::to_string(level.frames) : "-",
-             played ? std::to_string(level.damageTaken) : "-", played ? std::to_string(level.healthEnd) : "-",
-             played ? std::to_string(level.ammoEnd) : "-", played ? Fraction(level.kills, level.totalEnemies) : "-",
-             played ? Fraction(level.pickups, level.totalPickups) : "-", played ? Join(level.keysUsed, ",", "-") : "-",
-             played ? std::to_string(level.shotsFired) : "-"});
+        rows.push_back(LevelRow(level));
     }
-    std::vector<std::size_t> widths(header.size());
-    for (std::size_t c = 0; c < header.size(); ++c) {
-        widths[c] = header[c].size();
-        for (const auto& row : rows) {
-            widths[c] = std::max(widths[c], row[c].size());
-        }
-    }
-    const auto printRow = [&](const std::vector<std::string>& cells) {
-        std::string line;
-        for (std::size_t c = 0; c < cells.size(); ++c) {
-            line += (c == 0 ? "" : "  ") + Pad(cells[c], widths[c], right[c]);
-        }
-        while (!line.empty() && line.back() == ' ') {
-            line.pop_back();
-        }
-        out << line << "\n";
-    };
-    printRow(header);
-    for (const auto& row : rows) {
-        printRow(row);
-    }
-    for (const AutoplayLevelReport& level : report.levels) {
-        if (!level.reason.empty()) {
-            out << "  level " << level.levelNumber << " (" << level.id << "): " << level.reason << "\n";
-        }
-    }
-    if (report.carryOverChecked) {
-        if (report.carryOverProblems.empty()) {
-            out << "Carry-over: OK (each level started with the previous level's health and ammo; progress saved)\n";
-        } else {
-            for (const std::string& problem : report.carryOverProblems) {
-                out << "Carry-over: FAILED: " << problem << "\n";
-            }
-        }
-    }
-    int completed = 0;
-    for (const AutoplayLevelReport& level : report.levels) {
-        completed += level.result == AutoplayResult::Complete ? 1 : 0;
-    }
-    out << "Result: " << (report.Success() ? "PASS" : "FAIL") << " (" << completed << " of " << report.levels.size()
-        << " level(s) completed" << (report.wholeCampaign && report.campaignCompleted ? ", campaign complete" : "")
-        << ")\n";
-    return out.str();
+    const std::vector<bool> rightAligned = {true, false, false, true, true, true, true, true, true, true, false, true};
+    return text + FormatColumns(rows, rightAligned) + TableSummary(report);
 }
 
 std::string FormatAutoplayJson(const AutoplayRunReport& report) {

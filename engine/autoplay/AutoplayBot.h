@@ -44,6 +44,7 @@
 #include "engine/world/KeyColor.h"
 
 class Engine;
+struct Entity;
 
 struct AutoplayConfig {
     double fixedStepSeconds = 1.0 / 60.0;  // Engine::Update step
@@ -134,20 +135,34 @@ private:
         int id = -1;
         bool open = false;
     };
+    struct Candidate;  // a possible goal found by Plan (AutoplayBot.cpp)
 
     void StartLevel();
     void PlayFrame();
     void Observe();
+    // Parts of Observe; the bool ones return true when the change counts as progress.
+    bool ObserveKeys();
+    bool ObserveEntities();
+    bool ObserveDoor(const Entity& door);
+    void ObserveSupplies();
     bool NeedsReplan() const;
     void Plan();
+    void FindPickupGoals(Candidate& health, Candidate& ammo, Candidate& key) const;
+    Candidate FindExitGoal() const;
+    bool KeyOpensADoor(KeyColor color) const;
     bool FightVisibleEnemy();
     void FollowPath();
+    void OpenDoorAhead(const Vec2i& doorCell);
+    Vec2 LookaheadTarget(const Vec2& position) const;
+    void ActAtGoal(const Vec2& position);
     void CheckProgress();
     void Fail(const std::string& reason);
 
     // Breadth-first search over cells from the player's cell; fills distance_ and parent_.
     void SearchFromPlayer();
     bool IsPassable(int x, int y) const;
+    // The door entity that controls map cell (x, y), or null ('D' cells without one never open).
+    const Entity* DoorEntityAt(int x, int y) const;
     bool IsReached(const Vec2i& cell) const;
     int DistanceTo(const Vec2i& cell) const;
     std::vector<Vec2i> PathTo(const Vec2i& cell) const;
@@ -156,11 +171,14 @@ private:
     // Input helpers: hold an action this frame, or tap it (a press edge, then a release).
     void Hold(InputAction action);
     void Tap(InputAction action);
+    // Taps Interact unless the last press is less than kInteractRepeat ago.
+    void PressInteract();
     // Turns towards `target`; returns the remaining absolute angle (radians).
     float TurnTowards(const Vec2& target);
     // Turns and walks towards `target` (walks only when roughly facing it).
     void SteerTowards(const Vec2& target);
 
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members): borrowed for life, never null
     Engine& engine_;
     AutoplayConfig config_;
     std::uint64_t frame_ = 0;
@@ -169,13 +187,13 @@ private:
 
     // Level tracking.
     int levelsStarted_ = 0;
-    int levelIndex_ = -2;
+    int levelIndex_ = -2;  // campaign index of the level being played; -2 = none yet (-1 = loaded by path)
     double lastLevelTime_ = -1.0;
     bool failed_ = false;
     std::string failureReason_;
 
     // World snapshot used to detect changes.
-    int keyMask_ = 0;
+    unsigned keyMask_ = 0;  // bit i: kKeyColors[i] is held
     int pickupsLeft_ = 0;
     int enemyHealthTotal_ = 0;
     std::vector<DoorState> doors_;
