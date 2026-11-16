@@ -15,9 +15,13 @@ enum class InputAction : std::uint8_t {
     Attack,
     Pause,
     Restart,
-    Confirm,
-    ToggleDebugView,
-    Back,  // Escape only: leaves the current screen (quits from the main menu)
+    Confirm,          // Enter: confirms on result screens (level complete, game over, credits)
+    ToggleDebugView,  // F3: FPS / position overlay
+    Back,             // Escape only: leaves the current screen (quits from the main menu)
+    // Appended in Phase 5 (docs/CONTROLS.md):
+    Select,           // Enter or Space: activates the highlighted menu item
+    ToggleMinimap,    // M or Tab
+    QuitToMenu,       // Q (also TurnLeft): leaves the pause screen for the main menu
     Count
 };
 
@@ -52,6 +56,15 @@ struct InputState {
         } else {
             state.wasReleased = true;
         }
+    }
+
+    // Forgets a press made this frame and releases the action without reporting a release
+    // (used when a key turns out to be part of a window shortcut, known issue B13).
+    void CancelAction(InputAction action) {
+        ActionButtonState& state = actions[static_cast<std::size_t>(action)];
+        state.isDown = false;
+        state.wasPressed = false;
+        state.wasReleased = false;
     }
 
     bool IsDown(InputAction action) const {

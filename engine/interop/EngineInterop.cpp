@@ -63,7 +63,8 @@ int nw_engine_get_state(const void* handle) {
 
 void nw_engine_set_state(void* handle, int state) {
     Engine* engine = ToEngine(handle);
-    if (engine != nullptr) {
+    // Out-of-range values are ignored; 4 (Victory, deprecated) selects LevelComplete.
+    if (engine != nullptr && IsValidGameStateValue(state)) {
         engine->SetState(static_cast<GameState>(state));
     }
 }

@@ -56,10 +56,9 @@ void CommandBridge::ProcessCommands(Engine& engine) {
     for (const InteropCommand& cmd : localCommands) {
         switch (cmd.type) {
         case InteropCommandType::SetGameState: {
-            int stateVal = cmd.intArg1;
-            if (stateVal >= static_cast<int>(GameState::Menu) &&
-                stateVal <= static_cast<int>(GameState::Victory)) {
-                engine.SetState(static_cast<GameState>(stateVal));
+            // Menu .. CampaignComplete; Victory (4, deprecated) selects LevelComplete.
+            if (IsValidGameStateValue(cmd.intArg1)) {
+                engine.SetState(static_cast<GameState>(cmd.intArg1));
             }
             break;
         }

@@ -83,9 +83,13 @@ bool RequireKey(
 }
 } // namespace
 
-bool LoadWallTextureAssignments(
+std::string ThemeConfigPath(const std::string& themeId) {
+    return "game/defs/themes/" + themeId + ".cfg";
+}
+
+bool LoadThemeTextureAssignments(
     const std::string& filePath,
-    WallTextureAssignments& outAssignments,
+    ThemeTextureAssignments& outAssignments,
     std::vector<std::string>& errors) {
     std::unordered_map<std::string, std::string> values;
     if (!LoadKeyValueConfig(filePath, values, errors)) {
@@ -99,6 +103,7 @@ bool LoadWallTextureAssignments(
     ok = RequireKey(values, "door", outAssignments.door, filePath, errors) && ok;
     ok = RequireKey(values, "floor", outAssignments.floor, filePath, errors) && ok;
     ok = RequireKey(values, "ceiling", outAssignments.ceiling, filePath, errors) && ok;
+    ok = RequireKey(values, "exit", outAssignments.exit, filePath, errors) && ok;
     return ok;
 }
 

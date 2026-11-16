@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 
-struct InputState;
+#include "engine/core/InputState.h"
+
 class Framebuffer;
 
 struct PlatformConfig {
@@ -39,6 +41,18 @@ public:
     // Shows a modal error box (works before Init). Failure is ignored: there may be no
     // message system at all (dummy video driver, headless CI).
     static void ShowErrorMessageBox(const std::string& title, const std::string& message);
+
+    // Writes the framebuffer (e.g. 320x240) as a 24-bit BMP (--screenshot). Works without a
+    // window. On failure returns false and sets `error`.
+    static bool SaveFramebufferBmp(const Framebuffer& framebuffer, const std::string& path, std::string& error);
+
+    // Key bindings (docs/CONTROLS.md). `scancode` is an SDL_Scancode and `modifiers` an SDL
+    // keymod mask; they are plain integers so tests can call these without SDL events.
+    // Fills `actions` with the actions bound to the key and returns how many (0-2). Ctrl is
+    // not the fire key while Cmd/Windows is held (B13).
+    static std::size_t MapKeyToActions(int scancode, unsigned modifiers, InputAction (&actions)[2]);
+    // F11, Alt+Enter, and on macOS Cmd+Ctrl+F.
+    static bool IsFullscreenShortcut(int scancode, unsigned modifiers);
 
 private:
     bool EnsureFramebufferTexture(int width, int height);

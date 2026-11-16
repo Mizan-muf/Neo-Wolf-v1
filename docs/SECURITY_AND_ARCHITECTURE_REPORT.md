@@ -29,7 +29,7 @@ The review confirmed that:
 - **Command Bridge & Memory Serialization (`engine/interop/CommandBridge.h`, `CommandBridge.cpp`):**
   - Fixed-size string buffers (`char strArg[128]`) with enforced null-termination via bounded string copy (`std::strncpy(..., sizeof(strArg) - 1)`).
   - Thread-safe command queueing and event polling protected by `std::mutex`.
-  - Hardened command processing with enum range validation for `SetGameState` (`GameState::Menu` through `GameState::Victory`) and delimited string parsing for `LoadLevel`.
+  - Hardened command processing with enum range validation for `SetGameState` (`GameState::Menu` through `GameState::CampaignComplete` since Phase 5; `Victory` is a deprecated alias of `LevelComplete`) and delimited string parsing for `LoadLevel`.
 
 ### 2.2 Zero-Allocation Constraints & Hot-Path Performance
 - **Framebuffer Operations (`engine/render/Framebuffer.cpp`):**

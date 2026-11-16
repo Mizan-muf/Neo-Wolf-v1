@@ -4,6 +4,11 @@
 
 A high-performance **2.5D software-rendered raycasting game engine** written in modern C++17 with SDL2, featuring a data-driven content pipeline, native particle simulation, audio system, and a comprehensive **DevKit CLI toolchain** (`tools/devkit/`).
 
+![Neo-Wolf in play: level 1, "Outpost Gate", with the HUD and the level banner](docs/images/screens/hud.png)
+
+How to play: [docs/GAMEPLAY.md](docs/GAMEPLAY.md) (campaign, exit switches, saves) and
+[docs/CONTROLS.md](docs/CONTROLS.md) (all keys).
+
 ---
 
 ## Features
@@ -13,7 +18,7 @@ A high-performance **2.5D software-rendered raycasting game engine** written in 
 - **Billboard Sprites**: Occlusion-culled, distance-sorted 2.5D sprites for enemies, pickups, and decorations with transparent magenta color keying.
 - **Particle System**: Real-time particle simulation for wall sparks, pickup sparkles, and floating ambient dust motes.
 - **Sound System**: SDL2 16-bit PCM audio mixer with configurable master volume and event-driven SFX triggers (doors, pickups, weapon fire, enemy alerts).
-- **GameState Machine**: Robust state separation (`Menu`, `Gameplay`, `Paused`, `GameOver`, `Victory`) with seamless transitions, overlays, and level reload/reset architecture.
+- **Campaign & Progression**: A level list (`game/defs/campaign.json`, 3 levels for now: level 1 plus two short placeholders until Roadmap Phase 8), a main menu with New Game / Continue / Level Select / Quit, exit switches that complete a level, health and ammo carried between levels, restart from the level-entry snapshot on death, saved progress, and per-level texture themes. The state machine (`Menu`, `Gameplay`, `Paused`, `GameOver`, `LevelComplete`, `CampaignComplete`) is SDL-free and unit-tested ([docs/GAMEPLAY.md](docs/GAMEPLAY.md)).
 - **Gameplay Combat & AI**: Hitscan weapon attacks, ammo management, health pickups, and enemy AI state machine (Idle -> Alert -> Chase -> Attack -> Dead).
 - **C API Boundary & Interop Bridge**: Plain C ABI interface and bidirectional Command Bridge / Event Queue for decoupling gameplay scripting.
 - **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite/audio configuration files (`.cfg`), gameplay values (`gameplay.json`), and entity placements (`<level>.entities.json`, with an optional `.csv` export). Editing them changes the game without recompiling; an invalid `gameplay.json`, map or entity file stops the game with a message that names the file, entry and field. See [docs/CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md).
@@ -36,7 +41,8 @@ and linked statically by CMake, so there is nothing else to install. Details: [d
 ### 2. Launch Game
 ```bash
 ./build/macos/neo_wolf            # works from any directory: it finds the repository's game/ folder
-./build/macos/neo_wolf --help     # options: --data, --level, --frames, --fullscreen, --version
+./build/macos/neo_wolf --help     # options: --data, --pref-dir, --level, --frames, --fullscreen, --version,
+                                  # developer tools --preview and --screenshot
 ```
 
 If the game does not start, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (log file
@@ -102,8 +108,11 @@ The DevKit CLI provides developer tools for map inspection, asset validation, le
 ./tools/devkit/neo_devkit inspect-asset game/assets/sprite_enemy.ppm
 ./tools/devkit/neo_devkit inspect-asset game/assets/sfx_door_open.wav
 
-# Create a new starter map template
-./tools/devkit/neo_devkit create-map game/maps/level02.map --width 20 --height 15 --style dungeon
+# Create a new starter map template (with an exit switch X in the east wall)
+./tools/devkit/neo_devkit create-map game/maps/level04.map --width 20 --height 15 --style dungeon
+
+# Regenerate the per-level theme textures (deterministic; --check verifies them)
+python3 tools/devkit/gen_textures.py
 
 # Export the entity placement JSON files to CSV (JSON is canonical)
 ./tools/devkit/neo_devkit sync-entities
@@ -147,23 +156,22 @@ The output directory `release/neo-wolf-v1.0.0-<platform>/` is fully portable and
 
 ---
 
-## Controls & Debug Features
+## Controls
 
-The bindings live in `engine/platform/PlatformSDL.cpp` (`MapScancodeToActions`); this table matches it.
+The full list, per screen, is in [docs/CONTROLS.md](docs/CONTROLS.md) (it matches
+`PlatformSDL::MapKeyToActions` in `engine/platform/PlatformSDL.cpp`). In short:
 
-| Action | Keys | Notes |
-| :--- | :--- | :--- |
-| **Move forward / back** | `W` / `S`, or Up / Down arrows | |
-| **Strafe left / right** | `A` / `D` | |
-| **Turn left / right** | Left / Right arrows; `Q` also turns left | `E` is *not* a turn key (it is Interact) |
-| **Fire** | `Space`, `F`, left or right `Ctrl` | Also starts the game from the menu |
-| **Interact** (open/close doors) | `E` | Also starts the game from the menu. Pickups and the exit trigger work by walking into them. |
-| **Pause / resume** | `Esc` or `P` | `Enter` also resumes. The game pauses by itself when its window loses focus. |
-| **Restart level** | `R` | In play, paused, or on the game-over / victory screen |
-| **Confirm** | `Enter` (or keypad `Enter`) | Starts the game from the menu; returns to the menu from game-over / victory (`Esc`/`P` too) |
-| **Minimap and debug overlay** | `Tab` | On by default |
-| **Fullscreen on/off** | `F11` or `Alt+Enter`; on macOS also `Cmd+Ctrl+F` | Desktop fullscreen; the image keeps its 4:3 shape with black bars. `--fullscreen` starts in fullscreen. |
-| **Quit** | `Esc` on the main menu; close the window, `Cmd+Q` (macOS) or `Alt+F4` (Windows) | A Quit menu item comes with the menu rework (Roadmap Phase 5) |
+| Action | Keys |
+| :--- | :--- |
+| Move / strafe | `W` `S` or Up / Down; `A` `D` |
+| Turn | Left / Right arrows, `Q` |
+| Fire | `Space`, `F`, `Ctrl` |
+| Use (doors, exit switch) | `E` |
+| Pause | `P` or `Esc` (in pause: `Q` quits to the menu, `R` restarts the level) |
+| Restart level | `R` |
+| Minimap | `M` or `Tab` (off by default) |
+| Menus | `W`/`S` or arrows to choose, `Enter`/`Space` to select, `Esc` to go back |
+| Fullscreen | `F11`, `Alt+Enter`; macOS also `Cmd+Ctrl+F` |
 
 The window can be resized freely; the 320×240 image is scaled with sharp (nearest-neighbour) pixels.
 
@@ -185,7 +193,7 @@ The window can be resized freely; the 320×240 image is scaled with sharp (neare
 |-- game/                   # Game content and definitions
 |   |-- assets/             # PPM textures/sprites and WAV sound effects
 |   |-- maps/               # ASCII grid map files (.map)
-|   `-- defs/               # Texture/sprite/audio configs and entity placement tables
+|   `-- defs/               # campaign.json, gameplay.json, themes/, sprite/audio configs, entity placements
 |-- tools/                  # Developer toolchain
 |   `-- devkit/             # DevKit CLI: validator, doctor, map/asset tools, packager
 |-- docs/                   # Technical documentation
@@ -201,6 +209,8 @@ The window can be resized freely; the 320×240 image is scaled with sharp (neare
 
 ## Documentation Index
 
+- [Gameplay: campaign, states, saves](docs/GAMEPLAY.md)
+- [Controls](docs/CONTROLS.md)
 - [Architecture Specification](docs/ARCHITECTURE.md)
 - [Map Format Specification](docs/MAP_FORMAT.md)
 - [Asset Pipeline Guide](docs/ASSET_GUIDE.md)
@@ -208,4 +218,7 @@ The window can be resized freely; the 320×240 image is scaled with sharp (neare
 - [DevKit CLI Toolchain Guide](docs/DEVKIT_GUIDE.md)
 - [Gameplay API & Mechanics](docs/GAMEPLAY_API.md)
 - [Build & Release Engineering](docs/BUILD_AND_RELEASE.md)
+- [Testing](docs/TESTING.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Known Issues](docs/KNOWN_ISSUES.md) and [Roadmap](docs/ROADMAP.md)
 - [Implementation Checklist](docs/Checklist.md)

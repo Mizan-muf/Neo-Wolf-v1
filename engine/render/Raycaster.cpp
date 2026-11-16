@@ -30,6 +30,8 @@ const Texture* ResolveTextureForTile(const RaycasterRenderParams& params, TileTy
         return params.wallAltATexture != nullptr ? params.wallAltATexture : params.missingTexture;
     case TileType::WallAltB:
         return params.wallAltBTexture != nullptr ? params.wallAltBTexture : params.missingTexture;
+    case TileType::Exit:
+        return params.exitTexture != nullptr ? params.exitTexture : params.missingTexture;
     default:
         return params.missingTexture;
     }
@@ -242,10 +244,15 @@ void Raycaster::RenderWalls(
             continue;
         }
 
+        // Texture column u must grow from the viewer's left to right. Map y grows downwards, so
+        // looking +x the viewer's left is the smaller y (u = frac(y)) and looking -x it is the
+        // larger y (flip); looking -y the left is the smaller x (u = frac(x)) and looking +y the
+        // larger x (flip). Before Phase 5 the flips were the other way round and every wall was
+        // mirrored, which showed on the exit switch's "EXIT" label.
         float wallU = (hit.side == RayHitSide::Vertical) ? hit.hitPosition.y : hit.hitPosition.x;
         wallU = wallU - std::floor(wallU);
-        if ((hit.side == RayHitSide::Vertical && rayDirection.x > 0.0f) ||
-            (hit.side == RayHitSide::Horizontal && rayDirection.y < 0.0f)) {
+        if ((hit.side == RayHitSide::Vertical && rayDirection.x < 0.0f) ||
+            (hit.side == RayHitSide::Horizontal && rayDirection.y > 0.0f)) {
             wallU = 1.0f - wallU;
         }
 

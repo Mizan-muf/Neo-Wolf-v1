@@ -75,7 +75,10 @@ enum class InteropEventType : std::int32_t {
     PickupCollected,
     DoorToggled,
     TriggerActivated,
-    LevelLoaded
+    LevelLoaded,
+    // Appended in Phase 5: the exit switch was used. intArg1 = campaign level number
+    // (1-based, 0 for a level loaded by path), intArg2 = health, floatArg1 = seconds played.
+    LevelCompleted
 };
 
 struct InteropEvent {

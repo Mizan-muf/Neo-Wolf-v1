@@ -1,0 +1,304 @@
+// Engine: campaign levels, texture themes, saved progress, game-flow requests and previews.
+
+#include "engine/core/Engine.h"
+
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "engine/assets/ContentConfig.h"
+#include "engine/assets/TextureLoader.h"
+#include "engine/core/Log.h"
+#include "engine/core/Paths.h"
+#include "engine/core/Progress.h"
+
+namespace {
+constexpr float kLevelBannerSeconds = 3.0f;
+
+struct ThemeSlot {
+    const char* textureId;
+    const std::string ThemeTextureAssignments::*path;
+};
+
+constexpr ThemeSlot kThemeSlots[] = {
+    {"wall", &ThemeTextureAssignments::wall},       {"wall_alt_a", &ThemeTextureAssignments::wallAltA},
+    {"wall_alt_b", &ThemeTextureAssignments::wallAltB}, {"door", &ThemeTextureAssignments::door},
+    {"floor", &ThemeTextureAssignments::floor},     {"ceiling", &ThemeTextureAssignments::ceiling},
+    {"exit", &ThemeTextureAssignments::exit},
+};
+} // namespace
+
+bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors) {
+    const std::string resolvedPath = ResolveContentPath(relativePath);
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    CampaignDefinition campaign{};
+    const bool loaded = LoadCampaign(resolvedPath, contentRoot_, campaign, errors, warnings);
+    for (const std::string& warning : warnings) {
+        LogWarning("  " + warning);
+    }
+    if (!loaded) {
+        LogError("Invalid campaign manifest " + resolvedPath + ":");
+        for (const std::string& error : errors) {
+            LogError("  " + error);
+        }
+        if (outErrors != nullptr) {
+            *outErrors = errors;
+        }
+        return false;
+    }
+    campaign_ = std::move(campaign);
+    std::string names;
+    for (std::size_t i = 0; i < campaign_.levels.size(); ++i) {
+        names += (i == 0 ? "" : ", ") + campaign_.levels[i].id + " (" + campaign_.levels[i].theme + ")";
+    }
+    LogInfo("Campaign \"" + campaign_.title + "\" loaded from " + resolvedPath + ": " +
+            std::to_string(campaign_.levels.size()) + " level(s): " + names);
+    ConfigureFlow();
+    return true;
+}
+
+void Engine::ConfigureFlow() {
+    GameFlowConfig config{};
+    config.levelCount = static_cast<int>(campaign_.levels.size());
+    config.initial = PlayerStats{gameplay_.player.initialHealth, gameplay_.weapon.initialAmmo};
+    config.maximum = PlayerStats{gameplay_.player.maxHealth, gameplay_.weapon.maxAmmo};
+    const bool hadProgress = flow_.HasProgress();
+    const int highest = flow_.HighestUnlocked();
+    flow_.Configure(config);
+    flow_.SetProgress(hadProgress, highest);
+}
+
+void Engine::LoadSavedProgress() {
+    if (prefDir_.empty()) {
+        LogInfo("No per-user folder: progress is not loaded or saved.");
+        return;
+    }
+    const std::string path = PathToUtf8(prefDir_ / kProgressFileName);
+    ProgressData data{};
+    std::string message;
+    switch (LoadProgressFile(path, data, message)) {
+    case ProgressLoadResult::Loaded:
+        flow_.SetProgress(true, data.highestUnlocked);
+        LogInfo("Saved " + message + " (campaign has " + std::to_string(flow_.LevelCount()) + ")");
+        break;
+    case ProgressLoadResult::Missing:
+        flow_.SetProgress(false, 1);
+        LogInfo("Progress: " + message);
+        break;
+    case ProgressLoadResult::Invalid:
+        flow_.SetProgress(false, 1);
+        LogWarning("Ignoring the saved progress (starting without it): " + message);
+        break;
+    }
+}
+
+void Engine::SaveProgress(int highestUnlocked) {
+    if (prefDir_.empty()) {
+        LogInfo("Progress not saved (no per-user folder).");
+        return;
+    }
+    const std::string path = PathToUtf8(prefDir_ / kProgressFileName);
+    ProgressData data{};
+    data.highestUnlocked = highestUnlocked;
+    std::string error;
+    if (SaveProgressFile(path, data, error)) {
+        LogInfo("Progress saved to " + path + ": highest unlocked level " + std::to_string(highestUnlocked));
+    } else {
+        LogWarning("Could not save progress: " + error);
+    }
+}
+
+void Engine::RefreshTexturePointers() {
+    // AssetManager keeps each texture in a stable map node, so these pointers stay valid when
+    // a texture is replaced; they are refreshed anyway after every swap.
+    wallTexture_ = assets_.GetTexture("wall");
+    wallAltATexture_ = assets_.GetTexture("wall_alt_a");
+    wallAltBTexture_ = assets_.GetTexture("wall_alt_b");
+    doorTexture_ = assets_.GetTexture("door");
+    floorTexture_ = assets_.GetTexture("floor");
+    ceilingTexture_ = assets_.GetTexture("ceiling");
+    exitTexture_ = assets_.GetTexture("exit");
+    enemySpriteTexture_ = assets_.GetTexture("enemy");
+    pickupSpriteTexture_ = assets_.GetTexture("pickup");
+    decorationSpriteTexture_ = assets_.GetTexture("decoration");
+}
+
+bool Engine::ApplyTheme(const std::string& themeId) {
+    if (themeId == currentThemeId_) {
+        return true;
+    }
+    if (missingTexture_.Width() <= 0) {
+        TextureLoader::BuildFallbackChecker(missingTexture_, 64, 64);
+    }
+
+    const std::string configPath = ResolveContentPath(ThemeConfigPath(themeId));
+    std::vector<std::string> errors;
+    ThemeTextureAssignments assignments{};
+    bool complete = LoadThemeTextureAssignments(configPath, assignments, errors);
+    for (const std::string& error : errors) {
+        LogWarning(error);
+    }
+
+    // Load the whole set first; only then replace the textures in use.
+    std::vector<std::pair<std::string, Texture>> loaded;
+    for (const ThemeSlot& slot : kThemeSlots) {
+        const std::string& relativePath = assignments.*(slot.path);
+        Texture texture{};
+        if (relativePath.empty() || !TextureLoader::LoadPPM(ResolveContentPath(relativePath), texture)) {
+            LogWarning("Theme " + themeId + ": using the fallback texture for '" + slot.textureId + "'" +
+                       (relativePath.empty() ? std::string() : " (cannot load " + relativePath + ")"));
+            texture = missingTexture_;
+            complete = false;
+        }
+        loaded.emplace_back(slot.textureId, std::move(texture));
+    }
+    for (const auto& entry : loaded) {
+        assets_.SetTexture(entry.first, entry.second);
+    }
+    RefreshTexturePointers();
+    currentThemeId_ = themeId;
+    LogInfo("Texture theme \"" + themeId + "\" applied" + (complete ? "." : " (with fallbacks)."));
+    return complete;
+}
+
+bool Engine::LoadCampaignLevel(int levelIndex, const PlayerStats& stats) {
+    if (levelIndex < 0) {
+        if (!LoadLevel(currentMapPath_, currentEntitiesPath_)) {
+            return false;
+        }
+    } else {
+        if (levelIndex >= static_cast<int>(campaign_.levels.size())) {
+            LogError("Campaign level " + std::to_string(levelIndex + 1) + " does not exist (the campaign has " +
+                     std::to_string(campaign_.levels.size()) + ").");
+            return false;
+        }
+        const CampaignLevel& level = campaign_.levels[static_cast<std::size_t>(levelIndex)];
+        LogInfo("Starting level " + std::to_string(levelIndex + 1) + " \"" + level.name + "\" (" + level.id +
+                ") with health " + std::to_string(stats.health) + ", ammo " + std::to_string(stats.ammo));
+        if (!LoadLevel(level.map, level.entities)) {
+            return false;
+        }
+        ApplyTheme(level.theme);
+        currentLevelIndex_ = levelIndex;
+        levelBannerTimer_ = kLevelBannerSeconds;
+    }
+    playerHealth_ = stats.health;
+    playerAmmo_ = stats.ammo;
+    return true;
+}
+
+const CampaignLevel* Engine::CurrentCampaignLevel() const {
+    if (currentLevelIndex_ < 0 || currentLevelIndex_ >= static_cast<int>(campaign_.levels.size())) {
+        return nullptr;
+    }
+    return &campaign_.levels[static_cast<std::size_t>(currentLevelIndex_)];
+}
+
+LevelResults Engine::CurrentLevelResults() const {
+    LevelResults results{};
+    results.totalEnemies = levelEnemyTotal_;
+    results.totalPickups = levelPickupTotal_;
+    results.seconds = levelTimeSeconds_;
+    for (const Entity& entity : entityManager_.Entities()) {
+        if (entity.type == EntityType::Enemy && entity.enemyState == EnemyState::Dead) {
+            ++results.kills;
+        } else if (entity.type == EntityType::Pickup && entity.collected) {
+            ++results.pickups;
+        }
+    }
+    return results;
+}
+
+void Engine::ExecuteFlowRequests(const std::vector<FlowRequest>& requests) {
+    for (const FlowRequest& request : requests) {
+        switch (request.type) {
+        case FlowRequestType::LoadLevel:
+        case FlowRequestType::RestartLevel:
+            if (!LoadCampaignLevel(request.levelIndex, request.stats)) {
+                LogError("Could not start the level; back to the main menu.");
+                flow_.ForceState(GameState::Menu);
+            }
+            break;
+        case FlowRequestType::SaveProgress:
+            SaveProgress(request.highestUnlocked);
+            break;
+        case FlowRequestType::Quit:
+            LogInfo("Quit from the main menu.");
+            running_ = false;
+            break;
+        }
+    }
+}
+
+bool Engine::SetupPreview(PreviewScreen screen) {
+    if (screen == PreviewScreen::None) {
+        return true;
+    }
+    LogInfo(std::string("Preview: ") + PreviewScreenName(screen) + " (sample data; the simulation is frozen).");
+    // Sample progress: level 2 unlocked, later levels locked. Nothing is saved.
+    flow_.SetProgress(true, 2);
+    simulationFrozen_ = true;
+
+    const auto startLevelOne = [this]() {
+        ExecuteFlowRequests({flow_.StartLevelDirect(0)});
+        return flow_.State() == GameState::Gameplay;
+    };
+
+    switch (screen) {
+    case PreviewScreen::None:
+        break;
+    case PreviewScreen::Menu:
+        flow_.SetMenuPage(MenuPage::Main, 0);
+        break;
+    case PreviewScreen::LevelSelect:
+        flow_.SetMenuPage(MenuPage::LevelSelect, 1);
+        break;
+    case PreviewScreen::Hud:
+    case PreviewScreen::Minimap:
+        if (!startLevelOne()) {
+            return false;
+        }
+        playerHealth_ = 75;
+        playerAmmo_ = 18;
+        if (screen == PreviewScreen::Hud) {
+            ShowMessage("HEALTH RESTORED (+25 HP)", 60.0f);
+        } else {
+            levelBannerTimer_ = 0.0f;
+            minimapVisible_ = true;
+        }
+        break;
+    case PreviewScreen::Pause:
+        if (!startLevelOne()) {
+            return false;
+        }
+        flow_.ForceState(GameState::Paused);
+        break;
+    case PreviewScreen::LevelComplete: {
+        if (!startLevelOne()) {
+            return false;
+        }
+        LevelResults results{};
+        results.kills = 1;
+        results.totalEnemies = 1;
+        results.pickups = 1;
+        results.totalPickups = 1;
+        results.seconds = 42.0;
+        flow_.SetLastResults(results);
+        flow_.ForceState(GameState::LevelComplete);
+        break;
+    }
+    case PreviewScreen::GameOver:
+        if (!startLevelOne()) {
+            return false;
+        }
+        playerHealth_ = 0;
+        flow_.ForceState(GameState::GameOver);
+        break;
+    case PreviewScreen::CampaignComplete:
+        flow_.ForceState(GameState::CampaignComplete);
+        break;
+    }
+    PublishStateChange();
+    return true;
+}

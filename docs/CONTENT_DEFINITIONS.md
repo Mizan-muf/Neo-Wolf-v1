@@ -10,29 +10,34 @@ All paths inside the files are relative to the content root and use `/`.
 ```text
 game/
 |-- maps/
-|   `-- level01.map               level grid (format: MAP_FORMAT.md)
+|   `-- level01.map ... level03.map  level grids (format: MAP_FORMAT.md)
 |-- defs/
+|   |-- campaign.json             the level list and order                     (required)
 |   |-- gameplay.json             player, weapon, enemy and pickup values      (required)
-|   |-- level01.entities.json     level 1 entity placements, canonical         (required)
+|   |-- level01.entities.json     level 1 entity placements, canonical         (required by the campaign)
 |   |-- level01.entities.csv      the same placements as a CSV export          (optional)
-|   |-- wall_textures.cfg         wall, door, floor and ceiling textures
+|   |-- level02/03.entities.*     the same for levels 2 and 3
+|   |-- themes/<id>.cfg           texture themes: bunker, stone, tech, classic
 |   |-- sprites.cfg               billboard sprite textures
 |   `-- audio.cfg                 sound effects and master volume
 `-- assets/                       .ppm textures and .wav sounds (ASSET_GUIDE.md)
+    `-- themes/<id>/              generated theme textures (tools/devkit/gen_textures.py)
 ```
 
 | File | Read by | When | If it is missing or invalid |
 |---|---|---|---|
 | `defs/gameplay.json` | `engine/assets/GameplayConfig.cpp` | `Engine::Init`, before the window opens | **Fatal**: error message (and an error box, except with `--frames`), exit code 1 |
-| `maps/levelNN.map` | `engine/world/MapLoader.cpp` | every level load | The level load fails. For the first level: fatal, exit code 1 |
-| `defs/levelNN.entities.json` | `engine/world/EntityPlacementLoader.cpp` | every level load | The level load fails. For the first level: fatal, exit code 1 |
-| `defs/wall_textures.cfg` | `engine/assets/ContentConfig.cpp` | `Engine::Init` | Warning; affected textures are drawn as a checkerboard |
+| `defs/campaign.json` | `engine/assets/CampaignConfig.cpp` | `Engine::Init`, before the window opens | **Fatal**: error message, exit code 1 |
+| `maps/levelNN.map` | `engine/world/MapLoader.cpp` | every level load | The level load fails. For the first level: fatal, exit code 1; later: back to the menu |
+| `defs/levelNN.entities.json` | `engine/world/EntityPlacementLoader.cpp` | every level load | The level load fails (as above) |
+| `defs/themes/<id>.cfg` | `engine/assets/ContentConfig.cpp` (`LoadThemeTextureAssignments`) | every level load whose theme differs from the current one | Warning; affected textures are drawn as a checkerboard |
 | `defs/sprites.cfg` | `engine/assets/ContentConfig.cpp` | `Engine::Init` | Warning; affected sprites are drawn as a checkerboard |
 | `defs/audio.cfg` | `engine/assets/AudioConfig.cpp` | `Engine::Init` | Warning; affected sounds are silent |
 
-`--level N` (1–99) selects `game/maps/levelNN.map` and `game/defs/levelNN.entities.json`
-(`engine/core/CommandLine.cpp`). Only level 1 exists so far. A level list (`campaign.json`)
-comes with Roadmap Phase 5.
+`--level N` starts **campaign level N** (1-based index into `campaign.json`) directly, skipping
+the menu and the unlocked-level check; it is meant for development and tests. A number larger
+than the campaign is a startup error (exit code 1). Without `--level` the game starts on the
+main menu ([GAMEPLAY.md](GAMEPLAY.md)).
 
 Every loader accepts LF and CRLF line endings. The JSON loaders and the entity CSV loader also
 skip a UTF-8 byte order mark.
@@ -66,16 +71,16 @@ cells (one cell = one map character), turn speed in radians per second, times in
 
 | Key | Type | Range | Default | Applied in |
 |---|---|---|---|---|
-| `player.initialHealth` | integer | 1–10000, ≤ `player.maxHealth` | 100 | Health at every level load (`Engine::LoadLevel`) |
-| `player.maxHealth` | integer | 1–10000 | 100 | Cap for health pickups and the command bridge's `HealPlayer` (`UpdateEntityInteractions`, `CommandBridge`) |
+| `player.initialHealth` | integer | 1–10000, ≤ `player.maxHealth` | 100 | Health for New Game, Continue, Level Select and `--level` (later levels inherit the previous level's health: [GAMEPLAY.md](GAMEPLAY.md#health-and-ammo-between-levels)), and for every level loaded by path through the C API (`Engine::LoadLevel`) |
+| `player.maxHealth` | integer | 1–10000 | 100 | Cap for health pickups, the command bridge's `HealPlayer` and the health carried to the next level (`UpdateEntityInteractions`, `CommandBridge`, `GameFlow`) |
 | `player.moveSpeed` | number | > 0, ≤ 20 (cells/s) | 3.0 | Walking and strafing speed (`Player::moveSpeed`, set by `BuildLevelFromPlacements`) |
 | `player.turnSpeed` | number | > 0, ≤ 20 (rad/s) | 1.8 | Turning speed (`Player::turnSpeedRadians`) |
 | `player.collisionRadius` | number | > 0, < 0.5 (cells) | 0.22 | Player collision with walls and closed doors (`MoveWithSliding`); a door does not close while the player overlaps its cell |
 | `weapon.damage` | integer | 1–10000 | 35 | Health removed from an enemy per hit (`Engine::PlayerAttack` → `PerformPlayerAttack`); shown in "Hit enemy! (-N HP)" |
 | `weapon.fireRate` | number | 0–60 (s) | 0.25 | **Seconds between two shots** (a cooldown, not shots per second) |
 | `weapon.range` | number | > 0, ≤ 1000 (cells) | 12.0 | Maximum hitscan distance; a wall stops the shot earlier |
-| `weapon.initialAmmo` | integer | 0–10000, ≤ `weapon.maxAmmo` | 24 | Ammo at every level load |
-| `weapon.maxAmmo` | integer | 0–10000 | 99 | Cap for ammo pickups and the command bridge's `AddAmmo` |
+| `weapon.initialAmmo` | integer | 0–10000, ≤ `weapon.maxAmmo` | 24 | Ammo for New Game, Continue, Level Select and `--level` (later levels inherit the previous level's ammo), and for levels loaded by path |
+| `weapon.maxAmmo` | integer | 0–10000 | 99 | Cap for ammo pickups, the command bridge's `AddAmmo` and the ammo carried to the next level |
 | `enemy.health` | integer | 1–10000 | 50 | Health (and maximum health) of every enemy (`BuildLevelFromPlacements`) |
 | `enemy.damage` | integer | 0–10000 | 12 | Health removed from the player per enemy attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
 | `enemy.moveSpeed` | number | 0–20 (cells/s) | 1.6 | Chase speed (0 = the enemy never moves) |
@@ -180,7 +185,7 @@ level:
 | `enemy` | `Enemy` entity + enemy sprite | Stats from the `enemy` section of `gameplay.json`. Chases and attacks the player; can be shot. |
 | `pickup` | `Pickup` entity + pickup sprite | Collected by walking within 0.6 cells of `x`/`y`. Health and ammo pickups share one sprite until Phase 6. |
 | `door` | `Door` entity; the map cell `(mapX, mapY)` becomes a closed door | The interact key (`E`) within 1.05 cells of `x`/`y` opens or closes it instantly. It does not close while the player overlaps the cell. |
-| `trigger` | `Trigger` entity (the level exit); the cell `(mapX, mapY)` becomes a `T` tile | Walking within 0.8 cells of `x`/`y` completes the level (Victory). |
+| `trigger` | `Trigger` entity; the cell `(mapX, mapY)` becomes a `T` tile | Walking within 0.8 cells of `x`/`y` shows `CHECKPOINT REACHED` and sends the `TriggerActivated` interop event, once. It does **not** end the level (since Phase 5); the exit switch, an `X` map tile, does ([MAP_FORMAT.md](MAP_FORMAT.md)). |
 | `decoration` | `Decoration` entity + decoration sprite | Nothing: not solid, not collectable, no interaction. Its sprite stays visible. |
 
 Entity ids are assigned in file order, starting at 1. The C API reports the entity type as a
@@ -242,7 +247,7 @@ python3 tools/devkit/devkit.py sync-entities --from-csv  # the reverse; overwrit
 
 ---
 
-## 3. `wall_textures.cfg`, `sprites.cfg`, `audio.cfg`
+## 3. Theme files, `sprites.cfg`, `audio.cfg`
 
 Key/value files: one `key=value` per line; spaces around the key and the value are trimmed;
 lines starting with `#` (after leading spaces) and blank lines are skipped. A later duplicate
@@ -253,19 +258,10 @@ file's entries are used (every texture of that file becomes a checkerboard, or e
 silent). A missing required key affects only that entry. Problems are logged as warnings and
 the game still starts.
 
-### `wall_textures.cfg`
+### Theme files (`themes/<id>.cfg`)
 
-Six required keys: `wall` (`#` tiles), `wall_alt_a` (`A`), `wall_alt_b` (`B`), `door` (door
-cells), `floor`, `ceiling`.
-
-```ini
-wall=game/assets/wall_main.ppm
-wall_alt_a=game/assets/wall_alt_a.ppm
-wall_alt_b=game/assets/wall_alt_b.ppm
-door=game/assets/wall_alt_b.ppm
-floor=game/assets/floor.ppm
-ceiling=game/assets/ceiling.ppm
-```
+See [Themes](#themes) below. Seven required keys: `wall` (`#` tiles), `wall_alt_a` (`A`),
+`wall_alt_b` (`B`), `door` (closed doors), `floor`, `ceiling` and `exit` (`X` exit switches).
 
 ### `sprites.cfg`
 
@@ -301,5 +297,80 @@ the engine read them. `textures.json` and `sprites.json` duplicated the `.cfg` f
 `entities.json` was a level registry with its own copy of the player spawn; only the DevKit
 used it (`validate` checked that its paths existed, `doctor` listed it as a required file).
 Those two checks were removed, and `doctor` now requires `gameplay.json` and
-`level01.entities.json` instead. A level list returns as `game/defs/campaign.json` in Roadmap
-Phase 5, read by the engine.
+`level01.entities.json` instead. The level list returned in Phase 5 as `game/defs/campaign.json`
+(below), which the engine reads.
+
+## Changed in Phase 5
+
+`game/defs/wall_textures.cfg` was migrated to `game/defs/themes/classic.cfg` (same keys plus
+`exit`); the loader is shared by every theme (`LoadThemeTextureAssignments`, formerly
+`LoadWallTextureAssignments`). `--level N` now selects a campaign entry instead of building
+the file names `levelNN.map` / `levelNN.entities.json`.
+
+---
+
+## Campaign
+
+`game/defs/campaign.json` lists the levels in play order. It is loaded by
+`engine/assets/CampaignConfig.cpp` in `Engine::Init` and validated like `gameplay.json`:
+any problem is fatal (exit code 1), every problem is logged, and the error box shows the first
+three. Test `campaign_manifest_validation`; the DevKit's `validate` checks it too.
+
+```json
+{
+  "title": "Operation Neo-Wolf",
+  "levels": [
+    { "id": "level01", "name": "Outpost Gate", "map": "game/maps/level01.map",
+      "entities": "game/defs/level01.entities.json", "theme": "bunker" }
+  ]
+}
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `title` | non-empty string | Shown on the menu, level select and credits |
+| `levels` | array of objects | At least one |
+| `levels[].id` | non-empty string | `a-z`, `0-9`, `_`, `-`; unique |
+| `levels[].name` | non-empty string | Shown in the HUD, level select, pause, game-over and level-complete screens |
+| `levels[].map` | content-relative path | The file must exist |
+| `levels[].entities` | content-relative path | The file must exist (`.json`, or a `.csv` export) |
+| `levels[].theme` | theme id | `a-z`, `0-9`, `_`, `-`; `game/defs/themes/<theme>.cfg` must exist |
+
+Errors: the file cannot be read; invalid JSON or a repeated key; a missing or mistyped field;
+an empty `levels`; a repeated or malformed id; a missing map, entity or theme file. Unknown keys
+are warnings. A title or name longer than 32 characters is a warning and is shortened on
+screen. The shipped campaign has 3 levels; `level02` and `level03` are **placeholders** that
+only exercise progression and are replaced in Roadmap Phase 8.
+
+Every campaign level must contain at least one exit switch (`X`) that the player can reach
+(DevKit rule, [MAP_FORMAT.md](MAP_FORMAT.md#devkit-rules-stricter-than-the-engine)).
+
+## Themes
+
+A theme gives a level its look: `game/defs/themes/<id>.cfg`, in the key/value format above,
+with the seven keys `wall`, `wall_alt_a`, `wall_alt_b`, `door`, `floor`, `ceiling`, `exit`.
+
+```ini
+wall=game/assets/themes/bunker/wall.ppm
+wall_alt_a=game/assets/themes/bunker/wall_alt_a.ppm
+wall_alt_b=game/assets/themes/bunker/wall_alt_b.ppm
+door=game/assets/themes/bunker/door.ppm
+floor=game/assets/themes/bunker/floor.ppm
+ceiling=game/assets/themes/bunker/ceiling.ppm
+exit=game/assets/themes/bunker/exit.ppm
+```
+
+| Theme | Textures | Used by |
+|---|---|---|
+| `bunker` | concrete, olive steel, hazard stripes, blast door (generated, 32×32) | level01 |
+| `stone` | stone bricks, moss, granite, wooden door (generated, 32×32) | level02 |
+| `tech` | blue panels, circuits, server racks, sliding door (generated, 32×32) | level03 |
+| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch | no level yet |
+
+When a level with a different theme loads, `Engine::ApplyTheme` reads the theme file, loads
+all seven textures first and then replaces them in the asset manager; a texture that fails
+becomes the checkerboard (warning in the log). The engine's cached texture pointers stay valid
+(the asset manager keeps each texture in a stable map node) and are refreshed after every swap.
+Sprites (`sprites.cfg`) are shared by all themes. Test `theme_loading_and_swap`.
+
+The generated textures come from `tools/devkit/gen_textures.py` ([ASSET_GUIDE.md](ASSET_GUIDE.md#4-texture-themes)).

@@ -45,7 +45,9 @@ Neo-Wolf is a modern, modular **2.5D software-rendered raycasting engine** writt
 - **`Engine`**: The central coordinator owning the lifecycle (`Init`, `Update`, `Render`, `Shutdown`).
 - **`App`**: Application shell managing timing, target framerate pacing (60 FPS default), and main loop dispatch.
 - **`TimeState`**: High-precision frame timing holding `deltaSeconds`, `totalSeconds`, and `frameIndex`.
-- **`InputState`**: Digital input action mapping supporting edge triggers (`WasPressed`, `WasReleased`) and continuous state (`IsDown`).
+- **`InputState`**: Digital input action mapping supporting edge triggers (`WasPressed`, `WasReleased`) and continuous state (`IsDown`). `Engine::SetInputInjector` lets tests (and the Phase 7 bot) feed it instead of the keyboard.
+- **`GameFlow`** (Phase 5): SDL-free state machine for menus, level progression, death/restart, pause and the end screens. Input snapshot + simulation events in, requests (load level, restart, save progress, quit) out; the engine carries them out ([GAMEPLAY.md](GAMEPLAY.md)).
+- **`Progress`** (Phase 5): `progress.json` read/atomic write. **`CampaignConfig`** (`engine/assets/`): the `campaign.json` loader.
 - **`MathUtils` & `Vec2`**: Vector operations (`Add`, `Subtract`, `Scale`, `Dot`, `Length`, `Normalize`), distance calculations, angle normalization (`NormalizeAngleRadians`), and scalar clamp utilities.
 
 ### 2. Platform Layer (`engine/platform/`)
@@ -53,7 +55,7 @@ Neo-Wolf is a modern, modular **2.5D software-rendered raycasting engine** writt
 - The rest of the engine remains 100% free of SDL headers, enabling headless testing and clean porting.
 
 ### 3. World & Simulation (`engine/world/`)
-- **`Map`**: 2D grid containing discrete `TileType` cells (`Empty`, `Wall`, `Door`, `Trigger`, `WallAltA`, `WallAltB`) and floating-point per-tile `lightLevel` values.
+- **`Map`**: 2D grid containing discrete `TileType` cells (`Empty`, `Wall`, `Door`, `Trigger`, `WallAltA`, `WallAltB`, `Exit`) and floating-point per-tile `lightLevel` values.
 - **`Player`**: Camera and player state holding floating-point `position` (`Vec2`), `directionAngleRadians`, `moveSpeed`, `turnSpeedRadians`, and collision bounding radius (`radius = 0.28f`).
 - **`Entity` & `EntityManager`**: Entity tracking system with stable IDs, entity types (`Player`, `Enemy`, `Pickup`, `Door`, `Trigger`, `Decoration`), state flags (`collected`, `doorOpen`, `triggerActivated`), and spatial coordinates.
 - **`MovementRules`**: Bounding circle vs axis-aligned grid wall collision resolution with sliding velocity vectors along obstacle planes.
@@ -80,7 +82,7 @@ Neo-Wolf is a modern, modular **2.5D software-rendered raycasting engine** writt
 - **`Texture`**: 2D pixel buffer (`ARGB32`) with nearest-neighbor UV sampling (`SampleNearest(u, v)`).
 - **`TextureLoader`**: Netpbm PPM (`P3` ASCII) parser with automatic color normalization and procedural checkerboard fallback generators.
 - **`AssetManager`**: Central asset repository storing named textures and sprites with graceful missing-asset fallback.
-- **`ContentConfig`**: Config parser for Key-Value `.cfg` files (`wall_textures.cfg`, `sprites.cfg`, `audio.cfg`) and JSON definitions.
+- **`ContentConfig`**: Config parser for Key-Value `.cfg` files (theme files `themes/<id>.cfg`, `sprites.cfg`, `audio.cfg`) and JSON definitions.
 
 ### 6. Audio Subsystem (`engine/audio/`)
 - **`AudioSystem`**: SDL audio mixer managing sound effect caching and playback:
@@ -92,7 +94,7 @@ Neo-Wolf is a modern, modular **2.5D software-rendered raycasting engine** writt
 - Generates weapon hit sparks, pickup collection sparkles, door movement sparks, and ambient floating dust.
 
 ### 8. UI Subsystem (`engine/ui/`)
-- **`UiRenderer`**: Software HUD overlay drawing health bar, ammunition indicators, crosshairs, pickup counters, and debug minimap.
+- **`UiRenderer`**: The menu, level select, HUD, pause, level-complete, game-over and credits screens, the minimap and the debug overlay, laid out for the 320×240 framebuffer from its width and height (Phase 5; test `ui_layout_bounds`).
 
 ---
 

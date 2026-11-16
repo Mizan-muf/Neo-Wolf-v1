@@ -30,13 +30,15 @@ void Engine::Shutdown() {
     wallAltATexture_ = nullptr;
     wallAltBTexture_ = nullptr;
     doorTexture_ = nullptr;
+    exitTexture_ = nullptr;
     floorTexture_ = nullptr;
     ceilingTexture_ = nullptr;
     enemySpriteTexture_ = nullptr;
     pickupSpriteTexture_ = nullptr;
     decorationSpriteTexture_ = nullptr;
     missingTexture_ = {};
-    debugTopDownEnabled_ = true;
+    minimapVisible_ = false;
+    debugOverlayVisible_ = false;
     latestRayHits_.clear();
     latestWallDepthBuffer_.clear();
     sprites_.clear();
@@ -52,8 +54,18 @@ void Engine::Shutdown() {
     playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
     hudMessage_.clear();
     hudMessageTimer_ = 0.0f;
-    state_ = GameState::Menu;
-    paused_ = false;
+    campaign_ = CampaignDefinition{};
+    flow_ = GameFlow{};
+    prefDir_.clear();
+    currentThemeId_.clear();
+    currentLevelIndex_ = -1;
+    levelBannerTimer_ = 0.0f;
+    levelTimeSeconds_ = 0.0;
+    levelEnemyTotal_ = 0;
+    levelPickupTotal_ = 0;
+    simulationFrozen_ = false;
+    inputInjector_ = nullptr;
+    reportedState_ = GameState::Menu;
     running_ = false;
 
     LogInfo("Engine shutdown finished.");

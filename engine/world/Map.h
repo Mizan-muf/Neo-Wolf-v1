@@ -9,7 +9,8 @@ enum class TileType : std::uint8_t {
     Door,
     Trigger,
     WallAltA,
-    WallAltB
+    WallAltB,
+    Exit  // 'X': solid wall with the exit-switch texture; Interact (E) facing it completes the level
 };
 
 class Map {
@@ -25,6 +26,8 @@ public:
     bool IsInsideMap(int x, int y) const;
     TileType GetCell(int x, int y) const;
     bool SetCell(int x, int y, TileType type);
+    // Solid for movement and rays: walls (#, A, B), closed doors (D), the exit switch (X), and
+    // every cell outside the map.
     bool IsWall(int x, int y) const;
     float GetLightLevel(int x, int y) const;
     bool SetLightLevel(int x, int y, float lightLevel);

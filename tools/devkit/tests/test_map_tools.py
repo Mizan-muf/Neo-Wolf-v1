@@ -87,6 +87,11 @@ class TestMapTools(unittest.TestCase):
         self.assertEqual(m.width, 16)
         self.assertEqual(m.height, 12)
         self.assertTrue(out_map.is_file())
+        # Phase 5: an exit switch in the east wall, next to a walkable cell.
+        self.assertEqual(m.get_tile(15, 6), "X")
+        self.assertTrue(m.is_solid(15, 6))
+        self.assertTrue(m.is_walkable(14, 6))
+        self.assertEqual(get_map_stats(out_map)["exits"], 1)
 
     def test_ascii_preview(self) -> None:
         map_content = (

@@ -35,18 +35,25 @@ bool Engine::IsRunning() const {
 }
 
 GameState Engine::GetState() const {
-    return state_;
+    return flow_.State();
 }
 
 void Engine::SetState(GameState state) {
-    if (state_ != state) {
-        state_ = state;
-        LogInfo(std::string("GameState changed to: ") + GameStateToString(state));
-        InteropEvent evt{};
-        evt.type = InteropEventType::StateChanged;
-        evt.intArg1 = static_cast<int>(state);
-        bridge_.PushEvent(evt);
+    flow_.ForceState(state);
+    PublishStateChange();
+}
+
+void Engine::PublishStateChange() {
+    const GameState state = flow_.State();
+    if (state == reportedState_) {
+        return;
     }
+    reportedState_ = state;
+    LogInfo(std::string("GameState changed to: ") + GameStateToString(state));
+    InteropEvent evt{};
+    evt.type = InteropEventType::StateChanged;
+    evt.intArg1 = static_cast<int>(state);
+    bridge_.PushEvent(evt);
 }
 
 void Engine::ShowMessage(const std::string& message, float duration) {
@@ -56,10 +63,14 @@ void Engine::ShowMessage(const std::string& message, float duration) {
 
 void Engine::ResetLevel() {
     LogInfo("Resetting level...");
-    if (!LoadLevel(currentMapPath_, currentEntitiesPath_)) {
+    const bool loaded = currentLevelIndex_ >= 0
+                            ? LoadCampaignLevel(currentLevelIndex_, flow_.EntrySnapshot())
+                            : LoadLevel(currentMapPath_, currentEntitiesPath_);
+    if (!loaded) {
         LogError("Level reset failed (see above); continuing with the current level state.");
     }
-    state_ = GameState::Gameplay;
+    flow_.ForceState(GameState::Gameplay);
+    PublishStateChange();
 }
 
 bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::string>* outErrors) {
@@ -139,9 +150,18 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     playerAttackCooldown_ = 0.0f;
     hudMessage_.clear();
     hudMessageTimer_ = 0.0f;
+    levelBannerTimer_ = 0.0f;
+    levelTimeSeconds_ = 0.0;
+    levelEnemyTotal_ = 0;
+    levelPickupTotal_ = 0;
+    for (const Entity& entity : entityManager_.Entities()) {
+        levelEnemyTotal_ += entity.type == EntityType::Enemy ? 1 : 0;
+        levelPickupTotal_ += entity.type == EntityType::Pickup ? 1 : 0;
+    }
 
     currentMapPath_ = mapPath;
     currentEntitiesPath_ = entitiesPath;
+    currentLevelIndex_ = -1;  // LoadCampaignLevel sets it after a campaign load
 
     InteropEvent evt{};
     evt.type = InteropEventType::LevelLoaded;

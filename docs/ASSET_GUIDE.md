@@ -17,8 +17,17 @@ game/assets/
 |-- sfx_door_open.wav     # Door open sound effect
 |-- sfx_pickup.wav        # Item pickup sound effect
 |-- sfx_enemy_alert.wav   # Enemy agro / alert sound effect
-`-- sfx_weapon_fire.wav   # Weapon discharge sound effect
+|-- sfx_weapon_fire.wav   # Weapon discharge sound effect
+`-- themes/               # Generated per-level texture themes (section 4)
+    |-- bunker/           # wall, wall_alt_a, wall_alt_b, door, floor, ceiling, exit (.ppm, 32x32)
+    |-- stone/
+    |-- tech/
+    `-- classic/          # exit.ppm only (the classic theme uses the original textures above)
 ```
+
+The original 8×8 wall, floor and ceiling textures above belong to the `classic` theme
+(`game/defs/themes/classic.cfg`). Which textures a level uses is decided by its theme
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#themes)).
 
 ---
 
@@ -90,7 +99,7 @@ Output:
 
 ### Generating Procedural Assets
 ```bash
-# Generate a 64x64 checkerboard texture
+# Generate a 64x64 checkerboard texture (one-off assets; the theme textures come from gen_textures.py, section 4)
 ./tools/devkit/neo_devkit create-asset --type checker --out game/assets/wall_test.ppm --width 64 --height 64
 
 # Generate a 64x64 brick texture
@@ -99,3 +108,48 @@ Output:
 # Generate a 440 Hz test tone WAV audio file
 ./tools/devkit/neo_devkit create-asset --type beep --out game/assets/sfx_test.wav
 ```
+
+---
+
+## 4. Texture Themes
+
+Each campaign level has a texture theme (`"theme"` in `game/defs/campaign.json`). A theme file,
+`game/defs/themes/<id>.cfg`, names seven textures: `wall`, `wall_alt_a`, `wall_alt_b`, `door`,
+`floor`, `ceiling` and `exit` (the exit switch, map tile `X`). Format and loading:
+[CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#themes).
+
+### The generator: `tools/devkit/gen_textures.py`
+
+The textures of the `bunker`, `stone` and `tech` themes, and the exit switch of the `classic`
+theme, are drawn by a Python script:
+
+```bash
+python3 tools/devkit/gen_textures.py            # (re)write game/assets/themes/<theme>/*.ppm
+python3 tools/devkit/gen_textures.py --check    # exit 1 if a committed texture differs
+python3 tools/devkit/gen_textures.py --out /tmp/themes   # write somewhere else
+```
+
+- **Standard library only** (no Pillow or other packages).
+- **Deterministic:** every texture uses its own `random.Random`, seeded from the fixed `SEED`
+  constant and the texture's name through `zlib.crc32` (Python's built-in `hash()` is salted per
+  process and is not used). Running the script again, on any OS or Python 3 version, writes the
+  same bytes; files are written with `\n` line endings.
+- **Output:** 32×32 plain-text PPM (`P3`, max value 255) with a comment line naming the theme,
+  the slot and the seed; 22 files, about 12 KB each.
+- The exit switch has the same layout in every theme (an "EXIT" label, a lever box, a green
+  lamp) so it is recognisable by its shape, not only its colour.
+- DevKit test `test_gen_textures` checks that two runs are identical and that the committed
+  files match the generator (`--check`), so the script and the files cannot drift apart.
+
+To change a theme, edit the drawing function for that theme in the script, run it, look at the
+result in the game (`neo_wolf --level N`, or `--preview hud --screenshot out.bmp --frames 5`),
+and commit both the script and the regenerated `.ppm` files. To add a theme, add a function and
+an entry in `THEMES`, run the script, and add `game/defs/themes/<id>.cfg`.
+
+### Licence and provenance
+
+The generated textures are made from scratch by this repository's own script: no third-party
+images, fonts or texture packs are used, so there is nothing to attribute and no third-party
+licence applies to them. They fall under the project's own licence (still to be chosen by the
+owner: Roadmap decision 5). The provenance of the older assets in `game/assets/` (the 8×8
+textures, sprites and sounds) is still undocumented (known issue X4).

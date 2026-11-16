@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from tools.devkit.validator import (
+    find_reachable_exits,
+    validate_campaign,
     validate_cfg,
     validate_entity_csv,
     validate_entity_json,
@@ -44,6 +46,51 @@ class TestValidator(unittest.TestCase):
         self.assertEqual(len(rows), 6)
         self.assertEqual(len(rows[0]), 6)
 
+    def test_exit_switch_is_a_valid_solid_tile(self) -> None:
+        # 'X' is accepted and closes the perimeter like a wall.
+        map_file = self.dir_path / "exit.map"
+        map_file.write_text("#####\n#..DX\n#####\n", encoding="utf-8")
+        report, rows = validate_map(map_file)
+        self.assertTrue(report.is_valid, report.errors)
+        self.assertIsNotNone(rows)
+
+    def test_exit_reachability(self) -> None:
+        rows = ["#######", "#..#..X", "#..D..#", "#######"]
+        # Through the door the exit is usable.
+        self.assertEqual(find_reachable_exits(rows, 1.5, 1.5), (1, 1))
+        # Walled off: present but not reachable.
+        walled = ["#######", "#..#..X", "#..#..#", "#######"]
+        self.assertEqual(find_reachable_exits(walled, 1.5, 1.5), (1, 0))
+        self.assertEqual(find_reachable_exits(["####", "#..#", "####"], 1.5, 1.5), (0, 0))
+
+    def _write_campaign(self, map_text: str) -> Path:
+        root = self.dir_path / "content"
+        (root / "game" / "maps").mkdir(parents=True)
+        (root / "game" / "defs" / "themes").mkdir(parents=True)
+        (root / "game" / "defs" / "themes" / "t.cfg").write_text("wall=x\n", encoding="utf-8")
+        (root / "game" / "maps" / "l1.map").write_text(map_text, encoding="utf-8")
+        (root / "game" / "defs" / "l1.entities.json").write_text(
+            json.dumps({"entities": [{"type": "player", "x": 1.5, "y": 1.5}]}), encoding="utf-8"
+        )
+        (root / "game" / "defs" / "campaign.json").write_text(
+            json.dumps({"title": "T", "levels": [{"id": "l1", "name": "One", "map": "game/maps/l1.map",
+                                                    "entities": "game/defs/l1.entities.json", "theme": "t"}]}),
+            encoding="utf-8",
+        )
+        return root
+
+    def test_campaign_requires_reachable_exit(self) -> None:
+        good = validate_campaign(self._write_campaign("#####\n#..X#\n#####\n"))
+        self.assertTrue(good.is_valid, good.errors)
+
+    def test_campaign_without_exit_fails(self) -> None:
+        report = validate_campaign(self._write_campaign("#####\n#...#\n#####\n"))
+        self.assertTrue(any("no exit switch" in e for e in report.errors), report.errors)
+
+    def test_campaign_unreachable_exit_fails(self) -> None:
+        report = validate_campaign(self._write_campaign("######\n#..#.X\n######\n"))
+        self.assertTrue(any("can be reached" in e for e in report.errors), report.errors)
+
     def test_validate_unclosed_map(self) -> None:
         map_content = (
             "######\n"
@@ -61,7 +108,7 @@ class TestValidator(unittest.TestCase):
     def test_validate_invalid_character_map(self) -> None:
         map_content = (
             "####\n"
-            "#X.#\n"  # 'X' is invalid
+            "#Z.#\n"  # 'Z' is invalid ('X' is the exit switch since Phase 5)
             "#..#\n"
             "####\n"
         )
@@ -70,7 +117,7 @@ class TestValidator(unittest.TestCase):
 
         report, _ = validate_map(map_file)
         self.assertFalse(report.is_valid)
-        self.assertTrue(any("Invalid tile character 'X'" in err for err in report.errors))
+        self.assertTrue(any("Invalid tile character 'Z'" in err for err in report.errors))
 
     def test_validate_inconsistent_width_map(self) -> None:
         map_content = (

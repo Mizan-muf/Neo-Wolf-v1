@@ -1,0 +1,11 @@
+{
+  "level": "level02",
+  "entities": [
+    { "type": "player", "x": 2.5, "y": 3.5, "angle": 0 },
+    { "type": "door", "x": 5.5, "y": 3.5, "mapX": 5, "mapY": 3 },
+    { "type": "enemy", "x": 8.5, "y": 1.5 },
+    { "type": "pickup", "x": 2.5, "y": 1.5, "kind": "ammo" },
+    { "type": "pickup", "x": 9.5, "y": 5.5, "kind": "health" },
+    { "type": "decoration", "x": 1.5, "y": 5.5 }
+  ]
+}

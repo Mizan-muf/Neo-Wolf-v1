@@ -23,6 +23,8 @@ TileType DecodeTile(char c, bool& valid) {
         return TileType::Door;
     case 'T':
         return TileType::Trigger;
+    case 'X':
+        return TileType::Exit;
     default:
         valid = false;
         return TileType::Empty;

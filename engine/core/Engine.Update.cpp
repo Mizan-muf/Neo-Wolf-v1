@@ -12,6 +12,10 @@
 #include "engine/world/LevelBuilder.h"
 #include "engine/world/MovementRules.h"
 
+namespace {
+constexpr float kEnemyAlertSoundCooldown = 2.0f;
+} // namespace
+
 void Engine::Update(double deltaSeconds) {
     if (!running_) {
         return;
@@ -20,24 +24,31 @@ void Engine::Update(double deltaSeconds) {
     // Process incoming interop commands
     bridge_.ProcessCommands(*this);
 
+    input_.BeginFrame();
     if (platform_ != nullptr) {
-        input_.BeginFrame();
         platform_->PumpEvents(input_);
-        if (input_.quitRequested) {
-            LogInfo("Quit requested (window closed or quit shortcut).");
-            running_ = false;
-            return;
-        }
-        if (input_.focusLost && state_ == GameState::Gameplay) {
-            LogInfo("Window lost focus: pausing.");
-            SetState(GameState::Paused);
-        }
+    }
+    if (inputInjector_) {
+        inputInjector_(input_);
+    }
+    if (input_.quitRequested) {
+        LogInfo("Quit requested (window closed or quit shortcut).");
+        running_ = false;
+        return;
     }
 
     time_.deltaSeconds = deltaSeconds;
     time_.totalSeconds += deltaSeconds;
     time_.frameIndex += 1;
     const float dt = static_cast<float>(deltaSeconds);
+
+    if (simulationFrozen_) {
+        // A preview shows a still image; Escape still quits.
+        if (input_.WasPressed(InputAction::Back)) {
+            running_ = false;
+        }
+        return;
+    }
 
     if (hudMessageTimer_ > 0.0f) {
         hudMessageTimer_ = std::max(0.0f, hudMessageTimer_ - dt);
@@ -54,55 +65,31 @@ void Engine::Update(double deltaSeconds) {
         enemyAlertCooldown_ = std::max(0.0f, enemyAlertCooldown_ - dt);
     }
 
-    // State machine updates
-    if (state_ == GameState::Menu) {
-        // Escape on the main menu quits (a Quit menu item comes with the menu rework, Phase 5).
-        if (input_.WasPressed(InputAction::Back)) {
-            LogInfo("Quit from the main menu.");
-            running_ = false;
-            return;
-        }
-        if (input_.WasPressed(InputAction::Confirm) ||
-            input_.WasPressed(InputAction::Interact) ||
-            input_.WasPressed(InputAction::Attack)) {
-            SetState(GameState::Gameplay);
-        }
-        return;
+    // The simulation runs only during play; the game flow (menus, pause, end screens) decides
+    // what happens next and asks for level loads, saves or quitting.
+    FlowEvents flowEvents{};
+    flowEvents.focusLost = input_.focusLost;
+    if (flow_.State() == GameState::Gameplay) {
+        UpdateGameplay(dt, flowEvents);
+    }
+    if (flowEvents.focusLost && flow_.State() == GameState::Gameplay) {
+        LogInfo("Window lost focus: pausing.");
+    }
+    ExecuteFlowRequests(flow_.Update(input_, flowEvents));
+    PublishStateChange();
+}
+
+void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
+    levelTimeSeconds_ += static_cast<double>(dt);
+    if (levelBannerTimer_ > 0.0f) {
+        levelBannerTimer_ = std::max(0.0f, levelBannerTimer_ - dt);
     }
 
-    if (state_ == GameState::Paused) {
-        if (input_.WasPressed(InputAction::Pause) || input_.WasPressed(InputAction::Confirm)) {
-            SetState(GameState::Gameplay);
-        } else if (input_.WasPressed(InputAction::Restart)) {
-            ResetLevel();
-            SetState(GameState::Gameplay);
-        }
-        return;
+    if (input_.WasPressed(InputAction::ToggleMinimap)) {
+        minimapVisible_ = !minimapVisible_;
     }
-
-    if (state_ == GameState::GameOver || state_ == GameState::Victory) {
-        if (input_.WasPressed(InputAction::Restart)) {
-            ResetLevel();
-            SetState(GameState::Gameplay);
-        } else if (input_.WasPressed(InputAction::Confirm) || input_.WasPressed(InputAction::Pause)) {
-            SetState(GameState::Menu);
-        }
-        return;
-    }
-
-    // Active Gameplay State
-    if (input_.WasPressed(InputAction::Pause)) {
-        SetState(GameState::Paused);
-        return;
-    }
-
-    if (input_.WasPressed(InputAction::Restart)) {
-        ResetLevel();
-        return;
-    }
-
     if (input_.WasPressed(InputAction::ToggleDebugView)) {
-        debugTopDownEnabled_ = !debugTopDownEnabled_;
+        debugOverlayVisible_ = !debugOverlayVisible_;
     }
 
     if (input_.WasPressed(InputAction::Attack)) {
@@ -187,12 +174,31 @@ void Engine::Update(double deltaSeconds) {
     }
 
     if (events.triggerActivated) {
-        ShowMessage("OBJECTIVE COMPLETED! VICTORY!", 3.0f);
+        // A walk-over marker: an interop event and a HUD message. It does not end the level.
+        ShowMessage("CHECKPOINT REACHED", 2.0f);
         InteropEvent tEvt{};
         tEvt.type = InteropEventType::TriggerActivated;
         tEvt.intArg1 = events.triggerId;
         bridge_.PushEvent(tEvt);
-        SetState(GameState::Victory);
+    }
+
+    if (events.exitActivated) {
+        const LevelResults results = CurrentLevelResults();
+        LogInfo("Exit switch at (" + std::to_string(events.exitMapX) + ", " + std::to_string(events.exitMapY) +
+                ") used: level complete (enemies " + std::to_string(results.kills) + "/" +
+                std::to_string(results.totalEnemies) + ", pickups " + std::to_string(results.pickups) + "/" +
+                std::to_string(results.totalPickups) + ", health " + std::to_string(playerHealth_) + ", ammo " +
+                std::to_string(playerAmmo_) + ").");
+        ShowMessage("EXIT SWITCH ACTIVATED", 2.0f);
+        InteropEvent lEvt{};
+        lEvt.type = InteropEventType::LevelCompleted;
+        lEvt.intArg1 = currentLevelIndex_ + 1;
+        lEvt.intArg2 = playerHealth_;
+        lEvt.floatArg1 = static_cast<float>(results.seconds);
+        bridge_.PushEvent(lEvt);
+        flowEvents.levelCompleted = true;
+        flowEvents.stats = CurrentStats();
+        flowEvents.results = results;
         return;
     }
 
@@ -201,7 +207,7 @@ void Engine::Update(double deltaSeconds) {
 
     if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {
         audio_.PlayEffect("enemy_alert");
-        enemyAlertCooldown_ = 2.0f;
+        enemyAlertCooldown_ = kEnemyAlertSoundCooldown;
         InteropEvent aEvt{};
         aEvt.type = InteropEventType::EnemyAlerted;
         bridge_.PushEvent(aEvt);
@@ -223,7 +229,7 @@ void Engine::Update(double deltaSeconds) {
             InteropEvent dieEvt{};
             dieEvt.type = InteropEventType::PlayerDied;
             bridge_.PushEvent(dieEvt);
-            SetState(GameState::GameOver);
+            flowEvents.playerDied = true;
             return;
         }
     }

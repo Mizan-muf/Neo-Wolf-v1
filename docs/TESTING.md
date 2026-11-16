@@ -15,13 +15,22 @@ this. Any failing test makes them exit non-zero.
 
 | CTest name | Label | What it runs | What it covers |
 |---|---|---|---|
-| `native.<id>` (34 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, CRLF content files, and the data pipeline: exact `gameplay.json` values and its validation errors, JSON/CSV entity placements and their error messages, decorations and sprite sync, pickup kind from data, failing level loads, and `edited_data_changes_game` (writes modified `gameplay.json` and entity files into a temporary content root and checks the new values through `Engine::LoadGameplay`, `Engine::LoadLevel` and `Engine::Update`). Source: `tests/LogicTests.cpp`. |
+| `native.<id>` (47 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, CRLF content files, and the data pipeline: exact `gameplay.json` values and its validation errors, JSON/CSV entity placements and their error messages, decorations and sprite sync, pickup kind from data, failing level loads, and `edited_data_changes_game`. Phase 5 adds: `game_flow_menu`, `game_flow_progression`, `game_flow_death_pause` (every `GameFlow` transition, the death snapshot, carry-over clamping, Continue), `campaign_manifest_validation`, `exit_switch_activation` (in reach and facing activates; behind, sideways, too far or behind a wall does not), `progress_file_roundtrip` (round trip, atomic save, 11 corrupt files, the engine ignoring a corrupt save), `pref_dir_resolution`, `theme_loading_and_swap`, `ui_layout_bounds` (every screen stays inside 320×240 with a 4-pixel margin and nothing is clipped), `campaign_playthrough` (a waypoint bot drives `Engine::Update` through injected input from the main menu through level01 → level02 → level03 → CampaignComplete, then Continue), `new_game_resets_world` (C7), `key_bindings` (B13, minimap toggle) and `wall_texture_orientation` (wall textures are no longer mirrored). Source: `tests/LogicTests.cpp`. |
 | `native_test_registry` | `native` | `cmake -P cmake/CheckTestRegistry.cmake` | Checks that every test case compiled into `neo_wolf_tests` has a CTest entry and the reverse. Catches a test that was added but never registered. |
-| `game_smoke_frames` | `game` | `cmake -P cmake/RunGame.cmake` → `neo_wolf --frames 120` | Starts the real game headless (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`, set with the `ENVIRONMENT_MODIFICATION` test property, which also **removes** `SDL_RENDER_DRIVER` and `NEOWOLF_DATA_DIR`). Runs from the build directory, so content must be found relative to the executable. Passes if the game exits with 0 and logs its content root, its renderer and 120 frames. Proves the software-renderer fallback (B11) and the content-root search. Takes about 2 s (60 FPS cap). |
-| `game_smoke_missing_data` | `game` | `neo_wolf --data <build>/test-empty-data --frames 10` | Passes if the game exits with code 1 and reports `Game content not found` (fail-fast startup). |
-| `game_smoke_invalid_gameplay` | `game` | `neo_wolf --data <build>/test-bad-gameplay --frames 10` | The content root's `gameplay.json` (written at configure time) has a string where an integer belongs. Passes if the game exits with code 1 and names the key (`weapon.damage must be an integer`). |
-| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 24 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions (CSV/JSON export), validator, packager. |
-| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets, `.cfg` definition files (`wall_textures.cfg`, `sprites.cfg`, `audio.cfg`) and the entity placement files (`*.entities.json` and `*.entities.csv`, with the engine's rules) in `game/`. Warnings count as failures. It does **not** check `gameplay.json` yet (the engine does, at startup; DevKit check: Roadmap Phase 7). |
+| `game_smoke_frames` | `game` | `cmake -P cmake/RunGame.cmake` → `neo_wolf --frames 120 --pref-dir <build>/test-pref/<test>` | Starts the real game headless (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`, set with the `ENVIRONMENT_MODIFICATION` test property, which also **removes** `SDL_RENDER_DRIVER`, `NEOWOLF_DATA_DIR` and `NEOWOLF_PREF_DIR`). Runs from the build directory, so content must be found relative to the executable. Passes if the game exits with 0 and logs the `--pref-dir` folder, its content root, the campaign, its renderer and 120 frames. Proves the software-renderer fallback (B11) and the content-root search. Takes about 2 s (60 FPS cap). |
+| `game_smoke_level_1` … `_3` | `game` | `neo_wolf --level N --frames 120 --pref-dir …` | Each campaign level starts directly, loads its theme and runs 120 frames; exit code 0. |
+| `game_smoke_level_out_of_range` | `game` | `neo_wolf --level 4 --frames 10 --pref-dir …` | Exit code 1 and `the campaign has 3 level(s)`. |
+| `game_preview_<screen>` (8 tests) | `game` | `neo_wolf --preview <screen> --frames 5 --screenshot <build>/test-shots/<screen>.bmp --pref-dir …` | Each preview screen renders and is saved as a BMP; exit code 0. |
+| `game_smoke_missing_data` | `game` | `neo_wolf --data <build>/test-empty-data --frames 10 --pref-dir …` | Passes if the game exits with code 1 and reports `Game content not found` (fail-fast startup). |
+| `game_smoke_invalid_gameplay` | `game` | `neo_wolf --data <build>/test-bad-gameplay --frames 10 --pref-dir …` | The content root's `gameplay.json` (written at configure time) has a string where an integer belongs. Passes if the game exits with code 1 and names the key (`weapon.damage must be an integer`). |
+| `game_smoke_invalid_campaign` | `game` | `neo_wolf --data <build>/test-bad-campaign --frames 10 --pref-dir …` | The content root's `campaign.json` has no levels. Exit code 1 and `Invalid campaign manifest`. |
+| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 31 Python unit tests (`tools/devkit/tests/test_*.py`): map tools (including the `X` exit tile in templates), asset tools, definitions (CSV/JSON export), validator (including campaign exit reachability), the theme texture generator (deterministic, committed files up to date), packager. |
+| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets (including `game/assets/themes/`), the theme files and `sprites.cfg`/`audio.cfg`, the entity placement files (`*.entities.json` and `*.entities.csv`, with the engine's rules) and `campaign.json` (fields, unique ids, files, themes, and a reachable exit switch `X` in every campaign level) in `game/`. Warnings count as failures. It does **not** check `gameplay.json` yet (the engine does, at startup; DevKit check: Roadmap Phase 7). |
+
+Every game run gets its own `--pref-dir` folder under `<build>/test-pref/`, so the tests never
+read or replace the player's real log or `progress.json` (known issue B15). The headless
+native tests that start an engine (`progress_file_roundtrip`, `campaign_playthrough`,
+`new_game_resets_world`) use temporary folders as well; the others set no per-user folder.
 
 `<Python3_EXECUTABLE>` is the interpreter CMake found at configure time (`find_package(Python3)`).
 The two `devkit` tests are only registered when CMake finds a Python 3 interpreter. If it does
@@ -43,7 +52,7 @@ ctest --preset macos -R native.map_queries      # one test
 ctest --preset macos -R 'native\.(map|raycast)' # several
 ctest --preset macos -L native                  # all C++ tests
 ctest --preset macos -L devkit                  # DevKit tests + content validation
-ctest --preset macos -L game                    # the three headless game runs
+ctest --preset macos -L game                    # the 16 headless game runs
 ctest --preset macos --rerun-failed             # only the tests that failed last time
 ctest --preset macos -N                         # list tests without running them
 ```
@@ -113,6 +122,41 @@ automatically. Run the DevKit tests alone with:
 python3 tools/devkit/devkit.py test
 ```
 
+## Screen previews
+
+Developer tools for looking at every screen without playing (`neo_wolf --help`, "Developer
+tools"):
+
+- `--preview <screen>` sets up one screen with fixed sample data and freezes the simulation:
+  `menu`, `levelselect`, `hud`, `minimap`, `pause`, `levelcomplete`, `gameover`,
+  `campaigncomplete`. The sample progress has level 2 unlocked and level 3 locked; nothing is
+  saved. `Esc` (or closing the window) quits.
+- `--screenshot <file.bmp>` saves the last rendered 320×240 framebuffer when the game exits;
+  combine it with `--frames N`.
+
+```bash
+mkdir -p /tmp/shots
+for s in menu levelselect hud minimap pause levelcomplete gameover campaigncomplete; do
+  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --pref-dir /tmp/shots/prefs \
+    --preview "$s" --frames 5 --screenshot "/tmp/shots/$s.bmp"
+  sips -s format png "/tmp/shots/$s.bmp" --out "/tmp/shots/$s.png"   # macOS; any BMP viewer works
+done
+```
+
+The reference images in `docs/images/screens/` were made this way (shown in
+[GAMEPLAY.md](GAMEPLAY.md#screens)). Test `ui_layout_bounds` checks the same screens
+automatically: it records every rectangle the UI draws (`Framebuffer::GetDrawBounds`) and fails
+if anything lies within 4 pixels of an edge or was clipped.
+
+## Driving the engine from code (input injection)
+
+`Engine::SetInputInjector` installs a callback that runs once per `Engine::Update`, after the
+platform's events were read and before anything uses them. It sets actions with
+`InputState::SetActionState`; edges (`WasPressed`) follow from the previous frame, exactly as
+for keyboard input. Together with `EngineOptions::headless` (no window, renderer or audio) this
+lets a test play the game: `campaign_playthrough` plays the whole campaign this way. The
+Phase 7 autoplay bot builds on the same seam.
+
 ## Warnings as errors
 
 The `ci-macos`, `ci-linux` and `ci-windows-msvc` presets set `NEOWOLF_WERROR=ON`, which turns
@@ -150,7 +194,9 @@ python tools/ci/smoke_run.py <executable> --frames 300  # headless smoke run, mu
 ```
 
 `tools/ci/smoke_run.py` starts the game from a fresh temporary directory (so content must be
-found relative to the executable) with SDL's dummy video and audio drivers. It removes
+found relative to the executable) with SDL's dummy video and audio drivers, and with
+`--pref-dir` pointing at another temporary folder (unless you pass one), so the runner's real log
+and saved progress are never touched. It removes
 `SDL_RENDER_DRIVER` from the environment: the game has to fall back to the software renderer by
 itself (known issue B11, fixed). With `--frames N` the game renders N frames and exits; the run
 passes if the exit code is 0 within `--timeout` seconds (default 60). 300 frames take about 5

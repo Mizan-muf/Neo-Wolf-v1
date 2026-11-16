@@ -80,20 +80,48 @@ bool Engine::Init(const EngineOptions& options) {
         return false;
     }
 
-    // 3. Window and renderer.
-    platform_ = new PlatformSDL();
-    PlatformConfig platformConfig{};
-    platformConfig.title = "Neo-Wolf";
-    platformConfig.windowWidth = kWindowWidth;
-    platformConfig.windowHeight = kWindowHeight;
-    platformConfig.logicalWidth = kRenderWidth;
-    platformConfig.logicalHeight = kRenderHeight;
-    platformConfig.fullscreen = options.fullscreen;
-    if (!platform_->Init(platformConfig)) {
-        delete platform_;
-        platform_ = nullptr;
-        ReportFatal("Could not open the game window (see the log for the SDL error).", options.errorDialogs);
+    // 3. The campaign manifest: fatal when invalid, like gameplay.json.
+    std::vector<std::string> campaignErrors;
+    if (!LoadCampaignDefinition(options.campaignPath, &campaignErrors)) {
+        constexpr std::size_t kShownErrors = 3;
+        std::string message = "Invalid campaign manifest " + ResolveContentPath(options.campaignPath) + ":";
+        for (std::size_t i = 0; i < campaignErrors.size() && i < kShownErrors; ++i) {
+            message += "\n- " + campaignErrors[i];
+        }
+        if (campaignErrors.size() > kShownErrors) {
+            message += "\n(" + std::to_string(campaignErrors.size() - kShownErrors) + " more in the log)";
+        }
+        ReportFatal(message, options.errorDialogs);
         return false;
+    }
+    const int levelCount = static_cast<int>(campaign_.levels.size());
+    if (options.startLevel < 0 || options.startLevel > levelCount) {
+        ReportFatal("--level " + std::to_string(options.startLevel) + ": the campaign has " +
+                        std::to_string(levelCount) + " level(s).",
+                    options.errorDialogs);
+        return false;
+    }
+
+    // 4. Saved progress (a missing or corrupt file only means "no progress").
+    prefDir_ = options.prefDir;
+    LoadSavedProgress();
+
+    // 5. Window and renderer (not in headless mode).
+    if (!options.headless) {
+        platform_ = new PlatformSDL();
+        PlatformConfig platformConfig{};
+        platformConfig.title = "Neo-Wolf";
+        platformConfig.windowWidth = kWindowWidth;
+        platformConfig.windowHeight = kWindowHeight;
+        platformConfig.logicalWidth = kRenderWidth;
+        platformConfig.logicalHeight = kRenderHeight;
+        platformConfig.fullscreen = options.fullscreen;
+        if (!platform_->Init(platformConfig)) {
+            delete platform_;
+            platform_ = nullptr;
+            ReportFatal("Could not open the game window (see the log for the SDL error).", options.errorDialogs);
+            return false;
+        }
     }
 
     if (!framebuffer_.Resize(kRenderWidth, kRenderHeight)) {
@@ -101,20 +129,16 @@ bool Engine::Init(const EngineOptions& options) {
         return false;
     }
 
-    // 4. Audio is optional.
-    if (!audio_.Init()) {
+    // 6. Audio is optional.
+    if (options.headless) {
+        LogInfo("Headless: no window, renderer or audio.");
+    } else if (!audio_.Init()) {
         LogWarning("No audio device: the game runs without sound.");
     }
 
-    // 5. Texture, sprite and audio definitions. Missing or broken files fall back to
-    //    defaults with a warning.
+    // 7. Sprite and audio definitions. Missing or broken files fall back to defaults with a
+    //    warning. (Wall, door, floor, ceiling and exit textures come from each level's theme.)
     std::vector<std::string> errors;
-    WallTextureAssignments wallAssignments{};
-    if (LoadWallTextureAssignments(ResolveContentPath("game/defs/wall_textures.cfg"), wallAssignments, errors)) {
-        LogInfo("Wall texture assignments loaded.");
-    }
-    LogLoadErrors(errors);
-
     SpriteTextureDefinitions spriteDefinitions{};
     if (LoadSpriteTextureDefinitions(ResolveContentPath("game/defs/sprites.cfg"), spriteDefinitions, errors)) {
         LogInfo("Sprite definitions loaded.");
@@ -128,8 +152,9 @@ bool Engine::Init(const EngineOptions& options) {
     }
     LogLoadErrors(errors);
 
-    // 6. Textures (a checkerboard stands in for any that fail).
+    // 8. Sprite textures (a checkerboard stands in for any that fail).
     assets_.Clear();
+    currentThemeId_.clear();
     TextureLoader::BuildFallbackChecker(missingTexture_, 64, 64);
     assets_.SetTexture("__missing", missingTexture_);
 
@@ -140,30 +165,12 @@ bool Engine::Init(const EngineOptions& options) {
             assets_.SetTexture(id, missingTexture_);
         }
     };
-
-    loadTextureWithFallback("wall", wallAssignments.wall);
-    loadTextureWithFallback("wall_alt_a", wallAssignments.wallAltA);
-    loadTextureWithFallback("wall_alt_b", wallAssignments.wallAltB);
-    loadTextureWithFallback("door", wallAssignments.door);
-    loadTextureWithFallback("floor", wallAssignments.floor);
-    loadTextureWithFallback("ceiling", wallAssignments.ceiling);
-
     loadTextureWithFallback("enemy", spriteDefinitions.enemy);
     loadTextureWithFallback("pickup", spriteDefinitions.pickup);
     loadTextureWithFallback("decoration", spriteDefinitions.decoration);
+    RefreshTexturePointers();
 
-    wallTexture_ = assets_.GetTexture("wall");
-    wallAltATexture_ = assets_.GetTexture("wall_alt_a");
-    wallAltBTexture_ = assets_.GetTexture("wall_alt_b");
-    doorTexture_ = assets_.GetTexture("door");
-    floorTexture_ = assets_.GetTexture("floor");
-    ceilingTexture_ = assets_.GetTexture("ceiling");
-
-    enemySpriteTexture_ = assets_.GetTexture("enemy");
-    pickupSpriteTexture_ = assets_.GetTexture("pickup");
-    decorationSpriteTexture_ = assets_.GetTexture("decoration");
-
-    // 7. Sounds (skipped when there is no audio device).
+    // 9. Sounds (skipped when there is no audio device).
     if (audio_.IsAvailable()) {
         std::size_t soundsLoaded = 0;
         const auto loadSoundSafe = [&](const std::string& soundId, const std::string& relativePath) {
@@ -183,16 +190,29 @@ bool Engine::Init(const EngineOptions& options) {
         LogInfo("Sound effects loaded: " + std::to_string(soundsLoaded));
     }
 
-    // 8. The first level. Failing here is fatal: there would be nothing to play.
-    if (!LoadLevel(options.mapPath, options.entitiesPath)) {
-        ReportFatal("Could not load the level " + options.mapPath + " from " + PathToUtf8(contentRoot_) +
-                        " (see the log for details).",
+    // 10. The first level: --level N starts it directly; otherwise level 1 is loaded behind
+    //     the main menu (New Game reloads it fresh). Failing here is fatal: nothing to play.
+    const int firstIndex = options.startLevel > 0 ? options.startLevel - 1 : 0;
+    PlayerStats firstStats{gameplay_.player.initialHealth, gameplay_.weapon.initialAmmo};
+    if (options.startLevel > 0) {
+        firstStats = flow_.StartLevelDirect(firstIndex).stats;  // --level: Gameplay, unlocks ignored
+    }
+    if (!LoadCampaignLevel(firstIndex, firstStats)) {
+        const CampaignLevel& level = campaign_.levels[static_cast<std::size_t>(firstIndex)];
+        ReportFatal("Could not load level " + std::to_string(firstIndex + 1) + " (" + level.map + ") from " +
+                        PathToUtf8(contentRoot_) + " (see the log for details).",
                     options.errorDialogs);
         return false;
     }
 
-    state_ = GameState::Menu;
+    reportedState_ = GameState::Menu;
     running_ = true;
+    if (options.preview != PreviewScreen::None && !SetupPreview(options.preview)) {
+        ReportFatal(std::string("Could not set up the preview ") + PreviewScreenName(options.preview) + ".",
+                    options.errorDialogs);
+        return false;
+    }
+    PublishStateChange();
     LogInfo("Engine initialized successfully.");
     return true;
 }

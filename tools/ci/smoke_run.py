@@ -5,7 +5,9 @@ Starts the game with SDL's dummy video and audio drivers. The renderer is NOT fo
 must fall back to SDL's software renderer on its own (known issue B11, fixed in Phase 3), so
 SDL_RENDER_DRIVER is removed from the environment. The game runs from a fresh temporary
 directory by default, so it must find its content next to (or above) the executable rather
-than in the working directory.
+than in the working directory. It also passes --pref-dir with a fresh temporary folder (unless
+the arguments already contain --pref-dir), so a smoke run never touches the player's real log
+or progress.json (known issue B15).
 
 Two modes:
 
@@ -101,8 +103,11 @@ def main() -> int:
     env.setdefault("SDL_AUDIODRIVER", "dummy")
     env.pop("SDL_RENDER_DRIVER", None)
 
-    cmd = [str(exe), *game_args]
-    with tempfile.TemporaryDirectory(prefix="neowolf-smoke-") as temp_cwd:
+    with tempfile.TemporaryDirectory(prefix="neowolf-smoke-") as temp_cwd, \
+            tempfile.TemporaryDirectory(prefix="neowolf-smoke-pref-") as temp_pref:
+        if not any(a == "--pref-dir" or a.startswith("--pref-dir=") for a in game_args):
+            game_args = [*game_args, "--pref-dir", temp_pref]
+        cmd = [str(exe), *game_args]
         cwd = args.cwd or temp_cwd
         mode = "until it exits" if frames_mode else f"for {args.seconds:.1f}s"
         print(f"[smoke] running {cmd} in {cwd} {mode}")

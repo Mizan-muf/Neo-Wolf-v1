@@ -23,7 +23,41 @@ Every run writes a log. Start here for any problem.
   without a log file.
 - Quick ways to open the folder: macOS Finder → Go → Go to Folder… →
   `~/Library/Application Support/NeoWolf/NeoWolf`; Windows Explorer address bar → `%APPDATA%\NeoWolf\NeoWolf`.
-- Running the automated tests (`ctest`) also starts the game, so it replaces these files too.
+- Automated runs do **not** touch these files: every `ctest` game run and the CI smoke run
+  (`tools/ci/smoke_run.py`) pass `--pref-dir` with a temporary folder (known issue B15, fixed in
+  Phase 5).
+
+### Using another folder: `--pref-dir` and `NEOWOLF_PREF_DIR`
+
+The per-user folder holds the log files and the saved progress. To use a different folder
+(a second profile, a portable install, tests):
+
+```bash
+neo_wolf --pref-dir /path/to/folder           # this run only
+NEOWOLF_PREF_DIR=/path/to/folder neo_wolf     # environment variable (set NEOWOLF_PREF_DIR=... on Windows)
+```
+
+`--pref-dir` wins over `NEOWOLF_PREF_DIR`, which wins over the default folder above. A relative
+path is taken relative to the current directory, and the folder is created if needed. The log
+names the folder and where the choice came from, e.g.
+`Per-user folder: /tmp/nw-prefs (--pref-dir)`. With either override the default folder is not
+created or used at all.
+
+## Saved progress
+
+The game saves which levels are unlocked to `progress.json` in the per-user folder above
+(macOS `~/Library/Application Support/NeoWolf/NeoWolf/progress.json`, Windows
+`%APPDATA%\NeoWolf\NeoWolf\progress.json`), each time a level is completed. Format and rules:
+[GAMEPLAY.md](GAMEPLAY.md#saves).
+
+- **Continue is missing / levels are locked again:** the file is missing, or it was unreadable
+  and ignored. The log says which, e.g. `Ignoring the saved progress (starting without it): ...`.
+  A broken file is not repaired or deleted; it is replaced the next time a level is completed.
+- **Reset progress:** quit the game and delete `progress.json`.
+- **Unlock everything for testing:** start a level directly with `--level N` (no unlock check),
+  or write `{ "version": 1, "highestUnlocked": 3 }` into the file.
+- A leftover `progress.json.tmp` means the game stopped while saving; it is safe to delete
+  (the previous `progress.json` is intact).
 
 ## "Game content not found"
 
@@ -44,12 +78,12 @@ The error dialog and the log list every folder that was searched. Fixes:
 - If `NEOWOLF_DATA_DIR` is set to an old location, fix or unset it.
 
 The game exits with code 1 in this case. The same happens if the first level's map cannot be
-loaded (for example `--level 5` when there is no `game/maps/level05.map`).
+loaded, or with `--level N` when the campaign (`game/defs/campaign.json`) has fewer than N levels.
 
-## "Invalid gameplay definitions" or "Failed to load entity placements"
+## "Invalid gameplay definitions", "Invalid campaign manifest" or "Failed to load entity placements"
 
-The content was found, but `game/defs/gameplay.json` or the level's entity file
-(`game/defs/levelNN.entities.json`) is missing or invalid. The game exits with code 1 and the
+The content was found, but `game/defs/gameplay.json`, `game/defs/campaign.json` or the level's
+entity file (`game/defs/levelNN.entities.json`) is missing or invalid. The game exits with code 1 and the
 log lists every problem, with the file, the entry and the field, for example:
 
 ```text
@@ -110,7 +144,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./neo_wolf --frames 300   # exits 0 
 - The window can be resized; the image keeps its 4:3 shape with black bars and sharp pixels.
 - The game pauses when its window loses focus (switching apps). Press `Esc`, `P` or `Enter` to
   resume.
-- To quit: `Esc` on the main menu, close the window, `Cmd+Q` (macOS) or `Alt+F4` (Windows).
+- To quit: **Quit** on the main menu (or `Esc` there), close the window, `Cmd+Q` (macOS) or
+  `Alt+F4` (Windows). From play: `P`, then `Q` for the menu. All keys: [CONTROLS.md](CONTROLS.md).
 
 ## macOS Gatekeeper (packaged builds, Roadmap Phase 9)
 

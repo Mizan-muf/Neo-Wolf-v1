@@ -58,7 +58,7 @@ bool Map::IsWall(int x, int y) const {
     }
     const TileType tile = GetCell(x, y);
     return tile == TileType::Wall || tile == TileType::WallAltA || tile == TileType::WallAltB ||
-           tile == TileType::Door;
+           tile == TileType::Door || tile == TileType::Exit;
 }
 
 float Map::GetLightLevel(int x, int y) const {

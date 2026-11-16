@@ -121,8 +121,8 @@ The game works from **any working directory** and when double-clicked in Explore
 `game\` in `--data <dir>` (or `NEOWOLF_DATA_DIR`), else next to the executable and up to 3
 folders above it (so `build\windows-msvc\Release\neo_wolf.exe` finds the repository's `game\`),
 else in the working directory and its parent. If no content is found it shows an error box and
-exits with code 1. The options (`--data`, `--level`, `--frames`, `--windowed`, `--fullscreen`,
-`--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
+exits with code 1. The options (`--data`, `--pref-dir`, `--level`, `--frames`, `--windowed`, `--fullscreen`,
+`--preview`, `--screenshot`, `--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
 with non-ASCII characters are supported (the command line is read as UTF-16 and converted).
 
 **Console or not.** Release-type builds (Release, RelWithDebInfo, MinSizeRel) are normal windowed

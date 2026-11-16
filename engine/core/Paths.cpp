@@ -173,3 +173,53 @@ std::string DescribeContentRootSearch(const ContentRootResult& result) {
     }
     return text;
 }
+
+PrefDirResult ChoosePrefDir(const std::string& option, const std::string& env, const std::string& sdlPrefPath,
+                            const std::string& workingDir) {
+    PrefDirResult result{};
+    if (!option.empty()) {
+        result.directory = Normalized(MakeAbsolute(PathFromUtf8(option), workingDir));
+        result.source = "--pref-dir";
+    } else if (!env.empty()) {
+        result.directory = Normalized(MakeAbsolute(PathFromUtf8(env), workingDir));
+        result.source = "NEOWOLF_PREF_DIR";
+    } else if (!sdlPrefPath.empty()) {
+        result.directory = Normalized(PathFromUtf8(sdlPrefPath));
+        result.source = "SDL_GetPrefPath";
+    } else {
+        result.error = "no per-user folder is available";
+    }
+    return result;
+}
+
+PrefDirResult ResolvePrefDir(const std::string& option) {
+    std::error_code ec;
+    const fs::path cwd = fs::current_path(ec);
+    const std::string workingDir = ec ? std::string() : PathToUtf8(cwd);
+    const std::string env = GetEnvironmentUtf8("NEOWOLF_PREF_DIR");
+
+    std::string sdlPrefPath;
+    if (option.empty() && env.empty()) {
+        if (char* prefPath = SDL_GetPrefPath("NeoWolf", "NeoWolf")) {
+            sdlPrefPath = prefPath;
+            SDL_free(prefPath);
+        }
+    }
+
+    PrefDirResult result = ChoosePrefDir(option, env, sdlPrefPath, workingDir);
+    if (result.directory.empty()) {
+        if (option.empty() && env.empty()) {
+            result.error = std::string("SDL_GetPrefPath failed: ") + SDL_GetError();
+        }
+        return result;
+    }
+    if (result.source != "SDL_GetPrefPath") {
+        std::error_code createError;
+        fs::create_directories(result.directory, createError);
+        if (createError || !fs::is_directory(result.directory, createError)) {
+            result.error = "cannot create " + PathToUtf8(result.directory) + " (" + result.source + ")";
+            result.directory.clear();
+        }
+    }
+    return result;
+}

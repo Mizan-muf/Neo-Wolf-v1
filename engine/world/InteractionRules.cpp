@@ -6,6 +6,26 @@
 #include "engine/render/Raycaster.h"
 #include "engine/world/MovementRules.h"
 
+ExitSwitchHit FindExitSwitchInReach(const Map& map, const Player& player) {
+    // Centre ray first, then pairs further out: the closest-to-centre hit wins.
+    constexpr float kOffsets[] = {0.0f, -0.5f, 0.5f, -1.0f, 1.0f};
+    ExitSwitchHit best{};
+    for (const float offset : kOffsets) {
+        const float angle = player.directionAngleRadians + offset * kExitFacingHalfAngle;
+        const Vec2 direction{std::cos(angle), std::sin(angle)};
+        const RaycastHit hit = Raycaster::CastRay(map, player.position, direction, angle);
+        if (!hit.hit || hit.tileType != TileType::Exit || hit.distanceRaw > kExitReach) {
+            continue;
+        }
+        best.found = true;
+        best.mapX = hit.mapX;
+        best.mapY = hit.mapY;
+        best.distance = hit.distanceRaw;
+        break;
+    }
+    return best;
+}
+
 void SyncPlayerEntity(EntityManager& entityManager, const Player& player) {
     for (Entity& entity : entityManager.Entities()) {
         if (entity.type == EntityType::Player) {
@@ -82,6 +102,15 @@ void UpdateEntityInteractions(
                     outEvents.doorMapY = entity.mapY;
                 }
             }
+        }
+    }
+
+    if (interactPressed && !outEvents.doorToggled) {
+        const ExitSwitchHit exitHit = FindExitSwitchInReach(map, player);
+        if (exitHit.found) {
+            outEvents.exitActivated = true;
+            outEvents.exitMapX = exitHit.mapX;
+            outEvents.exitMapY = exitHit.mapY;
         }
     }
 }

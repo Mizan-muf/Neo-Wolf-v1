@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-SOLID_TILES = {"#", "A", "B"}
+# 'X' is the exit switch (Phase 5): a solid wall cell the player activates with E.
+SOLID_TILES = {"#", "A", "B", "X"}
 WALKABLE_TILES = {".", "D", "T"}
 
 
@@ -87,6 +88,7 @@ def get_map_stats(map_path: Path) -> Dict[str, Any]:
         "walls_alt_b": counts.get("B", 0),
         "doors": counts.get("D", 0),
         "triggers": counts.get("T", 0),
+        "exits": counts.get("X", 0),
         "empty_floor": counts.get(".", 0),
     }
 
@@ -169,6 +171,7 @@ def render_ascii_preview(
     C_WALL_B = "\033[34m" if color else ""      # Blue
     C_DOOR = "\033[33;1m" if color else ""      # Bright Yellow
     C_TRIGGER = "\033[35;1m" if color else ""   # Bright Magenta
+    C_EXIT = "\033[42;30m" if color else ""     # Black on green
     C_PLAYER = "\033[32;1m" if color else ""    # Bright Green
     C_ENEMY = "\033[31;1m" if color else ""     # Bright Red
     C_PICKUP = "\033[33m" if color else ""      # Yellow
@@ -219,6 +222,8 @@ def render_ascii_preview(
                 row_str += f"{C_DOOR}D{C_RESET}"
             elif c == "T":
                 row_str += f"{C_TRIGGER}T{C_RESET}"
+            elif c == "X":
+                row_str += f"{C_EXIT}X{C_RESET}"
             elif c == "P":
                 row_str += f"{C_PLAYER}P{C_RESET}"
             elif c == "E":
@@ -241,6 +246,7 @@ def render_ascii_preview(
             f"{C_WALL_B}B{C_RESET}:WallB",
             f"{C_DOOR}D{C_RESET}:Door",
             f"{C_TRIGGER}T{C_RESET}:Trigger",
+            f"{C_EXIT}X{C_RESET}:Exit",
             f"{C_PLAYER}P{C_RESET}:Player",
             f"{C_ENEMY}E{C_RESET}:Enemy",
             f"{C_PICKUP}${C_RESET}:Pickup",
@@ -293,6 +299,11 @@ def create_template_map(
                 if x not in (cx - 1, cx, cx + 1) and y not in (cy - 1, cy, cy + 1):
                     grid[y][x] = "B"
         grid[cy][cx] = "T"
+
+    # Every template gets an exit switch in the east wall (campaign levels need one).
+    grid[height // 2][width - 1] = "X"
+    if grid[height // 2][width - 2] not in WALKABLE_TILES:
+        grid[height // 2][width - 2] = "."
 
     map_data = MapData(width=width, height=height, grid=grid)
     save_map(map_data, file_path, header_comment=f"Neo-Wolf map template (style: {style})")

@@ -19,7 +19,7 @@ DevKit validator is stricter; its extra rules are listed separately below.
 #.......A......#
 #..............#
 #.......D......#
-#............T.#
+#............T.X
 #.......B......#
 #..............#
 ################
@@ -30,11 +30,12 @@ DevKit validator is stricter; its extra rules are listed separately below.
 | Char | Tile | Solid | Drawn as | Notes |
 |---|---|---|---|---|
 | `.` | Empty | no | floor and ceiling textures | |
-| `#` | Wall | yes | `wall` texture (`wall_textures.cfg`) | `#` is a wall, **not** a comment |
+| `#` | Wall | yes | `wall` texture of the level's theme (`game/defs/themes/<id>.cfg`) | `#` is a wall, **not** a comment |
 | `A` | Wall, variant A | yes | `wall_alt_a` texture | |
 | `B` | Wall, variant B | yes | `wall_alt_b` texture | |
 | `D` | Door (closed) | yes | `door` texture | Opens only if a `door` entity has this cell as `mapX`/`mapY`; otherwise it stays a wall for good |
-| `T` | Exit tile | no | nothing in the 3D view; green on the minimap | Purely a marker: walkable and invisible. The level is won by the `trigger` **entity**, not by the tile |
+| `T` | Trigger tile | no | nothing in the 3D view; dark green on the minimap | A walk-over marker for a `trigger` **entity** (checkpoint message + interop event). It does **not** end the level. Without a trigger entity it does nothing |
+| `X` | Exit switch | yes | `exit` texture of the level's theme (an "EXIT" panel with a lever); a white X cross on a green cell on the minimap | Pressing the interact key (`E`) while facing it within reach **completes the level** (see below). Added in Phase 5 |
 
 Any other character, including lower-case letters, spaces and tabs, is an error.
 
@@ -44,9 +45,19 @@ cells of the door entity's `x`/`y` toggles it **instantly**: the cell becomes em
 door again (closed). There is no sliding animation. A door does not close while the player
 overlaps its cell. (Doors can still close on enemies: known issue C10.)
 
-**Exit.** A `trigger` entity turns its cell into a `T` tile. Walking within 0.8 cells of the
-trigger entity's `x`/`y` wins the level. The exit is invisible in the 3D view (known issue C9,
-Roadmap Phase 5). A `T` without a trigger entity does nothing.
+**Exit switch (`X`).** A solid wall cell drawn with the theme's `exit` texture. The player
+completes the level by pressing `E` within **1.1 cells** of its face while roughly facing it:
+one of five rays fanned up to about 20° either side of the view direction must hit the switch,
+and walls stop the rays, so a switch behind the player, beside the player, behind a wall or out
+of reach is not activated ([GAMEPLAY.md](GAMEPLAY.md#winning-and-losing-a-level); test
+`exit_switch_activation`). The switch needs no entity. Put it in a wall the player can walk up
+to; it may be on the outer wall (it counts as solid there). `level01` has one at `(15, 8)`, at
+the east end of row 8.
+
+**Triggers (`T`).** A `trigger` entity turns its cell into a `T` tile. Walking within 0.8 cells
+of the trigger entity's `x`/`y` shows `CHECKPOINT REACHED` and sends one `TriggerActivated`
+interop event. Before Phase 5 this won the level; now only the exit switch does. A `T` without a
+trigger entity does nothing.
 
 ## Lines
 
@@ -66,7 +77,7 @@ The loader reads the file line by line:
 - The first row sets the width; every row must have the same length
   (`inconsistent row width at y=N`).
 - There must be at least one row (`Map file has no rows`).
-- Every character must be one of `. # A B D T` (`invalid tile 'x' at (X,Y)`). A row with the
+- Every character must be one of `. # A B D T X` (`invalid tile 'x' at (X,Y)`). A row with the
   wrong length is reported only as a width error; its characters are not checked.
 - Any of these errors fails the load, and with it the level (for the first level: the game
   exits with code 1). All errors in the file are reported. Positions in messages are grid
@@ -75,7 +86,7 @@ The loader reads the file line by line:
 The engine has **no** minimum size and does **not** require a closed outer wall. Outside the
 grid, the engine treats every cell as solid wall (`Map::GetCell`, `Map::IsWall`), so rays and
 movement cannot leave the map even if an edge is open. There is no maximum size either; the
-renderer's minimap is designed for small maps (known issue C9).
+minimap scales small maps to its panel and follows the player on big ones.
 
 ## Coordinates
 
@@ -90,9 +101,12 @@ renderer's minimap is designed for small maps (known issue C9).
 these as **errors** even though the engine would load the map:
 
 - the map is smaller than 3×3;
-- an outer cell (first or last row or column) is not a solid wall (`#`, `A` or `B`); a `D` or
-  `T` on the edge counts as a leak;
-- the map has no walkable cell (`.`, `D` or `T`).
+- an outer cell (first or last row or column) is not a solid wall (`#`, `A`, `B` or `X`); a `D`
+  or `T` on the edge counts as a leak;
+- the map has no walkable cell (`.`, `D` or `T`);
+- a **campaign level** (listed in `campaign.json`) has no exit switch `X`, or none of its exit
+  switches has a walkable neighbour cell that the player can reach from the spawn (doors count
+  as passable). Phase 7 extends these checks.
 
 The DevKit also handles lines differently: it strips spaces from every line, so it skips
 whitespace-only lines and indented `;` comments that the engine rejects (Roadmap Phase 7 aligns
@@ -107,7 +121,8 @@ python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --entities game
 # Walkable-cell statistics and reachability from a spawn cell
 python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --stats --reachability
 
-# A new map from a template (styles: box, arena, dungeon, crossroads)
+# A new map from a template (styles: box, arena, dungeon, crossroads); every template gets an
+# exit switch X in the middle of the east wall
 python3 tools/devkit/devkit.py create-map game/maps/level02.map --width 16 --height 12 --style arena
 
 # Validate all content (maps, assets, definitions, entity files)

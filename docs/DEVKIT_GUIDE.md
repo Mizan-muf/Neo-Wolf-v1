@@ -43,7 +43,8 @@ Performs multi-layer verification on all project content:
 - Verifies Netpbm PPM (`P3`) syntax, headers, dimensions, and pixel counts.
 - Verifies RIFF WAVE (`.wav`) headers, bit depth, channel configuration, and PCM data.
 - Checks entity placement files (`.json` and `.csv`) with the engine's rules: valid types and fields, `kind` on every pickup, `mapX`/`mapY` on doors and triggers, exactly one player, positions inside the map.
-- Cross-references all file paths in the `.cfg` definitions against disk. (`gameplay.json` is not checked yet: Roadmap Phase 7.)
+- Cross-references all file paths in the `.cfg` definitions (the theme files `game/defs/themes/*.cfg`, `sprites.cfg`, `audio.cfg`) against disk, and validates every `.ppm` under `game/assets/` including the theme folders. (`gameplay.json` is not checked yet: Roadmap Phase 7.)
+- Checks `game/defs/campaign.json` (title, levels, unique ids, existing map/entity/theme files) and that **every campaign level has an exit switch `X` the player can reach** from the spawn (doors count as passable). Phase 5; Phase 7 extends the campaign checks.
 
 ```bash
 # Validate entire repository content:
@@ -88,11 +89,11 @@ Inspects and prints detailed metadata for PPM textures and WAV audio files.
 ---
 
 ### 5. `create-map` — Procedural Map Generator
-Generates a starter map pre-configured with solid outer walls, walkable floor, doors, and triggers.
+Generates a starter map pre-configured with solid outer walls, walkable floor, doors, triggers, and an exit switch `X` in the middle of the east wall.
 
 ```bash
 # Generate a 20x16 arena:
-./tools/devkit/neo_devkit create-map game/maps/level02.map --width 20 --height 16 --style arena
+./tools/devkit/neo_devkit create-map game/maps/level04.map --width 20 --height 16 --style arena
 
 # Available procedural styles:
 #   arena      - Open hall with central pillars and alt-walls
@@ -156,16 +157,16 @@ Runs the internal test suite verifying all DevKit validator, analysis, generatio
 
 1. **Create the Map Grid**:
    ```bash
-   ./tools/devkit/neo_devkit create-map game/maps/level02.map --width 16 --height 12 --style dungeon
+   ./tools/devkit/neo_devkit create-map game/maps/level04.map --width 16 --height 12 --style dungeon
    ```
 2. **Inspect and Verify Reachability**:
    ```bash
-   ./tools/devkit/neo_devkit inspect-map game/maps/level02.map --stats --reachability
+   ./tools/devkit/neo_devkit inspect-map game/maps/level04.map --stats --reachability
    ```
-3. **Create Entity Placements** (`game/defs/level02.entities.json`; every pickup needs a `kind`):
+3. **Create Entity Placements** (`game/defs/level04.entities.json`; every pickup needs a `kind`):
    ```json
    {
-     "level": "level02",
+     "level": "level04",
      "entities": [
        { "type": "player", "x": 2.5, "y": 2.5 },
        { "type": "enemy", "x": 7.5, "y": 3.5 },
@@ -175,15 +176,19 @@ Runs the internal test suite verifying all DevKit validator, analysis, generatio
      ]
    }
    ```
-4. **Export the CSV copy** (optional):
+   The level is completed at an exit switch (`X` map tile, no entity needed); a trigger is
+   only a checkpoint ([MAP_FORMAT.md](MAP_FORMAT.md)).
+4. **Add it to the campaign**: append an entry to `game/defs/campaign.json` with its `id`,
+   `name`, `map`, `entities` and `theme` ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#campaign)).
+5. **Export the CSV copy** (optional):
    ```bash
    ./tools/devkit/neo_devkit sync-entities
    ```
-5. **Run Full Project Validation**:
+6. **Run Full Project Validation**:
    ```bash
    ./tools/devkit/neo_devkit validate --strict
    ```
-6. **Package the Game**:
+7. **Package the Game**:
    ```bash
    ./tools/devkit/neo_devkit package
    ```

@@ -1,6 +1,7 @@
 #include "engine/core/Engine.h"
 
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "engine/core/Color.h"
@@ -47,68 +48,31 @@ void RenderCeilingAndFloor(
     }
 }
 
-void RenderTopDownMap(
-    Framebuffer& framebuffer,
-    const Map& map,
-    const Player& player,
-    const std::vector<RaycastHit>& /*hits*/,
-    const std::vector<SpriteEntity>& sprites) {
-    constexpr int kCellSize = 4;
-    constexpr int kOffsetX = 8;
-    constexpr int kOffsetY = 8;
-
-    for (int y = 0; y < map.Height(); ++y) {
-        for (int x = 0; x < map.Width(); ++x) {
-            const TileType tile = map.GetCell(x, y);
-            std::uint32_t color = 0x88202020u;
-            if (tile == TileType::Wall) {
-                color = 0xDD888888u;
-            } else if (tile == TileType::WallAltA) {
-                color = 0xDDAA6666u;
-            } else if (tile == TileType::WallAltB) {
-                color = 0xDD6666AAu;
-            } else if (tile == TileType::Door) {
-                color = 0xDDCC8833u;
-            } else if (tile == TileType::Trigger) {
-                color = 0xDD44CC44u;
-            }
-            framebuffer.DrawRect(kOffsetX + x * kCellSize, kOffsetY + y * kCellSize, kCellSize - 1, kCellSize - 1, color);
-        }
-    }
-
-    // Sprites on minimap
-    for (const SpriteEntity& spr : sprites) {
-        if (!spr.active || !spr.visible) continue;
-        const int sx = kOffsetX + static_cast<int>(spr.position.x * kCellSize);
-        const int sy = kOffsetY + static_cast<int>(spr.position.y * kCellSize);
-        std::uint32_t col = 0xFF33FF33u;  // pickup
-        if (spr.type == SpriteType::Enemy) {
-            col = 0xFFFF3333u;
-        } else if (spr.type == SpriteType::Decoration) {
-            col = 0xFF9A9A9Au;
-        }
-        framebuffer.DrawRect(sx - 1, sy - 1, 3, 3, col);
-    }
-
-    // Player position
-    const int px = kOffsetX + static_cast<int>(player.position.x * kCellSize);
-    const int py = kOffsetY + static_cast<int>(player.position.y * kCellSize);
-    framebuffer.DrawRect(px - 1, py - 1, 3, 3, 0xFFFFFF00u);
-}
 } // namespace
 
 void Engine::Render() {
-    if (!running_ || platform_ == nullptr) {
+    if (!running_ || framebuffer_.Data() == nullptr) {
         return;
     }
 
-    if (state_ == GameState::Menu) {
-        UiRenderer::DrawMenuScreen(framebuffer_);
+    const GameState state = flow_.State();
+    if (state == GameState::Menu || state == GameState::CampaignComplete) {
+        // Full-screen screens: no world behind them.
+        framebuffer_.ResetDrawBounds();
+        RenderUi();
+    } else {
+        RenderWorld();
+        // Only UI drawing is recorded in the draw bounds (test ui_layout_bounds).
+        framebuffer_.ResetDrawBounds();
+        RenderUi();
+    }
+
+    if (platform_ != nullptr) {
         platform_->PresentFramebuffer(framebuffer_);  // the frame's only present
-        return;
     }
+}
 
-    // Gameplay, Paused, GameOver, Victory screens share world backdrop
+void Engine::RenderWorld() {
     RenderCeilingAndFloor(framebuffer_, ceilingTexture_, floorTexture_);
 
     RaycasterRenderParams rayParams{};
@@ -117,6 +81,7 @@ void Engine::Render() {
     rayParams.wallAltATexture = wallAltATexture_;
     rayParams.wallAltBTexture = wallAltBTexture_;
     rayParams.doorTexture = doorTexture_;
+    rayParams.exitTexture = exitTexture_;
     rayParams.floorTexture = floorTexture_;
     rayParams.ceilingTexture = ceilingTexture_;
     rayParams.missingTexture = &missingTexture_;
@@ -150,35 +115,77 @@ void Engine::Render() {
         latestWallDepthBuffer_,
         particleManager_.Particles(),
         kFieldOfViewRadians);
+}
 
-    if (debugTopDownEnabled_) {
-        RenderTopDownMap(framebuffer_, map_, player_, latestRayHits_, sprites_);
+void Engine::RenderUi() {
+    const GameState state = flow_.State();
+    const CampaignLevel* level = CurrentCampaignLevel();
+    const int levelNumber = level != nullptr ? currentLevelIndex_ + 1 : 0;
+    const std::string levelName = level != nullptr ? level->name : std::string();
+
+    if (state == GameState::Menu) {
+        if (flow_.Page() == MenuPage::Main) {
+            UiRenderer::MenuView view{};
+            view.campaignTitle = campaign_.title;
+            for (const MenuItem item : flow_.MenuItems()) {
+                view.items.emplace_back(MenuItemLabel(item));
+            }
+            view.selected = flow_.MenuCursor();
+            UiRenderer::DrawMenuScreen(framebuffer_, view);
+        } else {
+            UiRenderer::LevelSelectView view{};
+            view.campaignTitle = campaign_.title;
+            for (std::size_t i = 0; i < campaign_.levels.size(); ++i) {
+                view.levels.push_back(UiRenderer::LevelSelectEntry{
+                    static_cast<int>(i) + 1, campaign_.levels[i].name, flow_.IsLevelUnlocked(static_cast<int>(i))});
+            }
+            view.selected = flow_.LevelCursor();
+            UiRenderer::DrawLevelSelectScreen(framebuffer_, view);
+        }
+        return;
+    }
+    if (state == GameState::CampaignComplete) {
+        UiRenderer::DrawCampaignCompleteScreen(framebuffer_, campaign_.title, static_cast<int>(campaign_.levels.size()));
+        return;
     }
 
-    UiRenderer::DrawCrosshair(framebuffer_);
-    UiRenderer::DrawHud(framebuffer_, playerHealth_, playerAmmo_, hudMessage_);
-
-    if (state_ == GameState::Paused) {
-        UiRenderer::DrawPauseOverlay(framebuffer_);
-    } else if (state_ == GameState::GameOver) {
-        UiRenderer::DrawGameOverScreen(framebuffer_);
-    } else if (state_ == GameState::Victory) {
-        UiRenderer::DrawVictoryScreen(framebuffer_);
+    // Play and the overlays drawn on top of it.
+    int reservedLeft = 0;
+    if (minimapVisible_) {
+        reservedLeft = UiRenderer::DrawMinimap(framebuffer_, map_, player_, sprites_);
     }
+    if (state == GameState::Gameplay) {
+        UiRenderer::DrawCrosshair(framebuffer_);
+    }
+    UiRenderer::HudView hud{};
+    hud.health = playerHealth_;
+    hud.ammo = playerAmmo_;
+    hud.levelNumber = levelNumber;
+    hud.levelName = levelName;
+    hud.showLevelBanner = state == GameState::Gameplay && levelBannerTimer_ > 0.0f;
+    hud.message = state == GameState::Gameplay ? hudMessage_ : std::string();
+    hud.reservedLeft = reservedLeft;
+    UiRenderer::DrawHud(framebuffer_, hud);
 
-    if (debugTopDownEnabled_) {
+    if (debugOverlayVisible_) {
         const float fps = time_.deltaSeconds > 0.0 ? static_cast<float>(1.0 / time_.deltaSeconds) : 0.0f;
-        const int cellX = static_cast<int>(std::floor(player_.position.x));
-        const int cellY = static_cast<int>(std::floor(player_.position.y));
-        UiRenderer::DrawDebugOverlay(
-            framebuffer_,
-            fps,
-            player_.position.x,
-            player_.position.y,
-            player_.directionAngleRadians * 57.2957795f,
-            cellX,
-            cellY);
+        UiRenderer::DrawDebugOverlay(framebuffer_, fps, player_.position.x, player_.position.y,
+                                     player_.directionAngleRadians * 57.2957795f,
+                                     static_cast<int>(std::floor(player_.position.x)),
+                                     static_cast<int>(std::floor(player_.position.y)));
     }
 
-    platform_->PresentFramebuffer(framebuffer_);  // the frame's only present
+    const std::string label = UiRenderer::LevelLabel(levelNumber, levelName);
+    if (state == GameState::Paused) {
+        UiRenderer::DrawPauseOverlay(framebuffer_, label);
+    } else if (state == GameState::GameOver) {
+        UiRenderer::DrawGameOverScreen(framebuffer_, label);
+    } else if (state == GameState::LevelComplete || state == GameState::Victory) {
+        UiRenderer::LevelCompleteView view{};
+        view.levelNumber = levelNumber;
+        view.levelName = levelName;
+        view.results = flow_.LastResults();
+        view.lastLevel = flow_.IsLastLevel();
+        UiRenderer::DrawLevelCompleteScreen(framebuffer_, view);
+    }
 }

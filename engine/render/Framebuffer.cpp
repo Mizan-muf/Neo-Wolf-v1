@@ -75,6 +75,20 @@ void Framebuffer::DrawRect(int x, int y, int width, int height, std::uint32_t co
         return;
     }
 
+    const int right = x + width - 1;
+    const int bottom = y + height - 1;
+    if (!drawBounds_.any) {
+        drawBounds_ = DrawBounds{true, x, y, right, bottom, 0};
+    } else {
+        drawBounds_.minX = std::min(drawBounds_.minX, x);
+        drawBounds_.minY = std::min(drawBounds_.minY, y);
+        drawBounds_.maxX = std::max(drawBounds_.maxX, right);
+        drawBounds_.maxY = std::max(drawBounds_.maxY, bottom);
+    }
+    if (x < 0 || y < 0 || right >= width_ || bottom >= height_) {
+        ++drawBounds_.clippedRects;
+    }
+
     const int xStart = std::max(0, x);
     const int yStart = std::max(0, y);
     const int xEnd = std::min(width_ - 1, x + width - 1);
@@ -85,5 +99,15 @@ void Framebuffer::DrawRect(int x, int y, int width, int height, std::uint32_t co
         for (int px = xStart; px <= xEnd; ++px) {
             pixels_[rowOffset + static_cast<std::size_t>(px)] = color;
         }
+    }
+}
+
+void Framebuffer::Darken(int keepPercent) {
+    const std::uint32_t keep = static_cast<std::uint32_t>(std::clamp(keepPercent, 0, 100));
+    for (std::uint32_t& pixel : pixels_) {
+        const std::uint32_t r = ((pixel >> 16) & 0xFFu) * keep / 100u;
+        const std::uint32_t g = ((pixel >> 8) & 0xFFu) * keep / 100u;
+        const std::uint32_t b = (pixel & 0xFFu) * keep / 100u;
+        pixel = (pixel & 0xFF000000u) | (r << 16) | (g << 8) | b;
     }
 }

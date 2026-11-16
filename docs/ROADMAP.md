@@ -53,7 +53,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] Log file in the per-user preferences folder (`SDL_GetPrefPath`; fresh per launch, previous run kept as `neowolf.prev.log`)
 - [x] Audio initialised separately from video; the game runs without an audio device (verified with `SDL_AUDIODRIVER=nonexistent`)
 - [x] Vsync or frame cap, single present per frame, delta-time clamp (software renderer fallback fixes B11)
-- [ ] HiDPI, fullscreen toggle, pause on focus loss, Quit menu item, Cmd+Q (done and verified on macOS: HiDPI (2048×1536 output for the 1024×768 window), resizable letterboxed window, `F11`/`Alt+Enter`/`Cmd+Ctrl+F` fullscreen, `--fullscreen`, pause on focus loss, `Esc` quits from the menu, clean exit on `SDL_QUIT` (window close / `Cmd+Q`); the toggles, pause and quit were driven with synthetic SDL events, not by hand. Open: the Quit menu item (menu rework, Phase 5))
+- [x] HiDPI, fullscreen toggle, pause on focus loss, Quit menu item, Cmd+Q (done and verified on macOS: HiDPI (2048×1536 output for the 1024×768 window), resizable letterboxed window, `F11`/`Alt+Enter`/`Cmd+Ctrl+F` fullscreen, `--fullscreen`, pause on focus loss, `Esc` quits from the menu, clean exit on `SDL_QUIT` (window close / `Cmd+Q`); the toggles, pause and quit were driven with synthetic SDL events, not by hand. The Quit menu item came with Phase 5 and is covered by `game_flow_menu` and `new_game_resets_world`; it has not been clicked by hand)
 - [x] CLI: `--level N`, `--data`, `--version`, `--frames N` (plus `--help`, `--windowed`, `--fullscreen`; `engine/core/CommandLine.{h,cpp}`; exit code 2 for bad options)
 - [x] CRLF-tolerant loaders
 - [x] Docs: `TROUBLESHOOTING.md`
@@ -72,16 +72,17 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - **Done when:** changing level or gameplay files changes the game without recompiling, and a test proves it. **Met on macOS:** `edited_data_changes_game` writes a modified `gameplay.json` and entity file into a temporary content root and checks the new values through `Engine::LoadGameplay`, `Engine::LoadLevel` and `Engine::Update`.
 
 ## Phase 5 — Campaign & progression
-- [ ] `game/defs/campaign.json` with 10 entries
-- [ ] States `LevelComplete` and `CampaignComplete`; next level; restart on death; menu with New Game / Continue / Level Select / Quit
-- [ ] Health and ammo carry over; death restores the level-entry snapshot
-- [ ] Progress saved to the preferences folder
-- [ ] Every screen re-laid out for 320×240; level number and name in the HUD
-- [ ] Visible exit switch; minimap off by default and scaled
-- [ ] Per-level texture themes
-- [ ] SDL-free campaign/state logic with tests for every transition
-- [ ] Docs: `GAMEPLAY.md`, `CONTROLS.md`
-- **Done when:** transition tests pass and the full campaign flow can be played on macOS
+> Status: implemented; ticked items are verified on macOS (build with 0 warnings in our code, `ci-macos` with `-Werror`, 66 CTest tests: 47 native + registry, 16 headless game runs, DevKit (31 tests) + `validate --strict`, `validate --strict`), by a MinGW cross-compile with 0 warnings and a clang `-Wshadow-all` check of our sources. The flow was played by a headless scripted bot (`campaign_playthrough`), not yet by hand in a window (KNOWN_ISSUES C13). Windows (MSVC) and Linux: pending the CI run for this commit. Known issues C6–C9, B13 and B15 are resolved; C14 (mirrored wall textures) was found and fixed on the way.
+- [ ] `game/defs/campaign.json` with 10 entries (the manifest, its fail-fast loader and `--level N` = campaign index are done and tested (`campaign_manifest_validation`); it has **3** entries: level01 plus the placeholders level02 and level03. The 10 levels come with Phase 8)
+- [x] States `LevelComplete` and `CampaignComplete`; next level; restart on death; menu with New Game / Continue / Level Select / Quit (`Victory` kept as a deprecated C API alias of `LevelComplete`; tests `game_flow_menu`, `game_flow_progression`, `game_flow_death_pause`, `new_game_resets_world`, `campaign_playthrough`)
+- [x] Health and ammo carry over; death restores the level-entry snapshot (clamped to the `gameplay.json` maxima; `game_flow_progression`, `game_flow_death_pause`, and through the engine in `campaign_playthrough`)
+- [x] Progress saved to the preferences folder (`progress.json`, schema version 1, atomic write, corrupt file = no progress with a warning; `--pref-dir` / `NEOWOLF_PREF_DIR` for tests and CI; `progress_file_roundtrip`, `pref_dir_resolution`)
+- [x] Every screen re-laid out for 320×240; level number and name in the HUD (`ui_layout_bounds`; screenshots of all 8 preview screens reviewed, `docs/images/screens/`; `--preview` and `--screenshot` developer tools)
+- [x] Visible exit switch; minimap off by default and scaled (`X` tile with a themed "EXIT" texture, `E` within 1.1 cells while facing it; minimap `M`/`Tab`, exit drawn as an X cross; `exit_switch_activation`, `ui_layout_bounds`, `key_bindings`)
+- [x] Per-level texture themes (`bunker`, `stone`, `tech` generated by `tools/devkit/gen_textures.py`, plus `classic` = the old `wall_textures.cfg`; `theme_loading_and_swap`, DevKit `test_gen_textures`)
+- [x] SDL-free campaign/state logic with tests for every transition (`engine/core/GameFlow.{h,cpp}`)
+- [x] Docs: `GAMEPLAY.md`, `CONTROLS.md` (plus `CONTENT_DEFINITIONS.md`, `MAP_FORMAT.md`, `ASSET_GUIDE.md`, `TROUBLESHOOTING.md`, `TESTING.md`, `GAMEPLAY_API.md`, README)
+- **Done when:** transition tests pass and the full campaign flow can be played on macOS. **Partly met:** the transition tests pass and the whole campaign is completed through the real engine by the scripted bot on macOS; a manual play-through in a window is still open (C13).
 
 ## Phase 6 — Gameplay depth
 - [ ] Enemy line of sight; `Alert` and `Attack` states used; no waking through walls; doors cannot close on enemies

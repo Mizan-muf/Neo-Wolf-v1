@@ -11,6 +11,7 @@
 
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
+#include "engine/core/Paths.h"
 #include "engine/platform/PlatformSDL.h"
 
 namespace {
@@ -18,19 +19,15 @@ constexpr double kMaxFrameSeconds = 0.1;     // dt clamp: a stall never becomes 
 constexpr double kStatsIntervalSeconds = 10.0;
 constexpr int kDefaultRefreshRate = 60;
 
-// Starts <pref path>/neowolf.log for this run (the previous run's log is kept as
-// neowolf.prev.log). Without a pref path the game logs to the console only.
-void StartLogFile() {
-    char* prefPath = SDL_GetPrefPath("NeoWolf", "NeoWolf");
-    if (prefPath == nullptr) {
-        LogWarning(std::string("No per-user folder for the log file (") + SDL_GetError() + "); logging to the console only.");
+// Starts <pref dir>/neowolf.log for this run (the previous run's log is kept as
+// neowolf.prev.log). Without a per-user folder the game logs to the console only.
+void StartLogFile(const PrefDirResult& prefDir) {
+    if (prefDir.directory.empty()) {
+        LogWarning("No per-user folder for the log file (" + prefDir.error + "); logging to the console only.");
         return;
     }
-    const std::string dir = prefPath;  // UTF-8, ends with a path separator
-    SDL_free(prefPath);
-
-    const std::string logPath = dir + "neowolf.log";
-    if (!StartFreshLogFile(logPath, dir + "neowolf.prev.log")) {
+    const std::string logPath = PathToUtf8(prefDir.directory / "neowolf.log");
+    if (!StartFreshLogFile(logPath, PathToUtf8(prefDir.directory / "neowolf.prev.log"))) {
         LogWarning("Could not create the log file " + logPath + "; logging to the console only.");
     }
 }
@@ -64,7 +61,10 @@ int CapRefreshRate(const PlatformSDL& platform) {
 } // namespace
 
 int App::Run(const CommandLineOptions& options) {
-    StartLogFile();
+    // The per-user folder holds the log and progress.json. --pref-dir / NEOWOLF_PREF_DIR keep
+    // automated runs away from the player's real files (known issue B15).
+    const PrefDirResult prefDir = ResolvePrefDir(options.prefDir);
+    StartLogFile(prefDir);
     LogInfo(VersionString() + " starting on " + CurrentDate() + ".");
     SDL_version linked{};
     SDL_GetVersion(&linked);
@@ -72,11 +72,15 @@ int App::Run(const CommandLineOptions& options) {
             std::to_string(linked.patch) + ", platform " + SDL_GetPlatform());
     const std::string logPath = GetLogFilePath();
     LogInfo("Log file: " + (logPath.empty() ? std::string("(none)") : logPath));
+    if (!prefDir.directory.empty()) {
+        LogInfo("Per-user folder: " + PathToUtf8(prefDir.directory) + " (" + prefDir.source + ")");
+    }
 
     EngineOptions engineOptions{};
     engineOptions.dataDir = options.dataDir;
-    engineOptions.mapPath = LevelMapPath(options.level);
-    engineOptions.entitiesPath = LevelEntitiesPath(options.level);
+    engineOptions.startLevel = options.level;
+    engineOptions.prefDir = prefDir.directory;
+    engineOptions.preview = options.preview;
     engineOptions.fullscreen = options.windowMode == WindowModeOption::Fullscreen;
     engineOptions.errorDialogs = options.frames == 0;  // never block an automated run on a dialog
 
@@ -150,6 +154,15 @@ int App::Run(const CommandLineOptions& options) {
             } else {
                 nextFrameDeadline = afterFrame + capPeriod;  // running late: do not try to catch up
             }
+        }
+    }
+
+    if (!options.screenshotPath.empty()) {
+        std::string error;
+        if (PlatformSDL::SaveFramebufferBmp(engine.framebuffer_, options.screenshotPath, error)) {
+            LogInfo("Screenshot saved: " + options.screenshotPath);
+        } else {
+            LogWarning("Screenshot not saved (" + options.screenshotPath + "): " + error);
         }
     }
 

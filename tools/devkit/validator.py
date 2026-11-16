@@ -40,10 +40,14 @@ VALID_TILE_CHARS = {
     "B": "WallAltB",
     "D": "Door",
     "T": "Trigger",
+    "X": "Exit",
 }
 
-SOLID_TILES = {"#", "A", "B"}
+# 'X' (Phase 5) is the exit switch: a solid wall cell, so it also closes the perimeter.
+SOLID_TILES = {"#", "A", "B", "X"}
 WALKABLE_TILES = {".", "D", "T"}
+THEME_KEYS = {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit"}
+CAMPAIGN_LEVEL_FIELDS = ("id", "name", "map", "entities", "theme")
 VALID_ENTITY_TYPES = {"player", "enemy", "pickup", "door", "trigger", "decoration"}
 
 
@@ -54,8 +58,8 @@ def validate_map(file_path: Path) -> Tuple[ValidationReport, Optional[List[str]]
     - File exists and is readable
     - Comments ';' and empty lines ignored
     - Rectangular grid (uniform row widths)
-    - Valid tile characters (., #, A, B, D, T)
-    - Perimeter is closed with solid walls (#, A, B)
+    - Valid tile characters (., #, A, B, D, T, X)
+    - Perimeter is closed with solid walls (#, A, B, X)
     - Minimum dimensions (>= 3x3)
     - Has at least one walkable tile
     """
@@ -107,7 +111,7 @@ def validate_map(file_path: Path) -> Tuple[ValidationReport, Optional[List[str]]
     for x in range(min(width, len(rows[0]))):
         if rows[0][x] not in SOLID_TILES:
             report.add_error(
-                f"Map {file_path}: North perimeter leak at ({x}, 0) — found '{rows[0][x]}', expected solid wall (#, A, B)"
+                f"Map {file_path}: North perimeter leak at ({x}, 0) — found '{rows[0][x]}', expected solid wall (#, A, B, X)"
             )
         if len(rows) > 1 and len(rows[-1]) > x and rows[-1][x] not in SOLID_TILES:
             report.add_error(
@@ -599,7 +603,7 @@ def validate_project(project_root: Path) -> ValidationReport:
     if not assets_dir.exists():
         report.add_error(f"Missing assets directory: {assets_dir}")
     else:
-        ppm_files = list(assets_dir.glob("*.ppm"))
+        ppm_files = sorted(assets_dir.rglob("*.ppm"))  # includes the theme folders
         if not ppm_files:
             report.add_error(f"No .ppm files found in {assets_dir}")
         for ppm_file in ppm_files:
@@ -618,21 +622,22 @@ def validate_project(project_root: Path) -> ValidationReport:
     if not defs_dir.exists():
         report.add_error(f"Missing defs directory: {defs_dir}")
     else:
-        # Wall textures cfg
-        wall_cfg = defs_dir / "wall_textures.cfg"
-        if wall_cfg.exists():
-            cfg_rep, wall_vals = validate_cfg(
-                wall_cfg, {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling"}
-            )
+        # Texture themes: game/defs/themes/<id>.cfg (the former wall_textures.cfg is themes/classic.cfg).
+        themes_dir = defs_dir / "themes"
+        theme_files = sorted(themes_dir.glob("*.cfg")) if themes_dir.is_dir() else []
+        if not theme_files:
+            report.add_error(f"No texture themes found in {themes_dir}")
+        for theme_cfg in theme_files:
+            cfg_rep, theme_vals = validate_cfg(theme_cfg, THEME_KEYS)
             report.merge(cfg_rep)
-            for key, rel_path in wall_vals.items():
-                target = project_root / rel_path
-                if not target.exists():
+            for key, rel_path in theme_vals.items():
+                if key not in THEME_KEYS:
+                    report.add_warning(f"{theme_cfg.name}: unknown key '{key}' ignored by the engine")
+                    continue
+                if not (project_root / rel_path).exists():
                     report.add_error(
-                        f"wall_textures.cfg references non-existent file for '{key}': {rel_path}"
+                        f"themes/{theme_cfg.name} references non-existent file for '{key}': {rel_path}"
                     )
-        else:
-            report.add_error(f"Missing wall_textures.cfg in {defs_dir}")
 
         # Sprites cfg
         sprites_cfg = defs_dir / "sprites.cfg"
@@ -689,4 +694,120 @@ def validate_project(project_root: Path) -> ValidationReport:
             json_rep, _ = validate_entity_json(json_file, dims)
             report.merge(json_rep)
 
+        # The campaign manifest and, per level, a reachable exit switch.
+        report.merge(validate_campaign(project_root))
+
+    return report
+
+
+def _load_grid(map_path: Path) -> List[str]:
+    rows: List[str] = []
+    for line in map_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith(";"):
+            rows.append(line)
+    return rows
+
+
+def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tuple[int, int]:
+    """Returns (exit switches in the map, exit switches the player can use).
+
+    An exit 'X' is usable when one of its four neighbours is a walkable cell that is reachable
+    from the spawn cell; doors ('D') count as passable (the player can open them)."""
+    height = len(rows)
+    width = len(rows[0]) if rows else 0
+
+    def tile(x: int, y: int) -> str:
+        return rows[y][x] if 0 <= y < height and 0 <= x < len(rows[y]) else "#"
+
+    start = (int(spawn_x), int(spawn_y))
+    seen = set()
+    if tile(*start) in WALKABLE_TILES:
+        seen.add(start)
+        stack = [start]
+        while stack:
+            cx, cy = stack.pop()
+            for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                if (nx, ny) not in seen and tile(nx, ny) in WALKABLE_TILES:
+                    seen.add((nx, ny))
+                    stack.append((nx, ny))
+    total = 0
+    usable = 0
+    for y in range(height):
+        for x in range(width):
+            if tile(x, y) != "X":
+                continue
+            total += 1
+            if any(n in seen for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))):
+                usable += 1
+    return total, usable
+
+
+def validate_campaign(project_root: Path) -> ValidationReport:
+    """Checks game/defs/campaign.json like the engine (fields, unique ids, files, themes) and
+    that every level has at least one exit switch the player can reach from the spawn."""
+    report = ValidationReport()
+    campaign_path = Path(project_root) / "game" / "defs" / "campaign.json"
+    if not campaign_path.is_file():
+        report.add_error(f"Missing campaign manifest: {campaign_path}")
+        return report
+    try:
+        data = json.loads(campaign_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        report.add_error(f"JSON syntax error in {campaign_path}: {exc}")
+        return report
+    if not isinstance(data, dict):
+        report.add_error(f"{campaign_path}: the top level must be an object")
+        return report
+    if not isinstance(data.get("title"), str) or not data.get("title"):
+        report.add_error(f"{campaign_path}: 'title' must be a non-empty string")
+    levels = data.get("levels")
+    if not isinstance(levels, list) or not levels:
+        report.add_error(f"{campaign_path}: 'levels' must be a non-empty array")
+        return report
+
+    seen_ids = set()
+    for index, level in enumerate(levels):
+        label = f"{campaign_path.name}: levels[{index}]"
+        if not isinstance(level, dict):
+            report.add_error(f"{label} must be an object")
+            continue
+        missing = [k for k in CAMPAIGN_LEVEL_FIELDS if not isinstance(level.get(k), str) or not level.get(k)]
+        if missing:
+            report.add_error(f"{label}: missing or empty field(s): {', '.join(missing)}")
+            continue
+        label += f" ({level['id']})"
+        if level["id"] in seen_ids:
+            report.add_error(f"{label}: id is used by an earlier level")
+        seen_ids.add(level["id"])
+        theme_cfg = Path(project_root) / "game" / "defs" / "themes" / f"{level['theme']}.cfg"
+        if not theme_cfg.is_file():
+            report.add_error(f"{label}: theme '{level['theme']}' not found ({theme_cfg})")
+        map_path = Path(project_root) / level["map"]
+        entities_path = Path(project_root) / level["entities"]
+        if not map_path.is_file():
+            report.add_error(f"{label}: map file not found: {level['map']}")
+            continue
+        if not entities_path.is_file():
+            report.add_error(f"{label}: entities file not found: {level['entities']}")
+            continue
+
+        try:
+            entities = json.loads(entities_path.read_text(encoding="utf-8-sig")).get("entities", [])
+            spawn = next(e for e in entities if isinstance(e, dict) and e.get("type") == "player")
+            spawn_x, spawn_y = float(spawn["x"]), float(spawn["y"])
+        except Exception:
+            report.add_error(f"{label}: cannot read the player spawn from {level['entities']}")
+            continue
+        total, usable = find_reachable_exits(_load_grid(map_path), spawn_x, spawn_y)
+        if total == 0:
+            report.add_error(f"{label}: the map has no exit switch 'X'; the level cannot be completed")
+        elif usable == 0:
+            report.add_error(
+                f"{label}: no exit switch 'X' can be reached from the player spawn ({spawn_x}, {spawn_y})"
+            )
+        else:
+            report.add_info(f"{label}: {usable} of {total} exit switch(es) reachable")
+
+    report.add_info(f"Campaign: {len(levels)} level(s)")
     return report

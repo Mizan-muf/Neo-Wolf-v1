@@ -5,7 +5,7 @@ SDL2 gets input
    ->
 Engine Core processes commands, updates time, and pumps events
    ->
-GameState Machine controls current mode (Menu, Gameplay, Paused, GameOver, Victory)
+GameState Machine controls current mode (Menu, Gameplay, Paused, GameOver, LevelComplete, CampaignComplete; Victory is deprecated) via GameFlow
    ->
 Gameplay / Simulation Layer updates:
    - Player position, rotation, sliding collision against grid map

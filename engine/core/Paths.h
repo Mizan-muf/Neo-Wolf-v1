@@ -63,3 +63,23 @@ std::string JoinContentPath(const std::filesystem::path& root, std::string_view 
 
 // Multi-line, human-readable "searched: ..." text for error messages and the log.
 std::string DescribeContentRootSearch(const ContentRootResult& result);
+
+// The per-user folder for the log file and progress.json (fixes B15: automated runs point it
+// at a temporary folder). Order:
+//   1. --pref-dir <dir>
+//   2. the NEOWOLF_PREF_DIR environment variable
+//   3. SDL_GetPrefPath("NeoWolf", "NeoWolf") (the player's real folder)
+// Relative explicit folders are taken relative to the working directory.
+struct PrefDirResult {
+    std::filesystem::path directory;  // empty when no folder is available (see error)
+    std::string source;               // "--pref-dir", "NEOWOLF_PREF_DIR" or "SDL_GetPrefPath"
+    std::string error;
+};
+
+// The choice alone (no I/O; the SDL value is only used when both explicit inputs are empty).
+PrefDirResult ChoosePrefDir(const std::string& option, const std::string& env, const std::string& sdlPrefPath,
+                            const std::string& workingDir);
+
+// Gathers the real inputs and creates an explicit folder if it does not exist. SDL_GetPrefPath
+// (which creates the player's folder) is only called when neither override is given.
+PrefDirResult ResolvePrefDir(const std::string& option);

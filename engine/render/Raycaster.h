@@ -32,6 +32,7 @@ struct RaycasterRenderParams {
     const Texture* wallAltATexture = nullptr;
     const Texture* wallAltBTexture = nullptr;
     const Texture* doorTexture = nullptr;
+    const Texture* exitTexture = nullptr;
     const Texture* floorTexture = nullptr;
     const Texture* ceilingTexture = nullptr;
     const Texture* missingTexture = nullptr;

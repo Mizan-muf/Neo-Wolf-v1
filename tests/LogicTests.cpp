@@ -1,9 +1,12 @@
+#include <SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -16,21 +19,27 @@
 
 #include "engine/assets/AssetManager.h"
 #include "engine/assets/AudioConfig.h"
+#include "engine/assets/CampaignConfig.h"
 #include "engine/assets/ContentConfig.h"
 #include "engine/assets/GameplayConfig.h"
 #include "engine/assets/Texture.h"
 #include "engine/assets/TextureLoader.h"
+#include "engine/core/Color.h"
 #include "engine/core/CommandLine.h"
 #include "engine/core/Engine.h"
+#include "engine/core/GameFlow.h"
 #include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"
 #include "engine/core/Paths.h"
+#include "engine/core/PreviewScreen.h"
+#include "engine/core/Progress.h"
 #include "engine/core/Vec2.h"
 #include "engine/interop/CommandBridge.h"
 #include "engine/interop/EngineInterop.h"
 #include "engine/particles/Particle.h"
+#include "engine/platform/PlatformSDL.h"
 #include "engine/render/Framebuffer.h"
 #include "engine/render/Raycaster.h"
 #include "engine/render/SpriteRenderer.h"
@@ -100,6 +109,14 @@ std::string ResolveRepoPath(const std::string& relativePath) {
         return candidate;
     }
     return relativePath;
+}
+
+// The repository root (the content root of the shipped game).
+std::filesystem::path RepoRoot() {
+    return std::filesystem::absolute(std::filesystem::path(ResolveRepoPath("game/defs/campaign.json")))
+        .parent_path()
+        .parent_path()
+        .parent_path();
 }
 
 void BuildBorderWalls(Map& map) {
@@ -201,6 +218,14 @@ void TestMapQueries() {
     TEST_ASSERT(map.GetCell(5, 5) == TileType::WallAltA);
     TEST_ASSERT(map.GetCell(6, 5) == TileType::WallAltB);
     TEST_ASSERT(map.GetCell(-2, -2) == TileType::Wall);
+
+    // The exit switch is solid (movement, rays) like a wall.
+    map.SetCell(7, 5, TileType::Exit);
+    TEST_ASSERT(map.IsWall(7, 5));
+    TEST_ASSERT(map.GetCell(7, 5) == TileType::Exit);
+    TEST_ASSERT(static_cast<int>(TileType::Exit) == 6);  // appended
+    map.SetCell(8, 5, TileType::Trigger);
+    TEST_ASSERT(!map.IsWall(8, 5));  // a trigger stays walkable
 }
 
 void TestRaycastHitDistance() {
@@ -381,11 +406,12 @@ void TestContentFileLoaders() {
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
 
-    WallTextureAssignments wall{};
+    ThemeTextureAssignments wall{};
     SpriteTextureDefinitions sprites{};
-    TEST_ASSERT(LoadWallTextureAssignments(ResolveRepoPath("game/defs/wall_textures.cfg"), wall, errors));
+    TEST_ASSERT(LoadThemeTextureAssignments(ResolveRepoPath(ThemeConfigPath("classic")), wall, errors));
     TEST_ASSERT(LoadSpriteTextureDefinitions(ResolveRepoPath("game/defs/sprites.cfg"), sprites, errors));
     TEST_ASSERT(!wall.wall.empty());
+    TEST_ASSERT(wall.exit == "game/assets/themes/classic/exit.ppm");
     TEST_ASSERT(!sprites.enemy.empty());
 
     Map map{};
@@ -455,6 +481,17 @@ void TestGameStateTransitions() {
 
     state = GameState::Victory;
     TEST_ASSERT(std::string(GameStateToString(state)) == "Victory");
+
+    // Phase 5 states are appended: the C API values of the old ones are unchanged.
+    TEST_ASSERT(static_cast<int>(GameState::Victory) == 4);
+    TEST_ASSERT(static_cast<int>(GameState::LevelComplete) == 5);
+    TEST_ASSERT(static_cast<int>(GameState::CampaignComplete) == 6);
+    TEST_ASSERT(std::string(GameStateToString(GameState::LevelComplete)) == "LevelComplete");
+    TEST_ASSERT(std::string(GameStateToString(GameState::CampaignComplete)) == "CampaignComplete");
+    TEST_ASSERT(IsValidGameStateValue(0) && IsValidGameStateValue(6));
+    TEST_ASSERT(!IsValidGameStateValue(-1) && !IsValidGameStateValue(7));
+    TEST_ASSERT(static_cast<int>(InteropEventType::LevelLoaded) == 11);
+    TEST_ASSERT(static_cast<int>(InteropEventType::LevelCompleted) == 12);  // appended
 }
 
 void TestPlayerCombatAndShooting() {
@@ -826,6 +863,10 @@ void TestEngineInteropC_API() {
     TEST_ASSERT(handle != nullptr);
 
     TEST_ASSERT(nw_engine_get_state(handle) == 0); // Menu
+    nw_engine_set_state(handle, 4); // Victory (deprecated) selects LevelComplete
+    TEST_ASSERT(nw_engine_get_state(handle) == static_cast<int>(GameState::LevelComplete));
+    nw_engine_set_state(handle, 99); // out of range: ignored
+    TEST_ASSERT(nw_engine_get_state(handle) == static_cast<int>(GameState::LevelComplete));
     nw_engine_set_state(handle, 1); // Gameplay
     TEST_ASSERT(nw_engine_get_state(handle) == 1);
 
@@ -1025,9 +1066,23 @@ void TestCommandLineParsing() {
     CommandLineResult r = ParseCommandLine({});
     TEST_ASSERT(r.action == CommandLineAction::Run);
     TEST_ASSERT(r.options.dataDir.empty());
-    TEST_ASSERT(r.options.level == 1);
+    TEST_ASSERT(r.options.level == 0);  // the main menu
     TEST_ASSERT(r.options.frames == 0);
     TEST_ASSERT(r.options.windowMode == WindowModeOption::Default);
+    TEST_ASSERT(r.options.prefDir.empty() && r.options.screenshotPath.empty());
+    TEST_ASSERT(r.options.preview == PreviewScreen::None);
+
+    // Phase 5: --pref-dir, and the developer tools --preview / --screenshot.
+    r = ParseCommandLine({"--pref-dir", "/tmp/nw prefs", "--preview", "levelselect", "--screenshot=shot.bmp",
+                          "--frames", "5"});
+    TEST_ASSERT(r.action == CommandLineAction::Run);
+    TEST_ASSERT(r.options.prefDir == "/tmp/nw prefs");
+    TEST_ASSERT(r.options.preview == PreviewScreen::LevelSelect);
+    TEST_ASSERT(r.options.screenshotPath == "shot.bmp");
+    for (const PreviewScreen screen : kPreviewScreens) {
+        r = ParseCommandLine({"--preview", PreviewScreenName(screen)});
+        TEST_ASSERT(r.action == CommandLineAction::Run && r.options.preview == screen);
+    }
 
     r = ParseCommandLine({"--data", "/some dir", "--level", "7", "--frames", "120", "--fullscreen"});
     TEST_ASSERT(r.action == CommandLineAction::Run);
@@ -1066,6 +1121,12 @@ void TestCommandLineParsing() {
         {"--frames", "99999999999"},
         {"--windowed", "--fullscreen"},
         {"--version=2"},
+        {"--pref-dir"},
+        {"--pref-dir", ""},
+        {"--screenshot"},
+        {"--preview"},
+        {"--preview", "credits"},
+        {"--preview", "none"},
     };
     for (const std::vector<std::string>& args : invalid) {
         const CommandLineResult bad = ParseCommandLine(args);
@@ -1074,17 +1135,13 @@ void TestCommandLineParsing() {
     }
     TEST_ASSERT(ParseCommandLine({"--bogus"}).error.find("--bogus") != std::string::npos);
 
-    // --level padding.
-    TEST_ASSERT(LevelMapPath(1) == "game/maps/level01.map");
-    TEST_ASSERT(LevelEntitiesPath(1) == "game/defs/level01.entities.json");
-    TEST_ASSERT(LevelMapPath(9) == "game/maps/level09.map");
-    TEST_ASSERT(LevelMapPath(10) == "game/maps/level10.map");
-    TEST_ASSERT(LevelEntitiesPath(99) == "game/defs/level99.entities.json");
+    TEST_ASSERT(ParseCommandLine({"--preview", "x"}).error.find("levelselect") != std::string::npos);
 
     // Version and usage text.
     TEST_ASSERT(VersionString() == std::string("Neo-Wolf ") + NW_EXPECTED_VERSION);
     const std::string usage = CommandLineUsage("neo_wolf");
-    for (const char* option : {"--help", "--version", "--data", "--level", "--frames", "--windowed", "--fullscreen"}) {
+    for (const char* option : {"--help", "--version", "--data", "--pref-dir", "--level", "--frames", "--windowed",
+                               "--fullscreen", "--preview", "--screenshot", "campaign"}) {
         TEST_ASSERT(usage.find(option) != std::string::npos);
     }
 }
@@ -1173,15 +1230,24 @@ void TestCrlfContentLoading() {
     TEST_ASSERT(crlfAudio.doorOpen.find('\r') == std::string::npos);
     TEST_ASSERT_NEAR(crlfAudio.masterVolume, lfAudio.masterVolume, 0.0001f);
 
-    const std::filesystem::path crlfWallPath = scratch.Path() / "wall_textures.cfg";
-    WriteWithCrlf(crlfWallPath, ReadWholeFile(ResolveRepoPath("game/defs/wall_textures.cfg")));
-    WallTextureAssignments lfWall{};
-    WallTextureAssignments crlfWall{};
-    TEST_ASSERT(LoadWallTextureAssignments(ResolveRepoPath("game/defs/wall_textures.cfg"), lfWall, errors));
-    TEST_ASSERT(LoadWallTextureAssignments(PathToUtf8(crlfWallPath), crlfWall, errors));
+    const std::filesystem::path crlfWallPath = scratch.Path() / "bunker.cfg";
+    WriteWithCrlf(crlfWallPath, ReadWholeFile(ResolveRepoPath(ThemeConfigPath("bunker"))));
+    ThemeTextureAssignments lfWall{};
+    ThemeTextureAssignments crlfWall{};
+    TEST_ASSERT(LoadThemeTextureAssignments(ResolveRepoPath(ThemeConfigPath("bunker")), lfWall, errors));
+    TEST_ASSERT(LoadThemeTextureAssignments(PathToUtf8(crlfWallPath), crlfWall, errors));
     TEST_ASSERT(crlfWall.wall == lfWall.wall);
     TEST_ASSERT(crlfWall.door == lfWall.door);
     TEST_ASSERT(crlfWall.ceiling == lfWall.ceiling);
+    TEST_ASSERT(crlfWall.exit == lfWall.exit && crlfWall.exit.find('\r') == std::string::npos);
+
+    // The campaign manifest (JSON, read like gameplay.json).
+    const std::filesystem::path crlfCampaignPath = scratch.Path() / "campaign.json";
+    WriteWithCrlf(crlfCampaignPath, ReadWholeFile(ResolveRepoPath("game/defs/campaign.json")));
+    CampaignDefinition crlfCampaign{};
+    std::vector<std::string> campaignWarnings;
+    TEST_ASSERT(LoadCampaign(PathToUtf8(crlfCampaignPath), RepoRoot(), crlfCampaign, errors, campaignWarnings));
+    TEST_ASSERT(crlfCampaign.levels.size() == 3 && crlfCampaign.levels[2].theme == "tech");
     TEST_ASSERT(errors.empty());
 }
 
@@ -1766,6 +1832,1101 @@ void TestLevelLoadFailures() {
     TEST_ASSERT(AnyMessageContains(errors, {"no player placement"}));
 }
 
+// --- Phase 5: campaign & progression ------------------------------------------------------
+
+// One frame of input for GameFlow tests: `pressed` actions go down this frame (a fresh press),
+// everything else is up.
+InputState Press(std::initializer_list<InputAction> pressed) {
+    InputState input{};
+    input.BeginFrame();
+    for (const InputAction action : pressed) {
+        input.SetActionState(action, true);
+    }
+    return input;
+}
+
+const InputState kNoInput{};
+
+GameFlow MakeFlow(int levels, bool hasProgress = false, int highest = 1) {
+    GameFlowConfig config{};
+    config.levelCount = levels;
+    config.initial = PlayerStats{100, 24};
+    config.maximum = PlayerStats{100, 99};
+    GameFlow flow;
+    flow.Configure(config);
+    flow.SetProgress(hasProgress, highest);
+    return flow;
+}
+
+bool HasRequest(const std::vector<FlowRequest>& requests, FlowRequestType type) {
+    for (const FlowRequest& request : requests) {
+        if (request.type == type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const FlowRequest* FindRequest(const std::vector<FlowRequest>& requests, FlowRequestType type) {
+    for (const FlowRequest& request : requests) {
+        if (request.type == type) {
+            return &request;
+        }
+    }
+    return nullptr;
+}
+
+FlowEvents Completed(int health, int ammo) {
+    FlowEvents events{};
+    events.levelCompleted = true;
+    events.stats = PlayerStats{health, ammo};
+    events.results.kills = 1;
+    events.results.totalEnemies = 2;
+    events.results.seconds = 12.5;
+    return events;
+}
+
+void TestWallTextureOrientation() {
+    // A wall texture must read left-to-right from every side (before Phase 5 every wall was
+    // mirrored, which showed on the exit switch's "EXIT" label). Texture: left half red,
+    // right half blue; the player stands 0.6 cells from one face of an exit cell and looks at it.
+    Texture leftRed(2, 1);
+    leftRed.SetPixel(0, 0, PackARGB32(MakeColor(255, 0, 0)));
+    leftRed.SetPixel(1, 0, PackARGB32(MakeColor(0, 0, 255)));
+    Map map(7, 7);
+    BuildBorderWalls(map);
+    map.SetCell(3, 3, TileType::Exit);
+    RaycasterRenderParams params{};
+    params.exitTexture = &leftRed;
+    params.wallTexture = &leftRed;
+
+    struct View {
+        Vec2 position;
+        float angle;
+        const char* name;
+    };
+    const View views[] = {
+        {{3.5f, 2.4f}, kPi / 2.0f, "looking +y at the north face"},
+        {{3.5f, 4.6f}, 3.0f * kPi / 2.0f, "looking -y at the south face"},
+        {{2.4f, 3.5f}, 0.0f, "looking +x at the west face"},
+        {{4.6f, 3.5f}, kPi, "looking -x at the east face"},
+    };
+    for (const View& view : views) {
+        Player player{};
+        player.position = view.position;
+        player.directionAngleRadians = view.angle;
+        Framebuffer framebuffer(64, 48);
+        std::vector<RaycastHit> hits;
+        Raycaster::RenderWalls(map, player, framebuffer, params, hits);
+        TEST_ASSERT(hits[16].tileType == TileType::Exit && hits[48].tileType == TileType::Exit);
+        const std::uint32_t left = framebuffer.Data()[24 * 64 + 16];
+        const std::uint32_t right = framebuffer.Data()[24 * 64 + 48];
+        const bool leftIsRed = ((left >> 16) & 0xFFu) > (left & 0xFFu);
+        const bool rightIsBlue = (right & 0xFFu) > ((right >> 16) & 0xFFu);
+        if (!leftIsRed || !rightIsBlue) {
+            FailTest(__FILE__, __LINE__, std::string("mirrored wall texture when ") + view.name);
+        }
+    }
+}
+
+void TestGameFlowMenu() {
+    // No progress: New Game, Level Select, Quit (Continue only with saved progress).
+    GameFlow flow = MakeFlow(3);
+    TEST_ASSERT(flow.State() == GameState::Menu && flow.Page() == MenuPage::Main);
+    std::vector<MenuItem> items = flow.MenuItems();
+    TEST_ASSERT(items.size() == 3);
+    TEST_ASSERT(items[0] == MenuItem::NewGame && items[1] == MenuItem::LevelSelect && items[2] == MenuItem::Quit);
+    TEST_ASSERT(std::string(MenuItemLabel(MenuItem::LevelSelect)) == "LEVEL SELECT");
+
+    // W/S and Up/Down (MoveForward/MoveBackward) move the cursor, wrapping around.
+    flow.Update(Press({InputAction::MoveForward}), {});
+    TEST_ASSERT(flow.MenuCursor() == 2);
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    TEST_ASSERT(flow.MenuCursor() == 0);
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    TEST_ASSERT(flow.MenuCursor() == 1);
+
+    // Level Select: unlocked levels can start, locked ones cannot; Esc goes back.
+    std::vector<FlowRequest> requests = flow.Update(Press({InputAction::Select}), {});
+    TEST_ASSERT(requests.empty());
+    TEST_ASSERT(flow.State() == GameState::Menu && flow.Page() == MenuPage::LevelSelect);
+    TEST_ASSERT(flow.LevelCursor() == 0);
+    TEST_ASSERT(flow.IsLevelUnlocked(0) && !flow.IsLevelUnlocked(1) && !flow.IsLevelUnlocked(2));
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    TEST_ASSERT(flow.LevelCursor() == 1);
+    requests = flow.Update(Press({InputAction::Select}), {});
+    TEST_ASSERT(requests.empty() && flow.State() == GameState::Menu);  // locked
+    flow.Update(Press({InputAction::Back}), {});
+    TEST_ASSERT(flow.Page() == MenuPage::Main && flow.State() == GameState::Menu);
+
+    // Esc on the main menu quits, and so does the Quit item.
+    requests = flow.Update(Press({InputAction::Back}), {});
+    TEST_ASSERT(HasRequest(requests, FlowRequestType::Quit));
+    GameFlow quitFlow = MakeFlow(3);
+    quitFlow.Update(Press({InputAction::MoveForward}), {});  // wraps to Quit
+    requests = quitFlow.Update(Press({InputAction::Select}), {});
+    TEST_ASSERT(requests.size() == 1 && requests[0].type == FlowRequestType::Quit);
+
+    // New Game: level 1 with the gameplay.json initial values (fixes C7: a full reload).
+    GameFlow newGame = MakeFlow(3, true, 3);
+    requests = newGame.Update(Press({InputAction::Select}), {});
+    const FlowRequest* load = FindRequest(requests, FlowRequestType::LoadLevel);
+    TEST_ASSERT(load != nullptr && load->levelIndex == 0);
+    TEST_ASSERT(load->stats.health == 100 && load->stats.ammo == 24);
+    TEST_ASSERT(newGame.State() == GameState::Gameplay && newGame.CurrentLevel() == 0);
+    TEST_ASSERT(newGame.HighestUnlocked() == 3);  // New Game keeps the unlocked levels
+
+    // Nothing happens without input.
+    GameFlow idle = MakeFlow(2);
+    TEST_ASSERT(idle.Update(kNoInput, {}).empty() && idle.State() == GameState::Menu);
+}
+
+void TestGameFlowProgression() {
+    GameFlow flow = MakeFlow(3);
+    std::vector<FlowRequest> requests = flow.Update(Press({InputAction::Select}), {});  // New Game
+    TEST_ASSERT(flow.State() == GameState::Gameplay && flow.EntrySnapshot().health == 100);
+
+    // Level 1 complete: results kept, level 2 unlocked and saved.
+    requests = flow.Update(kNoInput, Completed(150, 120));  // above the maxima: clamped
+    TEST_ASSERT(flow.State() == GameState::LevelComplete);
+    const FlowRequest* save = FindRequest(requests, FlowRequestType::SaveProgress);
+    TEST_ASSERT(save != nullptr && save->highestUnlocked == 2);
+    TEST_ASSERT(flow.HasProgress() && flow.HighestUnlocked() == 2);
+    TEST_ASSERT(flow.LastResults().kills == 1 && flow.LastResults().totalEnemies == 2);
+    TEST_ASSERT_NEAR(flow.LastResults().seconds, 12.5, 1e-9);
+    TEST_ASSERT(flow.CarriedStats().health == 100 && flow.CarriedStats().ammo == 99);  // clamped to maxima
+    TEST_ASSERT(!flow.IsLastLevel());
+
+    // Space does not continue (only Enter), so a shot fired at the switch cannot skip the screen.
+    TEST_ASSERT(flow.Update(Press({InputAction::Attack, InputAction::Select}), {}).empty());
+    TEST_ASSERT(flow.State() == GameState::LevelComplete);
+
+    // Enter: level 2 with the carried stats, which become the new death snapshot.
+    requests = flow.Update(Press({InputAction::Confirm, InputAction::Select}), {});
+    const FlowRequest* next = FindRequest(requests, FlowRequestType::LoadLevel);
+    TEST_ASSERT(next != nullptr && next->levelIndex == 1);
+    TEST_ASSERT(next->stats.health == 100 && next->stats.ammo == 99);
+    TEST_ASSERT(flow.State() == GameState::Gameplay && flow.CurrentLevel() == 1);
+    TEST_ASSERT(flow.EntrySnapshot().health == 100 && flow.EntrySnapshot().ammo == 99);
+
+    // Level 2 complete with lower stats: they carry over unchanged.
+    flow.Update(kNoInput, Completed(37, 5));
+    TEST_ASSERT(flow.HighestUnlocked() == 3);
+    requests = flow.Update(Press({InputAction::Confirm}), {});
+    next = FindRequest(requests, FlowRequestType::LoadLevel);
+    TEST_ASSERT(next != nullptr && next->levelIndex == 2 && next->stats.health == 37 && next->stats.ammo == 5);
+    TEST_ASSERT(flow.IsLastLevel());
+
+    // Last level: LevelComplete first, then Enter -> CampaignComplete, then Enter -> Menu.
+    requests = flow.Update(kNoInput, Completed(10, 0));
+    TEST_ASSERT(flow.State() == GameState::LevelComplete);
+    save = FindRequest(requests, FlowRequestType::SaveProgress);
+    TEST_ASSERT(save != nullptr && save->highestUnlocked == 3);  // never beyond the campaign
+    requests = flow.Update(Press({InputAction::Confirm}), {});
+    TEST_ASSERT(requests.empty() && flow.State() == GameState::CampaignComplete);
+    flow.Update(Press({InputAction::Confirm}), {});
+    TEST_ASSERT(flow.State() == GameState::Menu && flow.Page() == MenuPage::Main);
+    // Continue is offered now.
+    TEST_ASSERT(flow.MenuItems().size() == 4 && flow.MenuItems()[1] == MenuItem::Continue);
+
+    // Esc on the level-complete screen returns to the menu (progress is already saved).
+    GameFlow escFlow = MakeFlow(3);
+    escFlow.Update(Press({InputAction::Select}), {});
+    escFlow.Update(kNoInput, Completed(50, 5));
+    escFlow.Update(Press({InputAction::Back, InputAction::Pause}), {});
+    TEST_ASSERT(escFlow.State() == GameState::Menu);
+
+    // Carry-over clamping on its own: health at least 1, ammo at least 0.
+    const PlayerStats low = flow.ClampCarried(PlayerStats{-5, -3});
+    TEST_ASSERT(low.health == 1 && low.ammo == 0);
+    const PlayerStats high = flow.ClampCarried(PlayerStats{1000, 1000});
+    TEST_ASSERT(high.health == 100 && high.ammo == 99);
+}
+
+void TestGameFlowDeathAndPause() {
+    GameFlow flow = MakeFlow(3, true, 2);
+    flow.Update(Press({InputAction::MoveBackward}), {});  // Continue
+    std::vector<FlowRequest> requests = flow.Update(Press({InputAction::Select}), {});
+    const FlowRequest* load = FindRequest(requests, FlowRequestType::LoadLevel);
+    TEST_ASSERT(load != nullptr && load->levelIndex == 1 && load->stats.health == 100);  // highest unlocked, fresh stats
+
+    // Pause: P/Esc (Pause action) or focus loss; resume with Esc/P/Enter.
+    flow.Update(Press({InputAction::Pause, InputAction::Back}), {});
+    TEST_ASSERT(flow.State() == GameState::Paused);
+    flow.Update(Press({InputAction::Pause, InputAction::Back}), {});
+    TEST_ASSERT(flow.State() == GameState::Gameplay);
+    FlowEvents focus{};
+    focus.focusLost = true;
+    flow.Update(kNoInput, focus);
+    TEST_ASSERT(flow.State() == GameState::Paused);
+    flow.Update(Press({InputAction::Confirm}), {});
+    TEST_ASSERT(flow.State() == GameState::Gameplay);
+    // R in the pause screen restarts from the level-entry snapshot.
+    flow.Update(Press({InputAction::Pause}), {});
+    requests = flow.Update(Press({InputAction::Restart}), {});
+    const FlowRequest* restart = FindRequest(requests, FlowRequestType::RestartLevel);
+    TEST_ASSERT(restart != nullptr && restart->levelIndex == 1 && restart->stats.health == 100);
+    TEST_ASSERT(flow.State() == GameState::Gameplay);
+    // Q in the pause screen goes to the main menu.
+    flow.Update(Press({InputAction::Pause}), {});
+    TEST_ASSERT(flow.Update(Press({InputAction::QuitToMenu, InputAction::TurnLeft}), {}).empty());
+    TEST_ASSERT(flow.State() == GameState::Menu && flow.Page() == MenuPage::Main);
+    // Q during play is only "turn left".
+    GameFlow turning = MakeFlow(1);
+    turning.Update(Press({InputAction::Select}), {});
+    turning.Update(Press({InputAction::QuitToMenu, InputAction::TurnLeft}), {});
+    TEST_ASSERT(turning.State() == GameState::Gameplay);
+
+    // Death: GameOver, then R or Enter restarts with the snapshot taken at level entry.
+    GameFlow death = MakeFlow(3);
+    death.Update(Press({InputAction::Select}), {});
+    death.Update(kNoInput, Completed(42, 7));
+    death.Update(Press({InputAction::Confirm}), {});  // level 2 entered with 42 / 7
+    FlowEvents died{};
+    died.playerDied = true;
+    death.Update(kNoInput, died);
+    TEST_ASSERT(death.State() == GameState::GameOver);
+    requests = death.Update(Press({InputAction::Restart}), {});
+    restart = FindRequest(requests, FlowRequestType::RestartLevel);
+    TEST_ASSERT(restart != nullptr && restart->levelIndex == 1);
+    TEST_ASSERT(restart->stats.health == 42 && restart->stats.ammo == 7);
+    death.Update(kNoInput, died);
+    requests = death.Update(Press({InputAction::Confirm}), {});
+    TEST_ASSERT(FindRequest(requests, FlowRequestType::RestartLevel) != nullptr);
+    TEST_ASSERT(FindRequest(requests, FlowRequestType::RestartLevel)->stats.health == 42);
+    // Esc on the game-over screen goes to the menu.
+    death.Update(kNoInput, died);
+    death.Update(Press({InputAction::Back, InputAction::Pause}), {});
+    TEST_ASSERT(death.State() == GameState::Menu);
+    // R during play restarts as well.
+    death.Update(Press({InputAction::Select}), {});
+    requests = death.Update(Press({InputAction::Restart}), {});
+    TEST_ASSERT(FindRequest(requests, FlowRequestType::RestartLevel) != nullptr);
+
+    // External state changes (C API): Victory means LevelComplete.
+    GameFlow external = MakeFlow(2);
+    external.ForceState(GameState::Victory);
+    TEST_ASSERT(external.State() == GameState::LevelComplete);
+    external.ForceState(GameState::Menu);
+    TEST_ASSERT(external.State() == GameState::Menu && external.Page() == MenuPage::Main);
+    // --level N: straight into the level, unlocks ignored.
+    const FlowRequest direct = external.StartLevelDirect(1);
+    TEST_ASSERT(direct.type == FlowRequestType::LoadLevel && direct.levelIndex == 1 && direct.stats.health == 100);
+    TEST_ASSERT(external.State() == GameState::Gameplay && !external.IsLevelUnlocked(1));
+    // Saved progress beyond the campaign is clamped.
+    GameFlow clamped = MakeFlow(3, true, 50);
+    TEST_ASSERT(clamped.HighestUnlocked() == 3);
+}
+
+void TestCampaignManifestValidation() {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    CampaignDefinition campaign{};
+    TEST_ASSERT(LoadCampaign(ResolveRepoPath("game/defs/campaign.json"), RepoRoot(), campaign, errors, warnings));
+    TEST_ASSERT(errors.empty() && warnings.empty());
+    TEST_ASSERT(campaign.levels.size() == 3);
+    TEST_ASSERT(campaign.levels[0].id == "level01" && campaign.levels[0].theme == "bunker");
+    TEST_ASSERT(campaign.levels[1].theme == "stone" && campaign.levels[2].theme == "tech");
+    TEST_ASSERT(campaign.levels[2].map == "game/maps/level03.map");
+
+    TEST_ASSERT(IsValidContentId("level01") && IsValidContentId("tech_2-b"));
+    TEST_ASSERT(!IsValidContentId("") && !IsValidContentId("../x") && !IsValidContentId("Level"));
+
+    const std::string level01 = R"({"id": "level01", "name": "A", "map": "game/maps/level01.map",
+        "entities": "game/defs/level01.entities.json", "theme": "bunker"})";
+    struct Case {
+        std::string json;
+        const char* expected;
+    };
+    const Case cases[] = {
+        {"{ \"title\": \"T\", \"levels\": [ " + level01 + " ", "invalid JSON"},
+        {"[]", "top level must be an object"},
+        {R"({"levels": [)" + level01 + "]}", "field \"title\" is required"},
+        {R"({"title": "T"})", "field \"levels\" is required"},
+        {R"({"title": "T", "levels": []})", "needs at least one level"},
+        {R"({"title": "T", "levels": {}})", "must be an array"},
+        {R"({"title": "T", "title": "U", "levels": [)" + level01 + "]}", "duplicate key \"title\""},
+        {R"({"title": "T", "levels": [)" + level01 + ", " + level01 + "]}", "ids must be unique"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/missing.map",
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "map file not found"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
+            "entities": "game/defs/nope.entities.json", "theme": "bunker"}]})", "entities file not found"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
+            "entities": "game/defs/level01.entities.json", "theme": "marble"}]})", "theme \"marble\" not found"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": "A", "map": "game/maps/level01.map",
+            "entities": "game/defs/level01.entities.json", "theme": "../bunker"}]})", "theme must use only"},
+        {R"({"title": "T", "levels": [{"id": "Level 1", "name": "A", "map": "game/maps/level01.map",
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "id must use only"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": 5, "map": "game/maps/level01.map",
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}]})", "\"name\" must be a non-empty string"},
+        {R"({"title": "T", "levels": [{"id": "x", "name": "A", "entities": "game/defs/level01.entities.json",
+            "theme": "bunker"}]})", "field \"map\" is required"},
+        {R"({"title": "T", "levels": [3]})", "must be an object"},
+    };
+    for (const Case& c : cases) {
+        errors.clear();
+        warnings.clear();
+        CampaignDefinition untouched = campaign;
+        TEST_ASSERT(!ParseCampaign(c.json, "campaign.json", RepoRoot(), untouched, errors, warnings));
+        if (!AnyMessageContains(errors, {"campaign.json", c.expected})) {
+            FailTest(__FILE__, __LINE__, std::string("expected an error containing: ") + c.expected);
+        }
+        TEST_ASSERT(untouched.levels.size() == 3);  // unchanged on failure
+    }
+
+    // Unknown keys and very long names are warnings only.
+    errors.clear();
+    warnings.clear();
+    CampaignDefinition loose{};
+    TEST_ASSERT(ParseCampaign(R"({"title": "T", "extra": 1, "levels": [{"id": "x", "name": "A very long level name that will not fit",
+        "map": "game/maps/level01.map", "entities": "game/defs/level01.entities.json", "theme": "bunker", "music": "x"}]})",
+                              "campaign.json", RepoRoot(), loose, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(warnings, {"unknown key \"extra\""}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"unknown key \"music\""}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"shortened on screen"}));
+    TEST_ASSERT(loose.levels.size() == 1);
+
+    // A missing manifest.
+    errors.clear();
+    TEST_ASSERT(!LoadCampaign(ResolveRepoPath("game/defs") + "/missing-campaign.json", RepoRoot(), loose, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"Unable to open campaign manifest"}));
+}
+
+// A map with the player in the middle of an open room and an exit switch on the east wall.
+Map MakeExitTestMap() {
+    Map map(10, 7);
+    BuildBorderWalls(map);
+    map.SetCell(9, 3, TileType::Exit);
+    return map;
+}
+
+void TestExitSwitchActivation() {
+    // The map loader reads 'X' as the exit switch.
+    ScratchDir scratch("exit-switch");
+    WriteTextFile(scratch.Path() / "x.map", "#####\n#..X#\n#####\n");
+    Map loaded{};
+    std::vector<std::string> errors;
+    TEST_ASSERT(LoadMapFromFile(PathToUtf8(scratch.Path() / "x.map"), loaded, errors));
+    TEST_ASSERT(loaded.GetCell(3, 1) == TileType::Exit && loaded.IsWall(3, 1));
+    // The shipped level 1 has one, on the east wall.
+    Map level01{};
+    TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), level01, errors));
+    TEST_ASSERT(level01.GetCell(15, 8) == TileType::Exit);
+
+    const Map map = MakeExitTestMap();
+    Player player{};
+    player.collisionRadius = 0.22f;
+
+    // In reach (0.5 cells from the face) and facing it: found.
+    player.position = {8.5f, 3.5f};
+    player.directionAngleRadians = 0.0f;
+    ExitSwitchHit hit = FindExitSwitchInReach(map, player);
+    TEST_ASSERT(hit.found && hit.mapX == 9 && hit.mapY == 3);
+    TEST_ASSERT_NEAR(hit.distance, 0.5f, 1e-4f);
+    // Roughly facing (15 degrees off) still works...
+    player.directionAngleRadians = 0.26f;
+    TEST_ASSERT(FindExitSwitchInReach(map, player).found);
+    // ...but looking sideways (90 degrees) or away does not.
+    player.directionAngleRadians = kPi / 2.0f;
+    TEST_ASSERT(!FindExitSwitchInReach(map, player).found);
+    player.directionAngleRadians = kPi;  // behind the player
+    TEST_ASSERT(!FindExitSwitchInReach(map, player).found);
+    // Too far: 1.5 cells from the face.
+    player.position = {7.5f, 3.5f};
+    player.directionAngleRadians = 0.0f;
+    TEST_ASSERT(!FindExitSwitchInReach(map, player).found);
+    // Just inside the 1.1-cell reach.
+    player.position = {9.0f - kExitReach + 0.05f, 3.5f};
+    TEST_ASSERT(FindExitSwitchInReach(map, player).found);
+    // A wall in between blocks it.
+    Map blocked = map;
+    blocked.SetCell(8, 3, TileType::Wall);
+    player.position = {7.5f, 3.5f};
+    TEST_ASSERT(!FindExitSwitchInReach(blocked, player).found);
+
+    // Through the interaction rules: only with Interact.
+    EntityManager manager{};
+    manager.CreateEntity(EntityType::Player, {8.5f, 3.5f});
+    Map interactionMap = map;
+    player.position = {8.5f, 3.5f};
+    player.directionAngleRadians = 0.0f;
+    int health = 100;
+    int ammo = 24;
+    GameplayEvents events{};
+    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, 100, 99, false, events);
+    TEST_ASSERT(!events.exitActivated);
+    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, 100, 99, true, events);
+    TEST_ASSERT(events.exitActivated && events.exitMapX == 9 && events.exitMapY == 3);
+
+    // The switch is solid: the player cannot walk into it.
+    const Vec2 moved = MoveWithSliding(map, {8.5f, 3.5f}, {1.0f, 0.0f}, 0.22f);
+    TEST_ASSERT(moved.x < 9.0f - 0.2f);
+
+    // A trigger is walk-over only: it fires, but it is not the exit.
+    EntityManager triggerManager{};
+    Entity& trigger = triggerManager.CreateEntity(EntityType::Trigger, {5.5f, 3.5f});
+    trigger.mapX = 5;
+    trigger.mapY = 3;
+    Map triggerMap = MakeExitTestMap();
+    triggerMap.SetCell(5, 3, TileType::Trigger);
+    player.position = {5.5f, 3.5f};
+    GameplayEvents triggerEvents{};
+    UpdateEntityInteractions(triggerManager, triggerMap, player, health, ammo, 100, 99, true, triggerEvents);
+    TEST_ASSERT(triggerEvents.triggerActivated && !triggerEvents.exitActivated);
+}
+
+void TestProgressFileRoundTrip() {
+    ScratchDir scratch("progress");
+    const std::string path = PathToUtf8(scratch.Path() / "progress.json");
+    ProgressData data{};
+    std::string message;
+    TEST_ASSERT(LoadProgressFile(path, data, message) == ProgressLoadResult::Missing);
+
+    // Round trip, then an overwrite (atomic: no temporary file is left behind).
+    data.highestUnlocked = 2;
+    std::string error;
+    TEST_ASSERT(SaveProgressFile(path, data, error));
+    ProgressData loaded{};
+    TEST_ASSERT(LoadProgressFile(path, loaded, message) == ProgressLoadResult::Loaded);
+    TEST_ASSERT(loaded.highestUnlocked == 2);
+    data.highestUnlocked = 3;
+    TEST_ASSERT(SaveProgressFile(path, data, error));
+    TEST_ASSERT(LoadProgressFile(path, loaded, message) == ProgressLoadResult::Loaded);
+    TEST_ASSERT(loaded.highestUnlocked == 3);
+    TEST_ASSERT(!std::filesystem::exists(scratch.Path() / "progress.json.tmp"));
+    const std::string text = ReadWholeFile(path);
+    TEST_ASSERT(text.find("\"version\": 1") != std::string::npos);
+    TEST_ASSERT(text.find("\"highestUnlocked\": 3") != std::string::npos);
+
+    // Corrupt or foreign files are Invalid (the caller warns and starts without progress);
+    // the output value is left untouched.
+    const char* corrupt[] = {
+        "",
+        "{ not json",
+        "[1, 2]",
+        "{\"version\": 1}",
+        "{\"highestUnlocked\": 2}",
+        "{\"version\": 2, \"highestUnlocked\": 2}",
+        "{\"version\": 1, \"highestUnlocked\": 0}",
+        "{\"version\": 1, \"highestUnlocked\": \"2\"}",
+        "{\"version\": 1, \"highestUnlocked\": 1.5}",
+        "{\"version\": 1, \"highestUnlocked\": 99999999999}",
+        "{\"version\": 1, \"version\": 1, \"highestUnlocked\": 2}",
+    };
+    for (const char* content : corrupt) {
+        WriteTextFile(scratch.Path() / "progress.json", content);
+        ProgressData untouched{};
+        untouched.highestUnlocked = 7;
+        message.clear();
+        TEST_ASSERT(LoadProgressFile(path, untouched, message) == ProgressLoadResult::Invalid);
+        TEST_ASSERT(untouched.highestUnlocked == 7);
+        TEST_ASSERT(!message.empty());
+    }
+    // Unknown extra keys are tolerated (forward compatible).
+    WriteTextFile(scratch.Path() / "progress.json", "{\"version\": 1, \"highestUnlocked\": 2, \"note\": \"x\"}");
+    TEST_ASSERT(LoadProgressFile(path, loaded, message) == ProgressLoadResult::Loaded && loaded.highestUnlocked == 2);
+
+    // Saving into a folder that does not exist fails cleanly.
+    TEST_ASSERT(!SaveProgressFile(PathToUtf8(scratch.Path() / "no-such-dir" / "progress.json"), data, error));
+    TEST_ASSERT(!error.empty());
+
+    // The engine: a corrupt file means "no progress" (no Continue); a valid one is used.
+    WriteTextFile(scratch.Path() / "progress.json", "{ corrupt");
+    {
+        Engine engine;
+        EngineOptions options{};
+        options.dataDir = PathToUtf8(RepoRoot());
+        options.prefDir = scratch.Path();
+        options.headless = true;
+        options.errorDialogs = false;
+        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.MenuItems().size() == 3);
+    }
+    data.highestUnlocked = 3;
+    TEST_ASSERT(SaveProgressFile(path, data, error));
+    {
+        Engine engine;
+        EngineOptions options{};
+        options.dataDir = PathToUtf8(RepoRoot());
+        options.prefDir = scratch.Path();
+        options.headless = true;
+        options.errorDialogs = false;
+        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == 3);
+        TEST_ASSERT(engine.flow_.MenuItems()[1] == MenuItem::Continue);
+    }
+}
+
+void TestPrefDirResolution() {
+    // --pref-dir wins over NEOWOLF_PREF_DIR, which wins over SDL's per-user folder.
+    PrefDirResult r = ChoosePrefDir("/opt/a", "/opt/b", "/home/u/.local/share/NeoWolf/NeoWolf/", "/work");
+    TEST_ASSERT(r.source == "--pref-dir" && r.directory == PathFromUtf8("/opt/a").lexically_normal());
+    r = ChoosePrefDir("", "/opt/b", "/home/u/x/", "/work");
+    TEST_ASSERT(r.source == "NEOWOLF_PREF_DIR" && r.directory == PathFromUtf8("/opt/b").lexically_normal());
+    r = ChoosePrefDir("", "", "/home/u/x/", "/work");
+    TEST_ASSERT(r.source == "SDL_GetPrefPath" && r.directory == PathFromUtf8("/home/u/x").lexically_normal());
+    r = ChoosePrefDir("rel/dir", "", "", "/work");
+    TEST_ASSERT(r.directory == (PathFromUtf8("/work") / "rel" / "dir").lexically_normal());
+    r = ChoosePrefDir("", "", "", "/work");
+    TEST_ASSERT(r.directory.empty() && !r.error.empty());
+
+    // ResolvePrefDir creates an explicit folder (and never asks SDL for the real one then).
+    ScratchDir scratch("pref-dir");
+    const std::filesystem::path wanted = scratch.Path() / "nested" / "prefs";
+    r = ResolvePrefDir(PathToUtf8(wanted));
+    TEST_ASSERT(r.error.empty() && r.source == "--pref-dir");
+    TEST_ASSERT(std::filesystem::is_directory(wanted));
+}
+
+void TestThemeLoadingAndSwap() {
+    // Every shipped theme has the seven keys and existing files.
+    for (const char* theme : {"bunker", "stone", "tech", "classic"}) {
+        std::vector<std::string> errors;
+        ThemeTextureAssignments assignments{};
+        TEST_ASSERT(LoadThemeTextureAssignments(ResolveRepoPath(ThemeConfigPath(theme)), assignments, errors));
+        for (const std::string* path : {&assignments.wall, &assignments.wallAltA, &assignments.wallAltB, &assignments.door,
+                                        &assignments.floor, &assignments.ceiling, &assignments.exit}) {
+            Texture texture{};
+            TEST_ASSERT(TextureLoader::LoadPPM(ResolveRepoPath(*path), texture));
+        }
+    }
+    // A theme without "exit" is reported.
+    ScratchDir scratch("themes");
+    WriteTextFile(scratch.Path() / "partial.cfg", "wall=a.ppm\nwall_alt_a=a.ppm\nwall_alt_b=a.ppm\ndoor=a.ppm\nfloor=a.ppm\nceiling=a.ppm\n");
+    std::vector<std::string> errors;
+    ThemeTextureAssignments partial{};
+    TEST_ASSERT(!LoadThemeTextureAssignments(PathToUtf8(scratch.Path() / "partial.cfg"), partial, errors));
+    TEST_ASSERT(AnyMessageContains(errors, {"missing required key: exit"}));
+
+    // The engine swaps textures in place: the cached pointers stay valid and show the new theme.
+    Engine engine;
+    engine.contentRoot_ = RepoRoot();
+    TEST_ASSERT(engine.ApplyTheme("bunker"));
+    const Texture* wallBefore = engine.wallTexture_;
+    TEST_ASSERT(wallBefore != nullptr && wallBefore == engine.assets_.GetTexture("wall"));
+    TEST_ASSERT(engine.exitTexture_ != nullptr && engine.exitTexture_->Width() == 32);
+    Texture bunkerWall{};
+    TEST_ASSERT(TextureLoader::LoadPPM(ResolveRepoPath("game/assets/themes/bunker/wall.ppm"), bunkerWall));
+    TEST_ASSERT(wallBefore->GetPixel(5, 5) == bunkerWall.GetPixel(5, 5));
+
+    TEST_ASSERT(engine.ApplyTheme("stone"));
+    TEST_ASSERT(engine.currentThemeId_ == "stone");
+    TEST_ASSERT(engine.wallTexture_ == engine.assets_.GetTexture("wall"));
+    Texture stoneWall{};
+    TEST_ASSERT(TextureLoader::LoadPPM(ResolveRepoPath("game/assets/themes/stone/wall.ppm"), stoneWall));
+    TEST_ASSERT(engine.wallTexture_->GetPixel(5, 5) == stoneWall.GetPixel(5, 5));
+    TEST_ASSERT(wallBefore->GetPixel(5, 5) == stoneWall.GetPixel(5, 5));  // same object, new pixels
+    bool differs = false;
+    for (int y = 0; y < 32 && !differs; ++y) {
+        for (int x = 0; x < 32 && !differs; ++x) {
+            differs = stoneWall.GetPixel(x, y) != bunkerWall.GetPixel(x, y);
+        }
+    }
+    TEST_ASSERT(differs);
+
+    // A missing theme falls back to the checkerboard (and says so).
+    TEST_ASSERT(!engine.ApplyTheme("no-such-theme"));
+    TEST_ASSERT(engine.wallTexture_ != nullptr && engine.wallTexture_->Width() == engine.missingTexture_.Width());
+
+    // Campaign levels load their own theme.
+    Engine campaignEngine;
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(RepoRoot());
+    options.headless = true;
+    options.errorDialogs = false;
+    TEST_ASSERT(campaignEngine.Init(options));
+    TEST_ASSERT(campaignEngine.currentThemeId_ == "bunker");
+    TEST_ASSERT(campaignEngine.LoadCampaignLevel(2, PlayerStats{50, 5}));
+    TEST_ASSERT(campaignEngine.currentThemeId_ == "tech");
+    TEST_ASSERT(campaignEngine.playerHealth_ == 50 && campaignEngine.playerAmmo_ == 5);
+    TEST_ASSERT(campaignEngine.CurrentCampaignLevel() != nullptr && campaignEngine.CurrentCampaignLevel()->id == "level03");
+}
+
+// Checks that everything drawn since the last ResetDrawBounds() lies inside the framebuffer,
+// at least UiLayout::kMargin pixels from every edge, and that nothing was clipped.
+void AssertInsideMargin(const Framebuffer& framebuffer, const std::string& what) {
+    const DrawBounds& b = framebuffer.GetDrawBounds();
+    const int m = UiLayout::kMargin;
+    const bool ok = b.any && b.clippedRects == 0 && b.minX >= m && b.minY >= m && b.maxX <= framebuffer.Width() - 1 - m &&
+                    b.maxY <= framebuffer.Height() - 1 - m;
+    if (!ok) {
+        std::ostringstream out;
+        out << what << ": draw bounds (" << b.minX << "," << b.minY << ")-(" << b.maxX << "," << b.maxY << "), "
+            << b.clippedRects << " clipped rect(s), framebuffer " << framebuffer.Width() << "x" << framebuffer.Height();
+        FailTest(__FILE__, __LINE__, out.str());
+    }
+}
+
+void TestUiLayoutBounds() {
+    const int width = 320;
+    const int height = 240;
+
+    // Every preview screen, rendered by the real engine (headless).
+    for (const PreviewScreen screen : kPreviewScreens) {
+        Engine engine;
+        EngineOptions options{};
+        options.dataDir = PathToUtf8(RepoRoot());
+        options.headless = true;
+        options.errorDialogs = false;
+        options.preview = screen;
+        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(engine.framebuffer_.Width() == width && engine.framebuffer_.Height() == height);
+        engine.Render();
+        AssertInsideMargin(engine.framebuffer_, PreviewScreenName(screen));
+    }
+
+    // Play with everything on: minimap, level banner, debug overlay, a long message.
+    {
+        Engine engine;
+        EngineOptions options{};
+        options.dataDir = PathToUtf8(RepoRoot());
+        options.headless = true;
+        options.errorDialogs = false;
+        options.startLevel = 3;
+        TEST_ASSERT(engine.Init(options));
+        engine.minimapVisible_ = true;
+        engine.debugOverlayVisible_ = true;
+        engine.levelBannerTimer_ = 2.0f;
+        engine.ShowMessage(std::string(120, 'W'), 5.0f);
+        engine.playerHealth_ = 10000;
+        engine.playerAmmo_ = 10000;
+        engine.Render();
+        AssertInsideMargin(engine.framebuffer_, "gameplay with minimap, banner, debug overlay and long message");
+    }
+
+    // Direct UI calls with extreme content.
+    Framebuffer framebuffer(width, height);
+    const std::string longName(80, 'M');
+    UiRenderer::LevelSelectView select{};
+    select.campaignTitle = longName;
+    for (int i = 1; i <= 25; ++i) {
+        select.levels.push_back(UiRenderer::LevelSelectEntry{i, longName, i % 3 != 0});
+    }
+    for (int selected : {0, 12, 24}) {
+        select.selected = selected;
+        framebuffer.ResetDrawBounds();
+        UiRenderer::DrawLevelSelectScreen(framebuffer, select);
+        AssertInsideMargin(framebuffer, "level select, 25 long names, selected " + std::to_string(selected));
+    }
+    UiRenderer::MenuView menu{};
+    menu.campaignTitle = longName;
+    menu.items = {"NEW GAME", "CONTINUE", "LEVEL SELECT", "QUIT", longName};
+    menu.selected = 4;
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawMenuScreen(framebuffer, menu);
+    AssertInsideMargin(framebuffer, "menu with a long item");
+    UiRenderer::LevelCompleteView complete{};
+    complete.levelNumber = 99;
+    complete.levelName = longName;
+    complete.results = LevelResults{9999, 9999, 9999, 9999, 99999.0};
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawLevelCompleteScreen(framebuffer, complete);
+    AssertInsideMargin(framebuffer, "level complete with extreme values");
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawGameOverScreen(framebuffer, UiRenderer::LevelLabel(99, longName));
+    UiRenderer::DrawPauseOverlay(framebuffer, UiRenderer::LevelLabel(99, longName));
+    UiRenderer::DrawCampaignCompleteScreen(framebuffer, longName, 99);
+    AssertInsideMargin(framebuffer, "game over, pause, campaign complete with a long name");
+    TEST_ASSERT(UiRenderer::TextWidth(UiRenderer::FitText(longName, 100, 1), 1) <= 100);
+    TEST_ASSERT(UiRenderer::FitText("SHORT", 100, 1) == "SHORT");
+    TEST_ASSERT(UiRenderer::FormatDuration(42.9) == "0:42" && UiRenderer::FormatDuration(3725.0) == "1:02:05");
+
+    // Minimap: a small map is scaled to fill the panel; a big one follows the player and is
+    // cut at the panel edge.
+    const UiRenderer::MinimapLayout small = UiRenderer::ComputeMinimapLayout(width, height, 8, 6, 2.0f, 2.0f);
+    TEST_ASSERT(!small.followsPlayer && small.cellSize == UiRenderer::kMinimapMaxCell);
+    TEST_ASSERT(small.panelSize == height / 3);
+    const UiRenderer::MinimapLayout level = UiRenderer::ComputeMinimapLayout(width, height, 16, 12, 2.0f, 2.0f);
+    TEST_ASSERT(!level.followsPlayer && level.cellSize * 16 <= level.panelSize - 4);
+    const UiRenderer::MinimapLayout big = UiRenderer::ComputeMinimapLayout(width, height, 200, 150, 100.0f, 75.0f);
+    TEST_ASSERT(big.followsPlayer && big.cellSize == UiRenderer::kMinimapMinCell);
+    Map bigMap(200, 150);
+    BuildBorderWalls(bigMap);
+    bigMap.SetCell(101, 75, TileType::Exit);
+    Player player{};
+    for (const Vec2 position : {Vec2{100.0f, 75.0f}, Vec2{1.5f, 1.5f}, Vec2{198.5f, 148.5f}}) {
+        player.position = position;
+        framebuffer.ResetDrawBounds();
+        const int right = UiRenderer::DrawMinimap(framebuffer, bigMap, player, {});
+        TEST_ASSERT(right == UiLayout::kMargin + height / 3);
+        AssertInsideMargin(framebuffer, "minimap of a 200x150 map");
+    }
+}
+
+// --- Scripted play-through ------------------------------------------------------------------
+// A minimal waypoint bot (the Phase 7 bot will replace it): it plans a path over map cells to
+// the cell in front of an exit switch (doors count as passable), walks it by turning and moving
+// forward, opens doors, shoots visible enemies and uses the switch. On result screens it
+// presses Enter. Input goes through Engine::SetInputInjector, exactly like keyboard input.
+class WalkerBot {
+public:
+    explicit WalkerBot(Engine& engine) : engine_(engine) {}
+
+    void Fill(InputState& input) {
+        ++frame_;
+        for (InputAction action : {InputAction::MoveForward, InputAction::TurnLeft, InputAction::TurnRight,
+                                   InputAction::Interact, InputAction::Attack, InputAction::Confirm, InputAction::Select}) {
+            input.SetActionState(action, false);
+        }
+        const GameState state = engine_.GetState();
+        if (state == GameState::LevelComplete || state == GameState::Menu) {
+            if (state == GameState::LevelComplete) {
+                levelsCompleted_ += plannedFor_ >= 0 ? 1 : 0;
+            }
+            plannedFor_ = -1;
+            if (frame_ % 2 == 0) {
+                input.SetActionState(InputAction::Confirm, true);
+                input.SetActionState(InputAction::Select, true);
+            }
+            return;
+        }
+        if (state != GameState::Gameplay) {
+            return;
+        }
+        if (plannedFor_ != engine_.currentLevelIndex_) {
+            Plan();
+        }
+        Steer(input);
+    }
+
+    int levelsCompleted_ = 0;
+
+private:
+    using Cell = std::pair<int, int>;
+
+    void Plan() {
+        plannedFor_ = engine_.currentLevelIndex_;
+        path_.clear();
+        next_ = 0;
+        const Map& map = engine_.map_;
+        const Cell start{static_cast<int>(std::floor(engine_.player_.position.x)),
+                         static_cast<int>(std::floor(engine_.player_.position.y))};
+        const auto passable = [&](int x, int y) {
+            const TileType tile = map.GetCell(x, y);
+            return map.IsInsideMap(x, y) && (tile == TileType::Empty || tile == TileType::Trigger || tile == TileType::Door);
+        };
+        std::vector<int> parent(static_cast<std::size_t>(map.Width() * map.Height()), -2);
+        std::vector<Cell> queue{start};
+        parent[static_cast<std::size_t>(start.second * map.Width() + start.first)] = -1;
+        int goal = -1;
+        const int dx[] = {1, -1, 0, 0};
+        const int dy[] = {0, 0, 1, -1};
+        for (std::size_t head = 0; head < queue.size() && goal < 0; ++head) {
+            const Cell c = queue[head];
+            for (int d = 0; d < 4; ++d) {
+                if (map.GetCell(c.first + dx[d], c.second + dy[d]) == TileType::Exit) {
+                    goal = c.second * map.Width() + c.first;
+                    exitCell_ = {c.first + dx[d], c.second + dy[d]};
+                    break;
+                }
+            }
+            for (int d = 0; d < 4 && goal < 0; ++d) {
+                const int nx = c.first + dx[d];
+                const int ny = c.second + dy[d];
+                if (passable(nx, ny) && parent[static_cast<std::size_t>(ny * map.Width() + nx)] == -2) {
+                    parent[static_cast<std::size_t>(ny * map.Width() + nx)] = c.second * map.Width() + c.first;
+                    queue.emplace_back(nx, ny);
+                }
+            }
+        }
+        for (int at = goal; at >= 0; at = parent[static_cast<std::size_t>(at)]) {
+            path_.insert(path_.begin(), Cell{at % map.Width(), at / map.Width()});
+        }
+    }
+
+    // Turns towards `target`; returns the remaining angle (radians, absolute).
+    float TurnTowards(InputState& input, const Vec2& target) {
+        const Vec2 to = target - engine_.player_.position;
+        const float wanted = std::atan2(to.y, to.x);
+        float diff = wanted - engine_.player_.directionAngleRadians;
+        while (diff > kPi) {
+            diff -= 2.0f * kPi;
+        }
+        while (diff < -kPi) {
+            diff += 2.0f * kPi;
+        }
+        if (std::fabs(diff) > 0.03f) {
+            input.SetActionState(diff < 0.0f ? InputAction::TurnLeft : InputAction::TurnRight, true);
+        }
+        return std::fabs(diff);
+    }
+
+    void Pulse(InputState& input, InputAction action) {
+        if (frame_ % 2 == 0) {
+            input.SetActionState(action, true);
+        }
+    }
+
+    void Steer(InputState& input) {
+        // Shoot the nearest visible enemy within range first.
+        const Player& player = engine_.player_;
+        for (const Entity& entity : engine_.entityManager_.Entities()) {
+            if (entity.type != EntityType::Enemy || !entity.active || entity.enemyState == EnemyState::Dead) {
+                continue;
+            }
+            const Vec2 to = entity.position - player.position;
+            const float distance = std::sqrt(to.x * to.x + to.y * to.y);
+            if (distance > 6.0f || distance < 1e-3f) {
+                continue;
+            }
+            const RaycastHit wall = Raycaster::CastRay(engine_.map_, player.position, {to.x / distance, to.y / distance},
+                                                       std::atan2(to.y, to.x));
+            if (wall.hit && wall.distanceRaw < distance) {
+                continue;  // behind a wall
+            }
+            if (TurnTowards(input, entity.position) < 0.06f) {
+                Pulse(input, InputAction::Attack);
+            }
+            return;
+        }
+
+        if (path_.empty()) {
+            return;
+        }
+        if (next_ >= path_.size()) {
+            // At the end of the path: face the exit switch and use it.
+            const Vec2 exitCenter{static_cast<float>(exitCell_.first) + 0.5f, static_cast<float>(exitCell_.second) + 0.5f};
+            if (TurnTowards(input, exitCenter) < 0.05f) {
+                Pulse(input, InputAction::Interact);
+            }
+            return;
+        }
+        const Cell cell = path_[next_];
+        const Vec2 target{static_cast<float>(cell.first) + 0.5f, static_cast<float>(cell.second) + 0.5f};
+        const Vec2 to = target - player.position;
+        if (engine_.map_.GetCell(cell.first, cell.second) == TileType::Door) {
+            // Walk up to the closed door (doors open within 1.05 cells of their centre), open
+            // it, then walk through.
+            const bool aligned = TurnTowards(input, target) < 0.05f;
+            if (to.x * to.x + to.y * to.y > 0.9f * 0.9f) {
+                input.SetActionState(InputAction::MoveForward, aligned);
+            } else if (aligned) {
+                Pulse(input, InputAction::Interact);
+            }
+            return;
+        }
+        if (to.x * to.x + to.y * to.y < 0.12f * 0.12f) {
+            ++next_;
+            return;
+        }
+        if (TurnTowards(input, target) < 0.35f) {
+            input.SetActionState(InputAction::MoveForward, true);
+        }
+    }
+
+    Engine& engine_;
+    std::uint64_t frame_ = 0;
+    int plannedFor_ = -1;
+    std::vector<Cell> path_;
+    std::size_t next_ = 0;
+    Cell exitCell_{-1, -1};
+};
+
+void TestCampaignPlaythrough() {
+    ScratchDir prefs("playthrough-prefs");
+    Engine engine;
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(RepoRoot());
+    options.prefDir = prefs.Path();
+    options.headless = true;
+    options.errorDialogs = false;
+    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(engine.GetState() == GameState::Menu && !engine.flow_.HasProgress());
+
+    WalkerBot bot(engine);
+    engine.SetInputInjector([&bot](InputState& input) { bot.Fill(input); });
+
+    // Record what each level started with and ended with.
+    std::vector<PlayerStats> entered;
+    std::vector<PlayerStats> completed;
+    std::vector<GameState> states{engine.GetState()};
+    int lastLevel = -1;
+    constexpr double kDt = 1.0 / 60.0;
+    constexpr int kMaxFrames = 60 * 60 * 3;  // 3 simulated minutes
+    int frame = 0;
+    for (; frame < kMaxFrames && engine.GetState() != GameState::CampaignComplete; ++frame) {
+        engine.Update(kDt);
+        TEST_ASSERT(engine.GetState() != GameState::GameOver);  // the bot must survive
+        if (engine.GetState() != states.back()) {
+            states.push_back(engine.GetState());
+            if (engine.GetState() == GameState::LevelComplete) {
+                completed.push_back(engine.CurrentStats());
+            }
+        }
+        if (engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ != lastLevel) {
+            lastLevel = engine.currentLevelIndex_;
+            entered.push_back(engine.CurrentStats());
+        }
+    }
+    if (engine.GetState() != GameState::CampaignComplete) {
+        std::ostringstream out;
+        out << "the bot did not finish the campaign: state " << GameStateToString(engine.GetState()) << ", level "
+            << engine.currentLevelIndex_ + 1 << ", position (" << engine.player_.position.x << ", "
+            << engine.player_.position.y << "), angle " << engine.player_.directionAngleRadians << ", health "
+            << engine.playerHealth_ << ", frames " << frame;
+        FailTest(__FILE__, __LINE__, out.str());
+    }
+    TEST_ASSERT(entered.size() == 3 && completed.size() == 3);
+    // New Game starts with the gameplay.json values; later levels start with what the
+    // previous one ended with (clamped to the maxima).
+    TEST_ASSERT(entered[0].health == engine.gameplay_.player.initialHealth);
+    TEST_ASSERT(entered[0].ammo == engine.gameplay_.weapon.initialAmmo);
+    for (std::size_t i = 1; i < entered.size(); ++i) {
+        TEST_ASSERT(entered[i].health == std::min(completed[i - 1].health, engine.gameplay_.player.maxHealth));
+        TEST_ASSERT(entered[i].ammo == std::min(completed[i - 1].ammo, engine.gameplay_.weapon.maxAmmo));
+    }
+    TEST_ASSERT(engine.flow_.LastResults().totalEnemies == 1);
+
+    // Progress was saved: all three levels unlocked.
+    ProgressData saved{};
+    std::string message;
+    TEST_ASSERT(LoadProgressFile(PathToUtf8(prefs.Path() / kProgressFileName), saved, message) == ProgressLoadResult::Loaded);
+    TEST_ASSERT(saved.highestUnlocked == 3);
+
+    // Credits -> Enter -> menu, where Continue is offered and starts level 3 with fresh stats.
+    InputAction pressed = InputAction::Count;
+    engine.SetInputInjector([&pressed](InputState& input) {
+        for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
+            input.SetActionState(static_cast<InputAction>(i), static_cast<InputAction>(i) == pressed);
+        }
+    });
+    const auto tap = [&](InputAction action) {
+        pressed = InputAction::Count;
+        engine.Update(kDt);  // release everything first: a press is an edge
+        pressed = action;
+        engine.Update(kDt);
+    };
+    tap(InputAction::Confirm);
+    TEST_ASSERT(engine.GetState() == GameState::Menu);
+    TEST_ASSERT(engine.flow_.MenuItems()[1] == MenuItem::Continue);
+    tap(InputAction::MoveBackward);  // NEW GAME -> CONTINUE
+    TEST_ASSERT(engine.flow_.MenuCursor() == 1);
+    tap(InputAction::Select);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ == 2);
+    TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
+}
+
+void TestNewGameResetsWorld() {
+    // Known issue C7: Game Over -> Menu -> New Game used to keep 0 HP and the old world.
+    ScratchDir prefs("new-game-prefs");
+    Engine engine;
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(RepoRoot());
+    options.prefDir = prefs.Path();
+    options.headless = true;
+    options.errorDialogs = false;
+    TEST_ASSERT(engine.Init(options));
+
+    InputAction pressed = InputAction::Count;
+    engine.SetInputInjector([&pressed](InputState& input) {
+        for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
+            input.SetActionState(static_cast<InputAction>(i), static_cast<InputAction>(i) == pressed);
+        }
+    });
+    const auto tap = [&](InputAction action) {
+        pressed = action;
+        engine.Update(1.0 / 60.0);
+        pressed = InputAction::Count;
+        engine.Update(1.0 / 60.0);
+    };
+
+    tap(InputAction::Select);  // New Game
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay);
+    // Change the world: collect nothing, kill the enemy, move the player, then die.
+    Entity* enemy = nullptr;
+    for (Entity& entity : engine.entityManager_.Entities()) {
+        enemy = entity.type == EntityType::Enemy ? &entity : enemy;
+    }
+    TEST_ASSERT(enemy != nullptr);
+    enemy->enemyState = EnemyState::Dead;
+    enemy->active = false;
+    engine.player_.position = {5.5f, 5.5f};
+    InteropCommand damage{};
+    damage.type = InteropCommandType::DamagePlayer;
+    damage.intArg1 = 1000;
+    engine.bridge_.EnqueueCommand(damage);
+    engine.Update(1.0 / 60.0);
+    TEST_ASSERT(engine.playerHealth_ == 0 && engine.GetState() == GameState::GameOver);
+
+    tap(InputAction::Back);  // Esc: menu
+    TEST_ASSERT(engine.GetState() == GameState::Menu);
+    tap(InputAction::Select);  // New Game again
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay);
+    TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
+    TEST_ASSERT(engine.playerAmmo_ == engine.gameplay_.weapon.initialAmmo);
+    TEST_ASSERT_NEAR(engine.player_.position.x, 2.5f, 0.2f);
+    const Entity* freshEnemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
+    TEST_ASSERT(freshEnemy != nullptr && freshEnemy->active && freshEnemy->enemyState != EnemyState::Dead);
+    TEST_ASSERT(engine.CurrentLevelResults().kills == 0);
+
+    // The Quit menu item stops the engine (the game then exits with code 0).
+    engine.SetState(GameState::Menu);
+    tap(InputAction::MoveForward);  // wraps to the last item, Quit
+    TEST_ASSERT(engine.flow_.MenuItems()[static_cast<std::size_t>(engine.flow_.MenuCursor())] == MenuItem::Quit);
+    tap(InputAction::Select);
+    TEST_ASSERT(!engine.IsRunning());
+}
+
+void TestKeyBindings() {
+    InputAction actions[2] = {InputAction::Count, InputAction::Count};
+    // B13: Ctrl fires, but not while Cmd/Windows is held (Cmd+Ctrl+F is the fullscreen chord).
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_LCTRL, KMOD_NONE, actions) == 1);
+    TEST_ASSERT(actions[0] == InputAction::Attack);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_LCTRL, KMOD_LGUI, actions) == 0);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_RCTRL, KMOD_RGUI | KMOD_LCTRL, actions) == 0);
+#if defined(__APPLE__)
+    TEST_ASSERT(PlatformSDL::IsFullscreenShortcut(SDL_SCANCODE_F, KMOD_LGUI | KMOD_LCTRL));
+#endif
+    TEST_ASSERT(!PlatformSDL::IsFullscreenShortcut(SDL_SCANCODE_F, KMOD_NONE));
+    TEST_ASSERT(PlatformSDL::IsFullscreenShortcut(SDL_SCANCODE_F11, KMOD_NONE));
+    TEST_ASSERT(PlatformSDL::IsFullscreenShortcut(SDL_SCANCODE_RETURN, KMOD_LALT));
+    // The chord's press is cancelled for the frame (no shot, no release event).
+    InputState input{};
+    input.BeginFrame();
+    input.SetActionState(InputAction::Attack, true);
+    input.CancelAction(InputAction::Attack);
+    TEST_ASSERT(!input.IsDown(InputAction::Attack) && !input.WasPressed(InputAction::Attack) &&
+                !input.WasReleased(InputAction::Attack));
+
+    // Menu, pause and minimap keys.
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_SPACE, KMOD_NONE, actions) == 2);
+    TEST_ASSERT(actions[0] == InputAction::Attack && actions[1] == InputAction::Select);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_RETURN, KMOD_NONE, actions) == 2);
+    TEST_ASSERT(actions[0] == InputAction::Confirm && actions[1] == InputAction::Select);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_Q, KMOD_NONE, actions) == 2);
+    TEST_ASSERT(actions[0] == InputAction::TurnLeft && actions[1] == InputAction::QuitToMenu);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_ESCAPE, KMOD_NONE, actions) == 2);
+    TEST_ASSERT(actions[0] == InputAction::Pause && actions[1] == InputAction::Back);
+    for (const SDL_Scancode key : {SDL_SCANCODE_M, SDL_SCANCODE_TAB}) {
+        TEST_ASSERT(PlatformSDL::MapKeyToActions(key, KMOD_NONE, actions) == 1);
+        TEST_ASSERT(actions[0] == InputAction::ToggleMinimap);
+    }
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_F3, KMOD_NONE, actions) == 1);
+    TEST_ASSERT(actions[0] == InputAction::ToggleDebugView);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_UP, KMOD_NONE, actions) == 1);
+    TEST_ASSERT(actions[0] == InputAction::MoveForward);
+    TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_K, KMOD_NONE, actions) == 0);
+
+    // The minimap is off by default and toggles in play.
+    Engine engine;
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(RepoRoot());
+    options.headless = true;
+    options.errorDialogs = false;
+    options.startLevel = 1;
+    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(!engine.minimapVisible_);
+    bool down = true;
+    engine.SetInputInjector([&down](InputState& state) { state.SetActionState(InputAction::ToggleMinimap, down); });
+    engine.Update(1.0 / 60.0);
+    TEST_ASSERT(engine.minimapVisible_);
+    down = false;
+    engine.Update(1.0 / 60.0);
+    down = true;
+    engine.Update(1.0 / 60.0);
+    TEST_ASSERT(!engine.minimapVisible_);
+}
+
 struct TestCase {
     const char* id;    // used on the command line and as the CTest name (native.<id>)
     const char* name;  // human-readable description
@@ -1810,6 +2971,19 @@ const TestCase kTests[] = {
     {"pickup_kind_from_data", "Pickup kind and value come from data", &TestPickupKindFromData},
     {"edited_data_changes_game", "Edited gameplay and entity files change the game", &TestEditedDataChangesGame},
     {"level_load_failures", "Missing or invalid entity files fail the level load", &TestLevelLoadFailures},
+    {"game_flow_menu", "Game flow: main menu, level select, quit, new game", &TestGameFlowMenu},
+    {"game_flow_progression", "Game flow: level complete, carry-over, campaign complete", &TestGameFlowProgression},
+    {"game_flow_death_pause", "Game flow: death snapshot, pause, continue, external states", &TestGameFlowDeathAndPause},
+    {"campaign_manifest_validation", "campaign.json loads and invalid manifests are rejected", &TestCampaignManifestValidation},
+    {"exit_switch_activation", "Exit switch: reach, facing, walls; triggers do not end the level", &TestExitSwitchActivation},
+    {"progress_file_roundtrip", "progress.json round trip, atomic save, corrupt files", &TestProgressFileRoundTrip},
+    {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
+    {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
+    {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
+    {"campaign_playthrough", "Scripted play-through level01 -> 03 -> CampaignComplete", &TestCampaignPlaythrough},
+    {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
+    {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
+    {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
 };
 
 void PrintUsage(const char* program) {

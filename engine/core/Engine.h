@@ -1,13 +1,18 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/assets/AssetManager.h"
+#include "engine/assets/CampaignConfig.h"
 #include "engine/audio/AudioSystem.h"
+#include "engine/core/GameFlow.h"
 #include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
+#include "engine/core/PreviewScreen.h"
 #include "engine/core/TimeState.h"
 #include "engine/interop/CommandBridge.h"
 #include "engine/particles/Particle.h"
@@ -24,13 +29,27 @@ class PlatformSDL;
 // Startup settings (filled from the command line by App; the defaults suit the C API and tests).
 struct EngineOptions {
     std::string dataDir{};  // --data (UTF-8); empty = automatic content-root search
-    std::string mapPath{"game/maps/level01.map"};             // relative to the content root
-    std::string entitiesPath{"game/defs/level01.entities.json"};
+    std::string campaignPath{"game/defs/campaign.json"};  // relative to the content root
     std::string gameplayPath{"game/defs/gameplay.json"};
+    // --level N: campaign level to start in (1-based), skipping the menu and the unlock
+    // state. 0 = start on the main menu (level 1 is loaded behind it).
+    int startLevel = 0;
+    // Folder for progress.json (App resolves --pref-dir / NEOWOLF_PREF_DIR / SDL_GetPrefPath).
+    // Empty = progress is neither loaded nor saved (C API, tests).
+    std::filesystem::path prefDir{};
+    PreviewScreen preview = PreviewScreen::None;  // --preview: a still screen with sample data
     bool fullscreen = false;
     // Show a message box for fatal startup errors. Off for automated runs (--frames).
     bool errorDialogs = true;
+    // No window, renderer or audio: Update and Render work on the framebuffer only (tests and
+    // the Phase 7 bot). Content, campaign, progress and the first level load as usual.
+    bool headless = false;
 };
+
+// Input injection seam (tests, Phase 7 bot): called once per Update, after the platform's
+// events were read into the InputState and before anything uses it. Set actions with
+// InputState::SetActionState (edges such as WasPressed follow from the previous frame).
+using InputInjector = std::function<void(InputState& input)>;
 
 class Engine {
 public:
@@ -41,8 +60,8 @@ public:
     Engine& operator=(const Engine&) = delete;
 
     // Returns false (after logging and, if enabled, showing an error box) when the game
-    // cannot start: no content root, an invalid gameplay.json, no window/renderer, or the
-    // first level fails to load.
+    // cannot start: no content root, an invalid gameplay.json or campaign.json, a --level
+    // outside the campaign, no window/renderer, or the first level fails to load.
     bool Init(const EngineOptions& options = EngineOptions{});
     void Update(double deltaSeconds);
     void Render();
@@ -51,8 +70,24 @@ public:
     bool IsRunning() const;
 
     GameState GetState() const;
+    // External state change (C API, command bridge). Victory (deprecated) means LevelComplete.
     void SetState(GameState state);
+    // Restarts the current level: a campaign level with its level-entry health and ammo, a
+    // level loaded by path with the gameplay.json initial values. State becomes Gameplay.
     void ResetLevel();
+    void SetInputInjector(InputInjector injector) { inputInjector_ = std::move(injector); }
+    // Loads game/defs/campaign.json (content-relative) into campaign_ and configures the game
+    // flow. On error the previous campaign stays and false is returned (errors logged).
+    bool LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors = nullptr);
+    // Loads campaign level `levelIndex` (0-based) with its texture theme and starts it with
+    // `stats` (health/ammo). A negative index reloads the level loaded by path.
+    bool LoadCampaignLevel(int levelIndex, const PlayerStats& stats);
+    // Loads game/defs/themes/<themeId>.cfg and swaps the wall, door, floor, ceiling and exit
+    // textures (only when the theme differs from the current one). A missing or broken
+    // texture becomes the checkerboard; returns false if anything had to fall back.
+    bool ApplyTheme(const std::string& themeId);
+    // Sets up a still preview screen with sample data (--preview); the simulation is frozen.
+    bool SetupPreview(PreviewScreen screen);
     // Loads gameplay.json (content-relative path) into gameplay_; it applies from the next
     // LoadLevel on. On any error the previous values stay and false is returned; the errors are
     // logged and, if outErrors is given, also stored there.
@@ -62,6 +97,11 @@ public:
     // placement) the current level stays as it was and false is returned (errors logged).
     bool LoadLevel(const std::string& mapPath, const std::string& entitiesPath);
     void ShowMessage(const std::string& message, float duration = 2.0f);
+    PlayerStats CurrentStats() const { return PlayerStats{playerHealth_, playerAmmo_}; }
+    // Kills, pickups and time of the current level so far.
+    LevelResults CurrentLevelResults() const;
+    // The loaded campaign level, or nullptr for a level loaded by path.
+    const CampaignLevel* CurrentCampaignLevel() const;
     void PlayerAttack();
     // Content-relative path (e.g. "game/maps/level01.map") -> path under the content root
     // (UTF-8). Without a content root (tests, C API before Init) the path is returned as is,
@@ -82,12 +122,14 @@ public:
     const Texture* wallAltATexture_ = nullptr;
     const Texture* wallAltBTexture_ = nullptr;
     const Texture* doorTexture_ = nullptr;
+    const Texture* exitTexture_ = nullptr;
     const Texture* floorTexture_ = nullptr;
     const Texture* ceilingTexture_ = nullptr;
     const Texture* enemySpriteTexture_ = nullptr;
     const Texture* pickupSpriteTexture_ = nullptr;
     const Texture* decorationSpriteTexture_ = nullptr;
-    bool debugTopDownEnabled_ = true;
+    bool minimapVisible_ = false;       // M / Tab (off by default, C9)
+    bool debugOverlayVisible_ = false;  // F3
     std::vector<RaycastHit> latestRayHits_{};
     std::vector<float> latestWallDepthBuffer_{};
     std::vector<SpriteEntity> sprites_{};
@@ -106,8 +148,31 @@ public:
     std::filesystem::path contentRoot_{};
     std::string currentMapPath_{"game/maps/level01.map"};
     std::string currentEntitiesPath_{"game/defs/level01.entities.json"};
+    CampaignDefinition campaign_{};
+    GameFlow flow_{};
+    std::filesystem::path prefDir_{};      // where progress.json lives; empty = not saved
+    std::string currentThemeId_{};
+    int currentLevelIndex_ = -1;           // campaign index of the loaded level; -1 = loaded by path
+    float levelBannerTimer_ = 0.0f;        // "LEVEL N / name" banner at level start
+    double levelTimeSeconds_ = 0.0;        // time spent in Gameplay on this level
+    int levelEnemyTotal_ = 0;
+    int levelPickupTotal_ = 0;
+    bool simulationFrozen_ = false;        // previews: Update only reads input
+    InputInjector inputInjector_{};
+    GameState reportedState_ = GameState::Menu;  // last state announced with a StateChanged event
     CommandBridge bridge_{};
-    GameState state_ = GameState::Menu;
-    bool paused_ = false;
     bool running_ = false;
+
+private:
+    // One frame of play (movement, interactions, AI); fills `events` for the game flow.
+    void UpdateGameplay(float dt, FlowEvents& events);
+    void ExecuteFlowRequests(const std::vector<FlowRequest>& requests);
+    void SaveProgress(int highestUnlocked);
+    void LoadSavedProgress();
+    void ConfigureFlow();
+    // Pushes a StateChanged event (and logs) if the flow's state differs from the last one.
+    void PublishStateChange();
+    void RefreshTexturePointers();
+    void RenderWorld();
+    void RenderUi();
 };

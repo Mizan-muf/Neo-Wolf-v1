@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "engine/core/PreviewScreen.h"
+
 enum class WindowModeOption {
     Default,     // windowed (later phases may remember the last choice)
     Windowed,    // --windowed
@@ -14,8 +16,11 @@ enum class WindowModeOption {
 
 struct CommandLineOptions {
     std::string dataDir;        // --data <dir> (UTF-8), empty = automatic search
-    int level = 1;              // --level <N>, 1..99
+    std::string prefDir;        // --pref-dir <dir>: log and progress.json; empty = NEOWOLF_PREF_DIR or the default
+    int level = 0;              // --level <N>: campaign level 1..99 to start in; 0 = main menu
     int frames = 0;             // --frames <N>; 0 = run until the player quits
+    std::string screenshotPath; // --screenshot <file.bmp>: save the last frame on exit (developer tool)
+    PreviewScreen preview = PreviewScreen::None;  // --preview <screen> (developer tool)
     WindowModeOption windowMode = WindowModeOption::Default;
 };
 
@@ -39,10 +44,6 @@ std::string CommandLineUsage(std::string_view programName);
 
 // "Neo-Wolf <version>", the version coming from CMake's PROJECT_VERSION.
 std::string VersionString();
-
-// Content-relative level paths, zero-padded to two digits: 3 -> game/maps/level03.map.
-std::string LevelMapPath(int level);
-std::string LevelEntitiesPath(int level);
 
 constexpr int kMinLevel = 1;
 constexpr int kMaxLevel = 99;

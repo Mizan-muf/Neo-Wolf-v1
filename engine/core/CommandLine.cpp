@@ -1,6 +1,5 @@
 #include "engine/core/CommandLine.h"
 
-#include <cstdio>
 #include <utility>
 
 #ifndef NEOWOLF_VERSION
@@ -24,10 +23,12 @@ bool ParsePositiveInt(const std::string& text, int& out) {
     return true;
 }
 
-std::string PaddedLevelName(int level) {
-    char buffer[16] = {};
-    std::snprintf(buffer, sizeof(buffer), "level%02d", level);
-    return buffer;
+std::string PreviewScreenList() {
+    std::string list;
+    for (const PreviewScreen screen : kPreviewScreens) {
+        list += (list.empty() ? "" : ", ") + std::string(PreviewScreenName(screen));
+    }
+    return list;
 }
 
 CommandLineResult Fail(std::string message) {
@@ -102,6 +103,31 @@ CommandLineResult ParseCommandLine(const std::vector<std::string>& args) {
             result.options.level = level;
             continue;
         }
+        if (arg == "--pref-dir") {
+            std::string value;
+            if (!takeValue(value) || value.empty()) {
+                return Fail("--pref-dir needs a directory");
+            }
+            result.options.prefDir = value;
+            continue;
+        }
+        if (arg == "--screenshot") {
+            std::string value;
+            if (!takeValue(value) || value.empty()) {
+                return Fail("--screenshot needs a file name (.bmp)");
+            }
+            result.options.screenshotPath = value;
+            continue;
+        }
+        if (arg == "--preview") {
+            std::string value;
+            PreviewScreen screen = PreviewScreen::None;
+            if (!takeValue(value) || !ParsePreviewScreen(value, screen)) {
+                return Fail("--preview needs one of: " + PreviewScreenList());
+            }
+            result.options.preview = screen;
+            continue;
+        }
         if (arg == "--frames") {
             std::string value;
             int frames = 0;
@@ -146,15 +172,24 @@ std::string CommandLineUsage(std::string_view programName) {
         " [options]\n"
         "\n"
         "Options:\n"
-        "  --help            show this help and exit\n"
-        "  --version         print the version and exit\n"
-        "  --data <dir>      use the content in <dir> (the folder that contains game/);\n"
-        "                    overrides the NEOWOLF_DATA_DIR environment variable\n"
-        "  --level <N>       start on level N (1-99): game/maps/levelNN.map and\n"
-        "                    game/defs/levelNN.entities.json\n"
-        "  --frames <N>      run N frames, then exit with code 0 (automated smoke tests)\n"
-        "  --windowed        start in a window (default)\n"
-        "  --fullscreen      start in desktop fullscreen\n"
+        "  --help              show this help and exit\n"
+        "  --version           print the version and exit\n"
+        "  --data <dir>        use the content in <dir> (the folder that contains game/);\n"
+        "                      overrides the NEOWOLF_DATA_DIR environment variable\n"
+        "  --pref-dir <dir>    keep the log and progress.json in <dir> instead of the\n"
+        "                      per-user folder; overrides NEOWOLF_PREF_DIR (tests, CI)\n"
+        "  --level <N>         start campaign level N (1-99, see game/defs/campaign.json)\n"
+        "                      directly, skipping the menu and the unlocked-level check\n"
+        "                      (development and tests)\n"
+        "  --frames <N>        run N frames, then exit with code 0 (automated smoke tests)\n"
+        "  --windowed          start in a window (default)\n"
+        "  --fullscreen        start in desktop fullscreen\n"
+        "\n"
+        "Developer tools:\n"
+        "  --preview <screen>  show one screen with fixed sample data, one of:\n"
+        "                      " + PreviewScreenList() + "\n"
+        "  --screenshot <file> when the game exits, save the last 320x240 frame as a BMP\n"
+        "                      (use with --frames N)\n"
         "\n"
         "Without --data or NEOWOLF_DATA_DIR the game looks for game/ next to the executable\n"
         "(and up to 3 folders above it), in a macOS app's Resources folder, then in the\n"
@@ -167,12 +202,4 @@ std::string CommandLineUsage(std::string_view programName) {
 
 std::string VersionString() {
     return std::string("Neo-Wolf ") + NEOWOLF_VERSION;
-}
-
-std::string LevelMapPath(int level) {
-    return "game/maps/" + PaddedLevelName(level) + ".map";
-}
-
-std::string LevelEntitiesPath(int level) {
-    return "game/defs/" + PaddedLevelName(level) + ".entities.json";
 }

@@ -139,6 +139,7 @@ target_include_directories(neowolf_json SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/t
 add_library(neowolf_engine STATIC
     engine/assets/AssetManager.cpp
     engine/assets/AudioConfig.cpp
+    engine/assets/CampaignConfig.cpp
     engine/assets/ContentConfig.cpp
     engine/assets/GameplayConfig.cpp
     engine/assets/Texture.cpp
@@ -146,14 +147,17 @@ add_library(neowolf_engine STATIC
     engine/audio/AudioSystem.cpp
     engine/core/App.cpp
     engine/core/CommandLine.cpp
+    engine/core/Engine.Campaign.cpp
     engine/core/Engine.Core.cpp
     engine/core/Engine.Init.cpp
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
     engine/core/Engine.Update.cpp
+    engine/core/GameFlow.cpp
     engine/core/JsonDocument.cpp
     engine/core/Log.cpp
     engine/core/Paths.cpp
+    engine/core/Progress.cpp
     engine/interop/CommandBridge.cpp
     engine/interop/EngineInterop.cpp
     engine/particles/Particle.cpp
@@ -241,6 +245,19 @@ if(NEOWOLF_BUILD_TESTS)
         pickup_kind_from_data
         edited_data_changes_game
         level_load_failures
+        game_flow_menu
+        game_flow_progression
+        game_flow_death_pause
+        campaign_manifest_validation
+        exit_switch_activation
+        progress_file_roundtrip
+        pref_dir_resolution
+        theme_loading_and_swap
+        ui_layout_bounds
+        campaign_playthrough
+        new_game_resets_world
+        key_bindings
+        wall_texture_orientation
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -260,45 +277,67 @@ if(NEOWOLF_BUILD_TESTS)
     # Headless runs of the game itself, with SDL's dummy video and audio drivers. They run
     # from the build directory, so content must be found next to/above the executable, and
     # SDL_RENDER_DRIVER is removed from the environment: the renderer must fall back to
-    # software on its own (known issue B11).
+    # software on its own (known issue B11). Every run passes --pref-dir with a folder in the
+    # build tree, so tests never touch the player's real log or progress.json (known issue B15).
     set(NEOWOLF_HEADLESS_ENV
         "SDL_VIDEODRIVER=set:dummy"
         "SDL_AUDIODRIVER=set:dummy"
         "SDL_RENDER_DRIVER=unset:"
-        "NEOWOLF_DATA_DIR=unset:")
-    add_test(NAME game_smoke_frames
-             COMMAND ${CMAKE_COMMAND}
-                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
-                     "-DGAME_ARGS=--frames;120"
-                     -DEXPECT_EXIT=0
-                     "-DEXPECT_REGEX=Content root: .*Gameplay definitions loaded from .*Renderer: .*Level entities: 6 entities.*Ran 120 frame"
-                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        "NEOWOLF_DATA_DIR=unset:"
+        "NEOWOLF_PREF_DIR=unset:")
+    set(NEOWOLF_TEST_PREF_ROOT "${CMAKE_BINARY_DIR}/test-pref")
+    set(NEOWOLF_GAME_TESTS "")
+    # neowolf_add_game_test(<name> <expected exit code> <regex> <game args...>)
+    function(neowolf_add_game_test name expect_exit regex)
+        set(game_args ${ARGN} --pref-dir "${NEOWOLF_TEST_PREF_ROOT}/${name}")
+        add_test(NAME ${name}
+                 COMMAND ${CMAKE_COMMAND}
+                         -DGAME_EXE=$<TARGET_FILE:neo_wolf>
+                         "-DGAME_ARGS=${game_args}"
+                         -DEXPECT_EXIT=${expect_exit}
+                         "-DEXPECT_REGEX=${regex}"
+                         -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        set(NEOWOLF_GAME_TESTS ${NEOWOLF_GAME_TESTS} ${name} PARENT_SCOPE)
+    endfunction()
+
+    neowolf_add_game_test(game_smoke_frames 0
+        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* 3 level\\(s\\).*Renderer: .*Level entities: 6 entities.*Ran 120 frame"
+        --frames 120)
     set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
     file(MAKE_DIRECTORY "${NEOWOLF_EMPTY_DATA_DIR}")
-    add_test(NAME game_smoke_missing_data
-             COMMAND ${CMAKE_COMMAND}
-                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
-                     "-DGAME_ARGS=--data;${NEOWOLF_EMPTY_DATA_DIR};--frames;10"
-                     -DEXPECT_EXIT=1
-                     "-DEXPECT_REGEX=Game content not found"
-                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    neowolf_add_game_test(game_smoke_missing_data 1 "Game content not found"
+        --data "${NEOWOLF_EMPTY_DATA_DIR}" --frames 10)
     # A content root whose gameplay.json is invalid (a string where an integer belongs):
     # startup must fail with exit code 1 and name the bad key (fail fast, Roadmap Phase 4).
     set(NEOWOLF_BAD_GAMEPLAY_DIR "${CMAKE_BINARY_DIR}/test-bad-gameplay")
     file(MAKE_DIRECTORY "${NEOWOLF_BAD_GAMEPLAY_DIR}/game/maps")
     file(WRITE "${NEOWOLF_BAD_GAMEPLAY_DIR}/game/defs/gameplay.json"
          "{ \"weapon\": { \"damage\": \"lots\" } }\n")
-    add_test(NAME game_smoke_invalid_gameplay
-             COMMAND ${CMAKE_COMMAND}
-                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
-                     "-DGAME_ARGS=--data;${NEOWOLF_BAD_GAMEPLAY_DIR};--frames;10"
-                     -DEXPECT_EXIT=1
-                     "-DEXPECT_REGEX=weapon\\.damage must be an integer"
-                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-    set_tests_properties(game_smoke_frames game_smoke_missing_data game_smoke_invalid_gameplay PROPERTIES
+    neowolf_add_game_test(game_smoke_invalid_gameplay 1 "weapon\\.damage must be an integer"
+        --data "${NEOWOLF_BAD_GAMEPLAY_DIR}" --frames 10)
+    # A content root with a valid gameplay.json but an empty level list (Phase 5 fail-fast).
+    set(NEOWOLF_BAD_CAMPAIGN_DIR "${CMAKE_BINARY_DIR}/test-bad-campaign")
+    file(MAKE_DIRECTORY "${NEOWOLF_BAD_CAMPAIGN_DIR}/game/maps")
+    file(WRITE "${NEOWOLF_BAD_CAMPAIGN_DIR}/game/defs/gameplay.json" "{}\n")
+    file(WRITE "${NEOWOLF_BAD_CAMPAIGN_DIR}/game/defs/campaign.json" "{ \"title\": \"T\", \"levels\": [] }\n")
+    neowolf_add_game_test(game_smoke_invalid_campaign 1 "Invalid campaign manifest.*needs at least one level"
+        --data "${NEOWOLF_BAD_CAMPAIGN_DIR}" --frames 10)
+    # Every campaign level starts directly with --level N (development/test option).
+    foreach(level 1 2 3)
+        neowolf_add_game_test(game_smoke_level_${level} 0
+            "Starting level ${level} .*Texture theme .* applied.*GameState changed to: Gameplay.*Ran 120 frame"
+            --level ${level} --frames 120)
+    endforeach()
+    neowolf_add_game_test(game_smoke_level_out_of_range 1 "--level 4: the campaign has 3 level"
+        --level 4 --frames 10)
+    # Screen previews (developer tool): each renders and saves a screenshot.
+    foreach(screen menu levelselect hud minimap pause levelcomplete gameover campaigncomplete)
+        neowolf_add_game_test(game_preview_${screen} 0 "Preview: ${screen} .*Screenshot saved"
+            --preview ${screen} --frames 5 --screenshot "${CMAKE_BINARY_DIR}/test-shots/${screen}.bmp")
+    endforeach()
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/test-shots")
+    set_tests_properties(${NEOWOLF_GAME_TESTS} PROPERTIES
         LABELS game
         TIMEOUT 120
         ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")

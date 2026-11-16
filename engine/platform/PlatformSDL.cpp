@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "engine/core/InputState.h"
@@ -11,17 +12,27 @@
 #include "engine/render/Framebuffer.h"
 
 namespace {
-// Fills `actions` with the actions bound to `scancode` and returns how many there are.
-// This table is the source of truth for the controls (README.md "Controls").
-std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2]) {
-    switch (scancode) {
+// True while a Cmd (macOS) / Windows key is held: Ctrl is then part of a shortcut such as
+// Cmd+Ctrl+F, not the fire key (known issue B13).
+bool IsGuiHeld(unsigned modifiers) {
+    return (modifiers & KMOD_GUI) != 0;
+}
+
+std::string SdlError() {
+    return SDL_GetError();
+}
+} // namespace
+
+// This table is the source of truth for the controls (docs/CONTROLS.md).
+std::size_t PlatformSDL::MapKeyToActions(int scancode, unsigned modifiers, InputAction (&actions)[2]) {
+    switch (static_cast<SDL_Scancode>(scancode)) {
     case SDL_SCANCODE_W:
     case SDL_SCANCODE_UP:
-        actions[0] = InputAction::MoveForward;
+        actions[0] = InputAction::MoveForward;  // also "menu up"
         return 1;
     case SDL_SCANCODE_S:
     case SDL_SCANCODE_DOWN:
-        actions[0] = InputAction::MoveBackward;
+        actions[0] = InputAction::MoveBackward;  // also "menu down"
         return 1;
     case SDL_SCANCODE_A:
         actions[0] = InputAction::StrafeLeft;
@@ -30,9 +41,12 @@ std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2
         actions[0] = InputAction::StrafeRight;
         return 1;
     case SDL_SCANCODE_LEFT:
-    case SDL_SCANCODE_Q:
         actions[0] = InputAction::TurnLeft;
         return 1;
+    case SDL_SCANCODE_Q:
+        actions[0] = InputAction::TurnLeft;
+        actions[1] = InputAction::QuitToMenu;
+        return 2;
     case SDL_SCANCODE_RIGHT:
         actions[0] = InputAction::TurnRight;
         return 1;
@@ -40,8 +54,16 @@ std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2
         actions[0] = InputAction::Interact;
         return 1;
     case SDL_SCANCODE_SPACE:
+        actions[0] = InputAction::Attack;
+        actions[1] = InputAction::Select;
+        return 2;
     case SDL_SCANCODE_LCTRL:
     case SDL_SCANCODE_RCTRL:
+        if (IsGuiHeld(modifiers)) {
+            return 0;  // Cmd+Ctrl(+F): a window shortcut, not a shot
+        }
+        actions[0] = InputAction::Attack;
+        return 1;
     case SDL_SCANCODE_F:
         actions[0] = InputAction::Attack;
         return 1;
@@ -58,8 +80,13 @@ std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2
     case SDL_SCANCODE_RETURN:
     case SDL_SCANCODE_KP_ENTER:
         actions[0] = InputAction::Confirm;
-        return 1;
+        actions[1] = InputAction::Select;
+        return 2;
     case SDL_SCANCODE_TAB:
+    case SDL_SCANCODE_M:
+        actions[0] = InputAction::ToggleMinimap;
+        return 1;
+    case SDL_SCANCODE_F3:
         actions[0] = InputAction::ToggleDebugView;
         return 1;
     default:
@@ -68,26 +95,22 @@ std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2
 }
 
 // F11 and Alt+Enter everywhere; Cmd+Ctrl+F (the standard shortcut) on macOS.
-bool IsFullscreenShortcut(const SDL_Keysym& key) {
-    if (key.scancode == SDL_SCANCODE_F11) {
+bool PlatformSDL::IsFullscreenShortcut(int scancode, unsigned modifiers) {
+    const SDL_Scancode code = static_cast<SDL_Scancode>(scancode);
+    if (code == SDL_SCANCODE_F11) {
         return true;
     }
-    if ((key.scancode == SDL_SCANCODE_RETURN || key.scancode == SDL_SCANCODE_KP_ENTER) &&
-        (key.mod & KMOD_ALT) != 0) {
+    if ((code == SDL_SCANCODE_RETURN || code == SDL_SCANCODE_KP_ENTER) && (modifiers & KMOD_ALT) != 0) {
         return true;
     }
 #if defined(__APPLE__)
-    if (key.scancode == SDL_SCANCODE_F && (key.mod & KMOD_GUI) != 0 && (key.mod & KMOD_CTRL) != 0) {
+    if (code == SDL_SCANCODE_F && IsGuiHeld(modifiers) && (modifiers & KMOD_CTRL) != 0) {
         return true;
     }
 #endif
     return false;
 }
 
-std::string SdlError() {
-    return SDL_GetError();
-}
-} // namespace
 
 PlatformSDL::~PlatformSDL() {
     Shutdown();
@@ -192,14 +215,22 @@ void PlatformSDL::PumpEvents(InputState& input) {
         case SDL_KEYDOWN:
         case SDL_KEYUP: {
             const bool down = event.type == SDL_KEYDOWN;
-            if (down && IsFullscreenShortcut(event.key.keysym)) {
+            const unsigned modifiers = event.key.keysym.mod;
+            if (down && IsFullscreenShortcut(event.key.keysym.scancode, modifiers)) {
                 if (event.key.repeat == 0) {
                     ToggleFullscreen();
                 }
+                // B13: a Ctrl pressed as part of the chord must not fire in this frame.
+                input.CancelAction(InputAction::Attack);
                 break;
             }
+            if (down && IsGuiHeld(modifiers) &&
+                (event.key.keysym.scancode == SDL_SCANCODE_LGUI || event.key.keysym.scancode == SDL_SCANCODE_RGUI)) {
+                // Cmd pressed while Ctrl is already down: the start of a shortcut, not a shot.
+                input.CancelAction(InputAction::Attack);
+            }
             InputAction actions[2] = {InputAction::MoveForward, InputAction::MoveForward};
-            const std::size_t count = MapScancodeToActions(event.key.keysym.scancode, actions);
+            const std::size_t count = MapKeyToActions(event.key.keysym.scancode, modifiers, actions);
             for (std::size_t i = 0; i < count; ++i) {
                 input.SetActionState(actions[i], down);
             }
@@ -243,6 +274,28 @@ void PlatformSDL::ShowErrorMessageBox(const std::string& title, const std::strin
     if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), message.c_str(), nullptr) != 0) {
         LogInfo("No error dialog shown (" + SdlError() + ").");
     }
+}
+
+bool PlatformSDL::SaveFramebufferBmp(const Framebuffer& framebuffer, const std::string& path, std::string& error) {
+    if (framebuffer.Data() == nullptr || framebuffer.Width() <= 0 || framebuffer.Height() <= 0) {
+        error = "the framebuffer is empty";
+        return false;
+    }
+    // A surface that wraps the framebuffer's pixels (no copy). RGB888 = XRGB: the alpha byte
+    // of the ARGB pixels is ignored, so the image is opaque.
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
+        const_cast<std::uint32_t*>(framebuffer.Data()), framebuffer.Width(), framebuffer.Height(), 32,
+        framebuffer.PitchBytes(), SDL_PIXELFORMAT_RGB888);
+    if (surface == nullptr) {
+        error = "SDL_CreateRGBSurfaceWithFormatFrom failed: " + SdlError();
+        return false;
+    }
+    const bool saved = SDL_SaveBMP(surface, path.c_str()) == 0;
+    if (!saved) {
+        error = "SDL_SaveBMP failed: " + SdlError();
+    }
+    SDL_FreeSurface(surface);
+    return saved;
 }
 
 void PlatformSDL::PresentFramebuffer(const Framebuffer& framebuffer) {
