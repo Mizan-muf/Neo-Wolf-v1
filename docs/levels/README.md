@@ -204,8 +204,9 @@ Notes on the targets:
 Measured 2026-11-16 by the integrator on macOS with `neo_wolf_autoplay` (fixed 1/60 s steps,
 300 s limit per level). **Every value is inside its target.** The JSON reports are
 byte-identical for the arm64 and x86_64 (Rosetta) slices of the universal `build/macos` binary
-and for the `ci-macos` (`-Werror`) build, both slices. Windows and Linux have not been measured
-yet (known issue V2; the CI job runs `--all --json` on every OS once it can be pushed).
+and for the `ci-macos` (`-Werror`) build, both slices. On Windows MSVC x64
+(CI run 43861234139 at `f76875a`) every level's frames, damage, HP and ammo are identical to
+macOS; the Linux CI job completes all 10 levels too (known issue V2).
 
 | # | Level | Fresh: time s | Fresh: damage (target) | Fresh: HP at exit | Fresh: kills | Campaign: start HP / ammo | Campaign: time s | Campaign: damage | Campaign: HP at exit | Campaign: ammo at exit | Jitter: damage range |
 |---|---|---|---|---|---|---|---|---|---|---|---|

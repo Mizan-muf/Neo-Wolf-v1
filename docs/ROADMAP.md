@@ -10,10 +10,10 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 | # | Decision | Choice | Status |
 |---|---|---|---|
 | 1 | Where work happens | Branch `completion/v1`, one commit per phase, pushed to `origin` (owner approved pushing on 2026-11-16, after Phase 1). | decided |
-| 2 | Windows verification | GitHub Actions `windows-latest` (build, tests, bot over all levels, package), plus a manual play-through on a real Windows PC by the owner. | pending push |
+| 2 | Windows verification | GitHub Actions `windows-latest` (build, tests, bot over all levels, package), plus a manual play-through on a real Windows PC by the owner. | CI build, tests and bot verified (run 43861234139 at `f76875a`); package job (Phase 9) and the owner's Windows play-through pending |
 | 3 | SDL dependency | SDL2 built from a pinned source release and linked statically on all platforms. `NEOWOLF_SYSTEM_SDL2=ON` uses an installed SDL2 instead. | decided |
 | 4 | macOS architectures | Universal binary (arm64 + x86_64). Minimum macOS 10.15. | decided |
-| 5 | Licence | Undecided. There is no LICENSE file; the owner must choose. | **pending owner** |
+| 5 | Licence | PolyForm Noncommercial 1.0.0 (owner, 2026-11-16): `LICENSE.md` with the Required Notice `Copyright (c) 2026 Mizan-muf`; source-available, not OSI open source. Shipped in every package. | decided |
 | 6 | Gameplay scope | Health and ammo carry over between levels. Death restores the stats from level entry. Progress is saved and unlocked levels are selectable. 3 enemy types. Key cards and locked doors. | decided |
 | 7 | Toolchain on the dev Mac | `brew install cmake ninja` | done |
 
@@ -42,7 +42,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 ## Phase 2 — CI (macOS + Windows)
 > Status: CI is green. GitHub Actions run 43820751721 on commit `65c26b0` passed all four jobs: macOS (`ci-macos`, universal), Windows MSVC x64 (`ci-windows-msvc`), Linux (`ci-linux`) and `windows-scripts`. (History: on the first run, at `1b10a57`, the Windows preset job failed on MSVC C4459 and the macOS job did not start because the `macos-14` image is retired; both fixed in Phase 3.)
 - [x] GitHub Actions on `macos-latest` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run (`.github/workflows/ci.yml`; the DevKit tests and `validate --strict` run as CTest tests; smoke run `--frames 300`, exit code 0)
-- [ ] Later phases add the bot over all levels and package artifacts (Phases 7 and 9)
+- [ ] Later phases add the bot over all levels and package artifacts (Phases 7 and 9: the bot step runs and passes on every OS since run 43861234139 at `f76875a`; the `package` job is added in Phase 9 and has not run yet)
 - [x] Docs: CI section in `TESTING.md`, badge in README
 - **Done when:** both jobs pass (requires a push). **Met:** run 43820751721 at `65c26b0`.
 
@@ -57,7 +57,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] CLI: `--level N`, `--data`, `--version`, `--frames N` (plus `--help`, `--windowed`, `--fullscreen`; `engine/core/CommandLine.{h,cpp}`; exit code 2 for bad options)
 - [x] CRLF-tolerant loaders
 - [x] Docs: `TROUBLESHOOTING.md`
-- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI (any directory and headless macOS: done; Windows CI: done at `65c26b0`; Finder needs the `.app` from Phase 9)
+- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI (any directory and headless macOS: done; Windows CI: done at `65c26b0`; the `.app` exists since Phase 9 and its executable finds the content inside the bundle headless; a Finder launch by hand is still open, KNOWN_ISSUES D5)
 
 ## Phase 4 — Data pipeline defects
 > Status: implemented; ticked items are verified on macOS (build with 0 warnings in our code, `ci-macos` with `-Werror`, 40 CTest tests, 24 DevKit tests, `validate --strict`, headless `--frames 300` run) and by a MinGW cross-compile. Windows (MSVC) and Linux: pending the CI run for this commit. Known issues C1–C5 are resolved.
@@ -99,39 +99,40 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] DevKit line-ending handling matches the engine (shared parity fixtures); `create-map --level-id`; `inspect-map` fixes; `doctor` checks SDL, CMake, Ninja, compilers and VS (vswhere)
 - [ ] `neo_devkit.cmd` fixes (`setlocal`, `py -3` fallback, exit code): written and checked by a DevKit test, **not yet run on Windows**
 - [x] Tests: multi-level fixtures (DevKit), autoplay fixture levels and C15 collision (native)
-- [ ] Tests: packager fails when there is no executable (known issue D1; moved with the packager rework to Phase 9)
+- [x] Tests: packager fails when there is no executable (known issue D1, resolved in Phase 9: DevKit tests `test_fails_without_an_executable` and `test_fails_without_an_executable_for_every_os`)
 - [x] Docs: `DEVKIT_GUIDE.md`, `LEVEL_AUTHORING.md`
 - [x] Gameplay fixes before level authoring: C15 (enemies block the player), C18 (preview screenshots)
-- **Done when:** the bot completes level 1 on macOS (**done**) and in Windows CI (pending: the CI step runs `neo_wolf_autoplay --all --json` on every OS and uploads the report)
+- **Done when:** the bot completes level 1 on macOS (**done**) and in Windows CI (**done**: run 43861234139 at `f76875a`, `neo_wolf_autoplay --all` completes all 10 levels on Windows MSVC x64 and Linux)
 
 ## Phase 8 — The 10 levels
-> Status: built and integrated; ticked items are verified **on macOS only** (2026-11-16, integration of `1cfa749` plus the integration changes): clean build with 0 warnings in our code, `ci-macos` with `-Werror` (0 warnings), 110 CTest tests all green (65 native + registry, 25 headless game runs, 16 autoplay, 3 DevKit: 108 DevKit unit tests, `validate --strict`, `validate --strict --require-levels 10`), a MinGW cross-compile from a clean copy with 0 warnings, and clang `-Wshadow-all` on the touched C++ sources. The bot's JSON reports are byte-identical for arm64, x86_64 (Rosetta) and `ci-macos`. **Windows and Linux: pending** — the CI push that would build, test and run the bot on them is blocked by GitHub account access (KNOWN_ISSUES V2). Not yet played by hand (C13).
+> Status: built and integrated; ticked items are verified **on macOS only** (2026-11-16, integration of `1cfa749` plus the integration changes): clean build with 0 warnings in our code, `ci-macos` with `-Werror` (0 warnings), 110 CTest tests all green (65 native + registry, 25 headless game runs, 16 autoplay, 3 DevKit: 108 DevKit unit tests, `validate --strict`, `validate --strict --require-levels 10`), a MinGW cross-compile from a clean copy with 0 warnings, and clang `-Wshadow-all` on the touched C++ sources. The bot's JSON reports are byte-identical for arm64, x86_64 (Rosetta) and `ci-macos`. **Windows and Linux: verified headless in CI**, run 43861234139 at `f76875a` (all four jobs green): 110/110 CTest tests on Windows MSVC x64, and `neo_wolf_autoplay --all` completes all 10 levels with carry-over, with per-level frames, damage, HP and ammo identical to macOS (campaign damage 0, 0, 12, 24, 24, 37, 49, 43, 62, 81). Not yet played by hand (C13), and not yet on a real Windows PC (Phase 11).
 - [x] Design table in `docs/levels/README.md` (theme, size, enemies, pickups, new mechanic, difficulty; plus the resource economy, bot difficulty targets per level and the design rules; the builders' per-level briefs are kept as history in `docs/levels/BUILD_NOTES.md`). The tests no longer depend on the shipped levels' details (frozen Phase 7 levels in `tests/fixtures/reference/`, campaign-wide tests read `campaign.json`), and the `enemies`/`items` previews use a built-in stage instead of level 1
 - [x] Light zones authorable from content (known issue C21): optional `"lights"` rectangles in the entity JSON, mirrored by the DevKit (`validate`, `inspect-map`, parity fixtures); cosmetic only (AI and bot ignore light); the CSV export is lossy and `sync-entities` warns or keeps them. Used by levels 5, 7 and 10
-- [x] Level 1 reworked as a tutorial; levels 2–10 built to the design (counts, keys, themes; known issue C12 resolved). Textures and sprites are generated by the DevKit (`gen_textures.py`, now all four themes including a new 32×32 `classic` castle theme for level 10, and `gen_sprites.py`; both `--check` clean); the decoration sprite and the sound effects are the earlier hand-made assets (X4)
+- [x] Level 1 reworked as a tutorial; levels 2–10 built to the design (counts, keys, themes; known issue C12 resolved). Textures and sprites are generated by the DevKit (`gen_textures.py`, now all four themes including a new 32×32 `classic` castle theme for level 10, and `gen_sprites.py`; both `--check` clean); the decoration sprite and the sound effects are the earlier hand-made assets (provenance: X5)
 - [x] Each level passes `validate --strict` and the bot, plus a screenshot check on macOS (`validate --strict --require-levels 10`; `autoplay.level.1`–`.10` and `autoplay.campaign` inside every target of the levels README, [Measured results](levels/README.md#measured-results-phase-8-integration); a jitter check of every level; start views in `docs/images/levels/`, level 10 re-checked with the new theme)
 - [x] Design-rule review of all 10 levels (16 rules and the economy rules); level 3's hearing lesson written into the arc rule; justified exceptions recorded in each level page; level 4's fuel-store guard moved one cell for balance margin
 - [x] Tooling: `sync-entities --level <id|N>`; `neo_wolf_autoplay --trace <file>` (deterministic event log: enemy states, hits taken and dealt, pickups, doors, keys, triggers, the exit; CTests `autoplay.trace*`); the bot no longer stalls on an enemy behind a corner (CTest `autoplay.fixture_aim_blocked`)
 - [x] Docs: `docs/levels/level01.md` … `level10.md` in one structure, each showing its shipped map byte for byte and a generated annotated grid (DevKit `level_docs.py`, test `test_level_docs`); `BUILD_NOTES.md` condensed into history, its lessons in `LEVEL_AUTHORING.md`; `GAMEPLAY.md`, `MAP_FORMAT.md`, `CONTENT_DEFINITIONS.md`, `ASSET_GUIDE.md`, `TESTING.md`, `KNOWN_ISSUES.md`, README and the preview screenshots updated
-- [ ] The bot completes all 10 levels on Windows (and Linux) CI: **pending, the CI push is blocked by GitHub account access**
-- **Done when:** all 10 levels validate and the bot completes all 10 on macOS and Windows. **Partly met:** done on macOS (arm64 and x86_64); Windows pending (see above).
+- [x] The bot completes all 10 levels on Windows (and Linux) CI (run 43861234139 at `f76875a`: the autoplay step of every job passed; Windows results identical to macOS level by level)
+- **Done when:** all 10 levels validate and the bot completes all 10 on macOS and Windows. **Met:** macOS (arm64 and x86_64) locally, Windows MSVC x64 (and Linux) in CI run 43861234139. A play-through by hand is still open (C13, Phase 11).
 
 ## Phase 9 — Packaging
-- [ ] CMake install rules + CPack
-- [ ] macOS: `NeoWolf.app` (Info.plist, icon, ad-hoc signature), zipped
-- [ ] Windows: zip containing the exe, icon and version resource; static C runtime
-- [ ] DevKit `package` drives CMake and fails when the executable is missing; per-OS launchers and README; checksums
-- [ ] `package.sh`, `package.cmd`, `package.ps1` updated
-- [ ] Bundle smoke test from a clean folder (path containing spaces); CI uploads both packages
-- [ ] Docs: `RELEASE.md`; Gatekeeper and SmartScreen notes
-- **Done when:** both packages run from a clean folder
+> Status: implemented; ticked items are verified **on macOS** (2026-11-16): clean build with 0 warnings in our code, `ci-macos` with `-Werror`, 110 CTest tests and 133 DevKit tests green; the macOS package built with `devkit package` (`neo-wolf-0.9.0-macos-universal.zip`) passes `tools/ci/package_smoke.py` (extracted to a path with spaces, level 10 for 300 frames headless from there and with cwd `/`, content root `NeoWolf.app/Contents/Resources`, `codesign --verify --deep --strict`, `lipo` arm64 + x86_64, `otool -L` system libraries only, `plutil -lint`). Windows: the full project including the `.rc` resource cross-compiles with MinGW, and a MinGW zip (`-windows-x64-mingw`, not the release) passes the static checks (GUI subsystem, icon and version resource, no runtime DLLs). **Pending:** the MSVC package and its smoke run in CI (the `package` job is new and has not run yet, KNOWN_ISSUES D5); opening the app from Finder and the exe from Explorer by hand (D5, Phase 11). Details: [RELEASE.md](RELEASE.md).
+- [x] CMake install rules + CPack (`cmake/Packaging.cmake`: install layout per OS, `cmake --install` default prefix `build/<preset>/install`, CPack ZIP/TGZ with the same name; package presets `package-macos`, `package-windows-msvc`, `package-linux`)
+- [x] macOS: `NeoWolf.app` (Info.plist, icon, ad-hoc signature), zipped (bundle id `io.github.mizan-muf.neowolf`, macOS 10.15+, universal; icon drawn by `tools/devkit/gen_icon.py` and converted by `iconutil` at build time; `codesign --force --deep -s -` in the install step; the content root inside the app is logged as `app bundle Resources`)
+- [ ] Windows: zip containing the exe, icon and version resource; static C runtime (written: `packaging/windows/neo_wolf.rc.in` with the version and a generated `.ico`, GUI subsystem, `/MT`; MinGW cross-build checked, MSVC build pending CI)
+- [x] DevKit `package` drives CMake and fails when the executable is missing; per-OS launchers and README; checksums (old raw-g++ path removed; `README.txt` per OS from `tools/devkit/release_readme.py`, controls converted from `CONTROLS.md`; `SHA256SUMS`; `--expect-version`; known issue D1 resolved. The old `launch.sh`/`launch.cmd` were dropped: the game is cwd-independent, so the app or exe is started directly)
+- [x] `package.sh`, `package.cmd`, `package.ps1` updated (call the DevKit, pass exit codes on, `py -3` fallback in the Windows scripts; `package.sh` verified on macOS, the Windows scripts by a DevKit test and the CI job `windows-scripts`, not yet run)
+- [ ] Bundle smoke test from a clean folder (path containing spaces); CI uploads both packages (`tools/ci/package_smoke.py`, opt-in CTest `package.build`/`package.smoke` (`-DNEOWOLF_PACKAGE_TESTS=ON`), CI job `package`; passes for the macOS package; Windows and the uploads pending CI)
+- [x] Docs: `RELEASE.md`; Gatekeeper and SmartScreen notes (`TROUBLESHOOTING.md` "Packaged builds", package `README.txt`, README "Download and run", `BUILD_AND_RELEASE.md`, `DEVKIT_GUIDE.md`, `TESTING.md`)
+- **Done when:** both packages run from a clean folder. **Partly met:** the macOS package does (headless, from a path with spaces and from `/`); the Windows package waits for CI.
 
 ## Phase 10 — Documentation pass
 - [ ] README, CHANGELOG, CONTRIBUTING
 - [ ] `ARCHITECTURE.md` corrected; `C_API.md` replaces `GAMEPLAY_API.md`
 - [ ] `Checklist.md` reconciled
 - [ ] Stale docs archived to `docs/history/`
-- [ ] LICENSE and `ASSET_CREDITS.md` (needs decision 5)
+- [ ] LICENSE and `ASSET_CREDITS.md` (`LICENSE.md` is done: decision 5, PolyForm Noncommercial 1.0.0, shipped in the packages since Phase 9. Still open: `ASSET_CREDITS.md`, which needs the origin of the five non-generated assets, KNOWN_ISSUES X5)
 - [ ] Doc-vs-code accuracy audit with zero failures
 - **Done when:** the audit passes
 

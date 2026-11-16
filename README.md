@@ -121,8 +121,8 @@ python3 tools/devkit/gen_textures.py
 # Export the entity placement JSON files to CSV (JSON is canonical)
 ./tools/devkit/neo_devkit sync-entities
 
-# Assemble standalone release package
-./tools/devkit/neo_devkit package --version 1.0.0 --out-dir release
+# Build this OS's release package (CMake package preset -> release/*.zip|.tar.gz + SHA256SUMS)
+./tools/devkit/neo_devkit package
 
 # Run DevKit unit test suite
 ./tools/devkit/neo_devkit test
@@ -148,17 +148,24 @@ make check
 
 ---
 
-## Release Packaging (Phase 26)
+## Download and run (release packages)
 
-Create a completely self-contained, standalone distribution bundle:
+Release packages are built by CI for macOS and Windows (artifacts of the `package` job; GitHub
+releases from the `v1.0.0` tag on). The job is new in Phase 9 and has not run yet: the macOS
+package is verified locally, the Windows package only by CI ([known issue D5](docs/KNOWN_ISSUES.md)). Each zip has one folder with the game, `README.txt` (how to
+start it, controls, where saves and logs live), `LICENSE.md`, `docs/` and `LICENSES/`. Check a
+download against `SHA256SUMS` first.
 
-```bash
-make package
-# Or:
-./package.sh 1.0.0 release
-```
+- **macOS 10.15+** (`neo-wolf-<version>-macos-universal.zip`, Apple silicon and Intel): unzip,
+  then open `NeoWolf.app`. It is signed ad hoc but not notarized, so the first start is blocked:
+  macOS 14 and older, Control-click → Open → Open; macOS 15 and newer, try once, then System
+  Settings → Privacy & Security → Open Anyway; or `xattr -dr com.apple.quarantine NeoWolf.app`.
+- **Windows 10/11 x64** (`neo-wolf-<version>-windows-x64.zip`): extract the whole zip, then run
+  `neo_wolf.exe` (no installer, no redistributable). It is not code-signed: if SmartScreen says
+  "Windows protected your PC", click More info → Run anyway.
 
-The output directory `release/neo-wolf-v1.0.0-<platform>/` is fully portable and includes the executable, game content (`assets/`, `maps/`, `defs/`), launch scripts (`launch.sh`, `launch.cmd`), documentation, and cryptographic checksums (`SHA256SUMS`). Compressed `.tar.gz` and `.zip` archives are generated alongside.
+Building the packages yourself (`./package.sh`, `package.cmd`), their contents, checksums and
+the smoke test: [docs/RELEASE.md](docs/RELEASE.md). Problems: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#packaged-builds).
 
 ---
 
@@ -205,6 +212,7 @@ The window can be resized freely; the 320×240 image is scaled with sharp (neare
 |-- docs/                   # Technical documentation
 |-- tests/                  # Native C++ test runner
 |-- src/                    # Main executable entry point
+|-- packaging/              # Info.plist and Windows .rc templates (cmake/Packaging.cmake)
 |-- Makefile                # Linux build & automation targets
 |-- build.sh / package.sh   # Unix build and packaging scripts
 |-- build.cmd / package.cmd # Windows build and packaging scripts
@@ -224,7 +232,21 @@ The window can be resized freely; the 320×240 image is scaled with sharp (neare
 - [DevKit CLI Toolchain Guide](docs/DEVKIT_GUIDE.md)
 - [Gameplay API & Mechanics](docs/GAMEPLAY_API.md)
 - [Build & Release Engineering](docs/BUILD_AND_RELEASE.md)
+- [Releases and packages](docs/RELEASE.md)
 - [Testing](docs/TESTING.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Known Issues](docs/KNOWN_ISSUES.md) and [Roadmap](docs/ROADMAP.md)
 - [Implementation Checklist](docs/Checklist.md)
+
+---
+
+## License
+
+Copyright (c) 2026 Mizan-muf. Neo-Wolf is licensed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE.md): free for any noncommercial use, including
+personal play, study, hobby projects and modding, and use by schools, charities and public
+bodies. Commercial use needs the copyright holder's permission. Because it restricts commercial
+use, Neo-Wolf is **source-available**, not "open source" in the OSI sense.
+
+Third-party components keep their own licences, which allow distributing the game this way:
+SDL2 (zlib) and nlohmann/json (MIT); see [docs/THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md).

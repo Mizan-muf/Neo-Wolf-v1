@@ -25,7 +25,7 @@ endif
 
 BUILD_DIR := build/$(PRESET)
 
-.PHONY: all configure game tests check test validate validate-strict doctor package clean
+.PHONY: all configure game tests check test validate validate-strict doctor package package-smoke clean
 
 all: configure
 	cmake --build --preset $(PRESET)
@@ -55,10 +55,14 @@ validate-strict:
 doctor:
 	$(PYTHON) tools/devkit/devkit.py doctor
 
-# Packaging is reworked in Roadmap Phase 9. For now the packager picks up the binary from
-# build/<preset>/, so build the game first.
-package: game
-	$(PYTHON) tools/devkit/devkit.py package --version 1.0.0 --out-dir release
+# Release package for this OS (docs/RELEASE.md): the DevKit configures and builds the
+# package-<os> preset itself, then writes release/neo-wolf-<version>-<platform>.zip|.tar.gz
+# and release/SHA256SUMS. `make package-smoke` checks the result (tools/ci/package_smoke.py).
+package:
+	$(PYTHON) tools/devkit/devkit.py package --out-dir release
+
+package-smoke:
+	$(PYTHON) tools/ci/package_smoke.py release
 
 # Also removes binaries left in the repository root by the pre-CMake Makefile.
 clean:

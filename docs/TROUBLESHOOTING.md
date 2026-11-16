@@ -66,7 +66,8 @@ in order, in:
 
 1. the folder given with `--data <dir>`, otherwise the folder in the `NEOWOLF_DATA_DIR`
    environment variable. Either of these is the *only* place searched when given;
-2. the executable's folder and up to 3 folders above it;
+2. the executable's folder and up to 3 folders above it (inside a macOS `.app` SDL reports
+   `Contents/Resources` as this folder; the log then says `(app bundle Resources)`);
 3. `<executable folder>/../Resources` (inside a macOS `.app`);
 4. the current working directory and its parent.
 
@@ -147,19 +148,57 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./neo_wolf --frames 300   # exits 0 
 - To quit: **Quit** on the main menu (or `Esc` there), close the window, `Cmd+Q` (macOS) or
   `Alt+F4` (Windows). From play: `P`, then `Q` for the menu. All keys: [CONTROLS.md](CONTROLS.md).
 
-## macOS Gatekeeper (packaged builds, Roadmap Phase 9)
+## Packaged builds
 
-*Placeholder until the signed and notarized `.app`/`.dmg` exists.* A build you compiled yourself
-runs without warnings. A downloaded, unsigned or un-notarized app is blocked with "cannot be
-opened because Apple cannot check it for malicious software". Phase 9 signs and notarizes the
-release; until then, right-click the app → Open → Open (or System Settings → Privacy & Security →
-Open Anyway). Do not disable Gatekeeper globally.
+Problems with the downloaded packages (`neo-wolf-<version>-macos-universal.zip`,
+`neo-wolf-<version>-windows-x64.zip`; [RELEASE.md](RELEASE.md)). A build you compiled yourself
+does not have them.
 
-## Windows SmartScreen (packaged builds, Roadmap Phase 9)
+### macOS: "cannot be opened" / "Apple could not verify" (Gatekeeper)
 
-*Placeholder until the Windows package exists.* A downloaded, unsigned `neo_wolf.exe` may show
-"Windows protected your PC". Choose More info → Run anyway if you trust the source. Phase 9
-decides on code signing.
+`NeoWolf.app` is signed ad hoc but **not notarized** (the project has no Apple Developer ID), so
+macOS blocks the first start of a downloaded copy. Allow it once:
+
+- **macOS 14 (Sonoma) and older:** Control-click (right-click) `NeoWolf.app` → **Open** → **Open**.
+- **macOS 15 (Sequoia) and newer:** the Control-click route no longer offers Open. Double-click
+  the app once and close the message, then System Settings → **Privacy & Security** → scroll down
+  to the message about `NeoWolf.app` → **Open Anyway** → confirm.
+- **Any version, Terminal:** `xattr -dr com.apple.quarantine /path/to/NeoWolf.app` removes the
+  download mark.
+
+Do not turn Gatekeeper off globally. Only do this for a copy from the project's release page;
+compare the zip with `SHA256SUMS` first (`shasum -a 256 -c SHA256SUMS --ignore-missing`).
+
+Other macOS cases:
+- **"NeoWolf.app is damaged and can't be opened"**: the app was changed after signing (for
+  example a file added inside `Contents/`), or extracted by a tool that dropped the execute
+  permission. Extract the zip again with Finder (double-click) and do not edit the bundle. To
+  check: `codesign --verify --deep --strict NeoWolf.app` must print nothing and exit 0.
+- **The app starts from a random read-only path** (`/private/var/folders/.../AppTranslocation/...`
+  in the log): macOS runs quarantined apps from a temporary copy until they are allowed once or
+  moved (for example into Applications). The game is unaffected: its content is inside the bundle.
+- **"Game content not found" from the app**: `Contents/Resources/game` is missing; the bundle is
+  incomplete. Download and extract it again. The log lists the searched folders; the first one
+  must be `.../NeoWolf.app/Contents/Resources`.
+- The log and progress are in `~/Library/Application Support/NeoWolf/NeoWolf/` (above), not in
+  the app.
+
+### Windows: "Windows protected your PC" (SmartScreen)
+
+`neo_wolf.exe` is not code-signed, so SmartScreen may stop the first start of a downloaded copy.
+Click **More info** → **Run anyway**. Alternatively, before extracting, right-click the downloaded
+zip → Properties → tick **Unblock** → OK; the extracted files then carry no download mark. Only do
+this for a copy from the project's release page (`Get-FileHash <zip> -Algorithm SHA256`, compare
+with `SHA256SUMS`).
+
+Other Windows cases:
+- **"Game content not found" right after double-clicking in the zip window**: Explorer runs the
+  exe from a temporary folder without `game\`. Extract the whole zip first (right-click → Extract
+  All...) and start `neo_wolf.exe` from the extracted folder; keep `game\` next to it.
+- **A missing DLL message** (`VCRUNTIME140.dll`, `SDL2.dll`, ...): the official package needs
+  none (static C runtime and SDL). You are running another build; use the release package.
+- The Release exe has no console: `--version` and `--help` print only when started from a
+  Command Prompt or PowerShell window; problems are in the log file (above).
 
 ## Sending a log with a bug report
 

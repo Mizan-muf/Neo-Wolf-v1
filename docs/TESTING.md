@@ -30,9 +30,15 @@ this. Any failing test makes them exit non-zero.
 | `autoplay.fixture_aim_blocked` | `autoplay` | `neo_wolf_autoplay --level 1 --data tests/fixtures/aim_blocked --time-limit 15 …` | Phase 8 regression: level 10's great hall, cropped, with an idle runner in an alcove whose centre the bot can see but whose shot grazes the corner. Passes when the bot completes it within 15 s of game time (it gives up on that enemy after 2 s; the old bot stood there for 33 s, and for good in a jittered level 10). |
 | `autoplay.trace` | `autoplay` | `cmake/CheckAutoplayTrace.cmake`: `neo_wolf_autoplay --level 3 --data <repo> --trace <build>/autoplay/trace/trace-{1,2}.txt …` twice | The [event trace](#event-trace---trace): both runs complete, every line has the `L<level> t=… f=… <event>` prefix, the trace has a level start, an enemy noticing the player, a kill, a key, an unlocked door, the exit and the level end, and the two traces are byte-identical. |
 | `autoplay.trace_unwritable`, `autoplay.trace_usage` | `autoplay` | `neo_wolf_autoplay --level 1 --trace <a path under a file>`; `… --trace` (no value) | A trace file that cannot be created: exit 1 with `cannot write the trace to`, before anything is played. `--trace` without a value: exit 2 with `--trace needs a value`. |
-| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 108 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions (CSV/JSON export), the validator (`test_validator.py`), **multi-level fixture campaigns** with one good campaign and one broken variant per rule (`test_campaign_rules.py`: campaign schema, `--require-levels`, orphans, players, doors/`D`, triggers/`T`, entities in walls, exits and key-before-lock, unreachable pickups and enemies, the `gameplay.json` schema, theme files), **engine parity** (`test_parity.py`, below), the command line (`test_cli.py`: `create-map --level-id` for every template style, `--register`, no overwrite without `--force`; `inspect-map` on every level of the shipped `campaign.json` (by number and by id) and the key order on a fixture level, the spawn in a wall, an unreachable exit and the exit codes; `doctor` for macOS, Linux and Windows with a simulated environment, the SDL2 cache/network cases and a real smoke run; root resolution from another directory; the launchers; colours), the texture and sprite generators (deterministic, committed files up to date, every theme's door unlike its walls), the level pages (`test_level_docs.py`: each `docs/levels/levelNN.md` shows its shipped `.map` byte for byte and an annotated grid that matches its entity file) and the packager. `fixture_builder.py` builds the fixture campaigns. |
+| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 133 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions (CSV/JSON export), the validator (`test_validator.py`), **multi-level fixture campaigns** with one good campaign and one broken variant per rule (`test_campaign_rules.py`: campaign schema, `--require-levels`, orphans, players, doors/`D`, triggers/`T`, entities in walls, exits and key-before-lock, unreachable pickups and enemies, the `gameplay.json` schema, theme files), **engine parity** (`test_parity.py`, below), the command line (`test_cli.py`: `create-map --level-id` for every template style, `--register`, no overwrite without `--force`; `inspect-map` on every level of the shipped `campaign.json` (by number and by id) and the key order on a fixture level, the spawn in a wall, an unreachable exit and the exit codes; `doctor` for macOS, Linux and Windows with a simulated environment, the SDL2 cache/network cases and a real smoke run; root resolution from another directory; the launchers; colours), the texture and sprite generators (deterministic, committed files up to date, every theme's door unlike its walls), the level pages (`test_level_docs.py`: each `docs/levels/levelNN.md` shows its shipped `.map` byte for byte and an annotated grid that matches its entity file) and, since Phase 9, the packager (`test_packager.py`: CMake simulated by a fake command runner; a package without the executable fails for every OS, also through the command line (known issue D1); test/autoplay executables, missing licences or docs, a wrong `Info.plist`, version mismatch and failed build/install stop it; zip/tar layout and permissions, `SHA256SUMS` merging, `package_smoke.py --no-run` on the result and on a tampered archive; the package scripts), the icon generator (`test_gen_icon.py`) and the package README (`test_release_readme.py`: every row of `CONTROLS.md`'s per-screen and window-key tables appears, per-OS Gatekeeper/SmartScreen and save paths, the licence summary). `fixture_builder.py` builds the fixture campaigns. |
 | `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates everything in `game/` with the engine's rules and the DevKit's level rules ([DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#validate--content-and-campaign-validation)): maps, PPM/WAV assets, theme files, `sprites.cfg`, `audio.cfg`, `gameplay.json`, the entity files, `campaign.json`, and per level one player on floor, door/`D` and trigger/`T` pairing, nothing in walls, an exit reachable with keys before locks, every pickup and enemy reachable, no orphan files. Warnings count as failures. |
 | `content_validation_campaign_size` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict --require-levels 10` | The same validation, plus: `campaign.json` has exactly 10 levels (Roadmap Phase 8). The number is the CMake cache variable `NEOWOLF_REQUIRED_CAMPAIGN_LEVELS` (default 10). |
+
+Opt-in **package tests** (Roadmap Phase 9; not registered by default because they build the
+separate Release tree `build/package-<os>/`): configure with `-DNEOWOLF_PACKAGE_TESTS=ON`, then
+`ctest --preset macos -L package`. `package.build` runs `devkit.py package --out-dir
+<build>/package-test --clean`; `package.smoke` (needs it, CTest fixture) runs
+`tools/ci/package_smoke.py <build>/package-test` ([RELEASE.md](RELEASE.md#smoke-test)). Label `package`.
 
 Every game run gets its own `--pref-dir` folder under `<build>/test-pref/`, so the tests never
 read or replace the player's real log or `progress.json` (known issue B15). The headless
@@ -349,14 +355,15 @@ cmake --preset ci-macos && cmake --build --preset ci-macos && ctest --preset ci-
 
 ## Continuous integration
 
-**Status: green.** Run 43820751721 on commit `65c26b0` passed all four jobs below (macOS,
-Windows MSVC, Linux, `windows-scripts`). CI runs everything headless with SDL's dummy drivers:
+**Status: green.** Run 43861234139 on commit `f76875a` passed all four jobs below (macOS,
+Windows MSVC, Linux, `windows-scripts`; on Windows 110/110 CTest tests, and the autoplay bot
+completes all 10 levels with results identical to macOS). Earlier: run 43820751721 at `65c26b0`. CI runs everything headless with SDL's dummy drivers:
 it proves that the game builds, passes its tests and starts on each OS, not how it plays on a
 desktop. (On the first run, at `1b10a57`, the Windows preset job failed on MSVC C4459 and the
 macOS job did not start on the retired `macos-14` image; both were fixed in Phase 3.)
 
-`.github/workflows/ci.yml` runs on pushes to `main` and `completion/**`, on pull requests and on
-demand. It has one job per OS:
+`.github/workflows/ci.yml` runs on pushes to `main` and `completion/**`, on `v*` tags, on pull
+requests and on demand. It has one build-and-test job per OS:
 
 | Job | Runner | Preset | Smoke-run executable |
 |---|---|---|---|
@@ -387,7 +394,13 @@ passed to the game; `--cwd DIR` overrides the working directory.
 
 A separate job, `windows-scripts`, runs the user-facing Windows entry points that the preset
 job bypasses: `build.cmd` from Command Prompt (Release) and `.\build.ps1 -Config Debug` from
-Windows PowerShell 5.1. Each script configures, builds and runs the full test suite.
+Windows PowerShell 5.1. Each script configures, builds and runs the full test suite. Since
+Phase 9 it also checks that `package.cmd` and `package.ps1` pass the DevKit's exit codes on
+(usage errors, exit code 2), without a second full build.
+
+Since Phase 9 the job `package` (macOS and Windows; added in Phase 9 and **not run yet**) builds the release package through `./package.sh` / `package.cmd` (on a `v*` tag with
+`--expect-version` set from the tag), runs `python tools/ci/package_smoke.py dist` and uploads
+the archive and `SHA256SUMS` as the artifact `neo-wolf-package-<OS>` ([RELEASE.md](RELEASE.md)).
 
 Since Phase 7 each job also runs the autoplay bot on the whole campaign and uploads its report:
 

@@ -223,6 +223,8 @@ script, check it in the game (`neo_wolf --preview enemies --frames 5 --screensho
 
 The generated textures and sprites are made from scratch by this repository's own script: no third-party
 images, fonts or texture packs are used, so there is nothing to attribute and no third-party
-licence applies to them. They fall under the project's own licence (still to be chosen by the
-owner: Roadmap decision 5). The provenance of the older assets in `game/assets/` (the 8×8
-textures, the decoration sprite and the sounds) is still undocumented (known issue X4).
+licence applies to them. The same holds for the application icon, drawn at build time by
+`tools/devkit/gen_icon.py` ([RELEASE.md](RELEASE.md)). They fall under the project's licence,
+the PolyForm Noncommercial License 1.0.0 ([LICENSE.md](../LICENSE.md), Roadmap decision 5). The
+origin of the five older assets that no generator makes (the four `sfx_*.wav` sounds and
+`sprite_decor.ppm`) is still undocumented (known issue X5).

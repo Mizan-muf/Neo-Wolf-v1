@@ -125,6 +125,13 @@ exits with code 1. The options (`--data`, `--pref-dir`, `--level`, `--frames`, `
 `--preview`, `--screenshot`, `--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
 with non-ASCII characters are supported (the command line is read as UTF-16 and converted).
 
+**Icon and version resource.** `neo_wolf.exe` contains an icon and a version resource
+(Explorer → Properties → Details: version, product name, copyright), compiled from
+`build\<preset>\package-files\neo_wolf.rc` (configured from `packaging\windows\neo_wolf.rc.in`);
+the `.ico` is drawn by `tools\devkit\gen_icon.py` during the build, so Python 3 must be found
+by CMake (otherwise the exe has no icon and the package `README.txt` is not generated). The
+release zip is built with `package.cmd` or `.\package.ps1` ([RELEASE.md](RELEASE.md)).
+
 **Console or not.** Release-type builds (Release, RelWithDebInfo, MinSizeRel) are normal windowed
 applications (WIN32 subsystem, linked with `/ENTRY:mainCRTStartup` so the plain `main()` still
 runs): no console window opens. Debug builds keep the console subsystem, so the log is visible in

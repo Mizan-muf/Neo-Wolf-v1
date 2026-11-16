@@ -70,6 +70,27 @@
       "displayName": "CI: Linux, warnings as errors",
       "inherits": "linux",
       "cacheVariables": { "NEOWOLF_WERROR": "ON" }
+    },
+    {
+      "name": "package-base",
+      "hidden": true,
+      "description": "Release packages (docs/RELEASE.md): built by the DevKit `package` command; no tests, warnings are errors.",
+      "cacheVariables": { "NEOWOLF_BUILD_TESTS": "OFF", "NEOWOLF_WERROR": "ON" }
+    },
+    {
+      "name": "package-macos",
+      "displayName": "Package: macOS NeoWolf.app (Release, universal)",
+      "inherits": ["package-base", "macos"]
+    },
+    {
+      "name": "package-windows-msvc",
+      "displayName": "Package: Windows MSVC x64 (Release)",
+      "inherits": ["package-base", "windows-msvc"]
+    },
+    {
+      "name": "package-linux",
+      "displayName": "Package: Linux (Release, best effort)",
+      "inherits": ["package-base", "linux"]
     }
   ],
   "buildPresets": [
@@ -81,7 +102,10 @@
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "ci-macos", "configurePreset": "ci-macos" },
     { "name": "ci-windows-msvc", "configurePreset": "ci-windows-msvc", "configuration": "Release" },
-    { "name": "ci-linux", "configurePreset": "ci-linux" }
+    { "name": "ci-linux", "configurePreset": "ci-linux" },
+    { "name": "package-macos", "configurePreset": "package-macos" },
+    { "name": "package-windows-msvc", "configurePreset": "package-windows-msvc", "configuration": "Release" },
+    { "name": "package-linux", "configurePreset": "package-linux" }
   ],
   "testPresets": [
     {

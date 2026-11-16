@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, "completion/**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -89,6 +90,65 @@ jobs:
             build/${{ matrix.preset }}/autoplay/*.json
           if-no-files-found: ignore
 
+  package:
+    # Roadmap Phase 9: the release packages, built through the user-facing scripts (package.sh /
+    # package.cmd -> DevKit `package` -> the package-<os> CMake preset), checked by
+    # tools/ci/package_smoke.py (extracted to a path with spaces, run headless from there and from
+    # the file-system root; macOS: codesign, lipo, otool; Windows: PE subsystem, icon and version
+    # resource, no runtime DLLs) and uploaded with SHA256SUMS. On a v* tag the package must carry
+    # the tag's version (docs/RELEASE.md). Linux packages are best effort and not built here.
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS universal
+            os: macos-latest
+          - name: Windows x64
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Release tag must match the CMake version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: echo "NEOWOLF_EXPECT_ARGS=--expect-version ${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build the package (package.sh)
+        id: package_unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./package.sh --out-dir dist --clean $NEOWOLF_EXPECT_ARGS
+
+      - name: Build the package (package.cmd)
+        id: package_windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: call package.cmd --out-dir dist --clean %NEOWOLF_EXPECT_ARGS%
+
+      - name: Package smoke test
+        run: python tools/ci/package_smoke.py dist
+
+      - name: Upload the package and SHA256SUMS
+        if: ${{ !cancelled() && (steps.package_unix.outcome == 'success' || steps.package_windows.outcome == 'success') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: neo-wolf-package-${{ runner.os }}
+          path: |
+            dist/neo-wolf-*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+
   windows-scripts:
     # Exercises the user-facing Windows entry points (vswhere lookup, generator pinning,
     # exit-code propagation) that the preset-based job above bypasses.
@@ -108,3 +168,16 @@ jobs:
       - name: build.ps1 -Config Debug (Windows PowerShell 5.1)
         shell: powershell
         run: .\build.ps1 -Config Debug
+
+      # The package scripts' Python lookup and exit codes, without a second full build (the
+      # package job builds the real package through package.cmd).
+      - name: package.cmd and package.ps1 pass exit codes on
+        shell: cmd
+        run: |
+          call package.cmd 1.0.0
+          if %ERRORLEVEL% NEQ 2 (echo package.cmd 1.0.0: expected exit code 2, got %ERRORLEVEL% & exit /b 1)
+          call package.cmd --no-such-option
+          if %ERRORLEVEL% NEQ 2 (echo package.cmd --no-such-option: expected exit code 2, got %ERRORLEVEL% & exit /b 1)
+          powershell -NoProfile -ExecutionPolicy Bypass -File package.ps1 --no-such-option
+          if %ERRORLEVEL% NEQ 2 (echo package.ps1 --no-such-option: expected exit code 2, got %ERRORLEVEL% & exit /b 1)
+          echo package scripts: exit codes OK

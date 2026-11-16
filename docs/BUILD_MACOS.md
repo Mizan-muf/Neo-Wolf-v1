@@ -92,6 +92,14 @@ folder that contains `game/maps` and `game/defs`) in this order and logs the one
    repository's `game/`), then `<executable folder>/../Resources` (a macOS `.app` bundle).
 3. The current working directory and its parent.
 
+**The app bundle.** The build also makes `build/<preset>/NeoWolf.app` (target `neo_wolf_app`,
+same `main.cpp`, with `Info.plist` and the generated icon; `-DNEOWOLF_MACOS_APP=OFF` skips it).
+The bundle in the build folder has no `game/` inside, so starting it reports "Game content not
+found"; use `build/macos/neo_wolf` for development, and `./package.sh` for a complete, signed
+app (`cmake --install` copies `game/` into `Contents/Resources` and signs it ad hoc;
+[RELEASE.md](RELEASE.md)). Inside a complete app SDL reports `Contents/Resources` as the base
+path, and the log says `Content root: .../NeoWolf.app/Contents/Resources (app bundle Resources)`.
+
 If no content root is found, the game logs the folders it searched, shows an error dialog and
 exits with code 1. An invalid `gameplay.json`, or a first level whose map or entity file is
 missing or invalid, also ends startup with an error dialog and exit code 1; the log names the

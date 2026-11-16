@@ -100,7 +100,11 @@ std::vector<ContentRootCandidate> BuildContentRootCandidates(const ContentRootIn
 
     if (!inputs.basePath.empty()) {
         fs::path dir = Normalized(PathFromUtf8(inputs.basePath));
-        AddCandidate(candidates, dir, "executable directory");
+        // In a macOS .app, SDL_GetBasePath() returns Contents/Resources, not the executable's
+        // folder (Contents/MacOS); say so in the log ("Content root: ... (app bundle Resources)").
+        const bool bundleResources =
+            dir.filename() == "Resources" && dir.parent_path().filename() == "Contents";
+        AddCandidate(candidates, dir, bundleResources ? "app bundle Resources" : "executable directory");
         for (int i = 1; i <= kBasePathParents; ++i) {
             const fs::path parent = dir.parent_path();
             if (parent.empty() || parent == dir) {

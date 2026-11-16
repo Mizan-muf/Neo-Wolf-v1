@@ -1,20 +1,22 @@
 # Third-party licences
 
+Neo-Wolf itself is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE.md](../LICENSE.md));
+SDL2 (zlib) and nlohmann/json (MIT) are permissive licences compatible with distributing the game
+under it, provided their notices below ship with it (every release package does, in `LICENSES/`).
+
 Neo-Wolf uses two third-party libraries. Both licences allow use in closed and open source,
 commercial or not; they differ in what a distribution must contain.
 
 | Library | Version | How it is used | Licence | What a binary distribution must do |
 |---|---|---|---|---|
-| [SDL2](https://www.libsdl.org/) | 2.32.10 | Downloaded at configure time (pinned source release, SHA-256 checked in `CMakeLists.txt`) and **linked statically** into `neo_wolf`. `NEOWOLF_SYSTEM_SDL2=ON` uses an installed SDL2 instead. | zlib | Nothing is required. Acknowledging SDL in the documentation is appreciated. Altered SDL sources must be marked as altered (Neo-Wolf does not alter them). |
-| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | Header-only, vendored in `third_party/nlohmann/json.hpp` (see [third_party/README.md](../third_party/README.md)); compiled into the engine. | MIT | Include the copyright notice and the licence text below in "all copies or substantial portions of the Software". Ship this file (or the licence text) with release packages. |
+| [SDL2](https://www.libsdl.org/) | 2.32.10 | Downloaded at configure time (pinned source release, SHA-256 checked in `CMakeLists.txt`) and **linked statically** into `neo_wolf`. `NEOWOLF_SYSTEM_SDL2=ON` uses an installed SDL2 instead. | zlib | Nothing is required. Acknowledging SDL in the documentation is appreciated. Altered SDL sources must be marked as altered (Neo-Wolf does not alter them). The release packages ship SDL's `LICENSE.txt` as `LICENSES/SDL2-LICENSE.txt` and name SDL in `README.txt`. |
+| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | Header-only, vendored in `third_party/nlohmann/json.hpp` (see [third_party/README.md](../third_party/README.md)); compiled into the engine. | MIT | Include the copyright notice and the licence text below in "all copies or substantial portions of the Software". The release packages ship `LICENSES/nlohmann-json-LICENSE.MIT.txt` and this file (`LICENSES/THIRD_PARTY_LICENSES.md`). |
 
 Note on SDL: the SDL source release also contains a few components that carry their own
 permissive licences (for example bundled third-party headers and helper code). Which of them
 end up in a static build depends on the platform and SDL's configure options. This has not
 been audited yet; check SDL's source tree (`build/<preset>/_deps/sdl2-src/`) before the first
-release (Roadmap Phases 9 and 10).
-
-Neo-Wolf itself has no licence yet (Roadmap decision 5, pending the owner).
+release (Roadmap Phase 10; the Phase 9 packages ship only SDL's main `LICENSE.txt`).
 
 ---
 

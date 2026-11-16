@@ -394,32 +394,37 @@ def cmd_sync_entities(args: argparse.Namespace) -> int:
 
 
 def cmd_package(args: argparse.Namespace) -> int:
+    """Builds the release package for this OS through CMake (docs/RELEASE.md)."""
     root = resolve_root(args)
     out_dir = Path(args.out_dir) if args.out_dir else root / "release"
-    print(f"Building Neo-Wolf v{args.version} standalone release package in {out_dir}...")
+    print(f"Packaging Neo-Wolf into {out_dir} ...", flush=True)
     res = create_release_package(
         project_root=root,
         output_dir=out_dir,
-        version=args.version,
-        build_executable=not args.no_build,
-        create_zip=not args.no_zip,
-        create_tar=not args.no_tar,
+        preset=args.preset,
+        build_dir=Path(args.build_dir) if args.build_dir else None,
+        build=not args.no_build,
+        expect_version=args.expect_version,
+        clean=args.clean,
+        keep_staging=args.keep_staging,
+        cmake=args.cmake,
     )
-
-    if res.success:
-        print(f"\nPackaging SUCCESSFUL:")
-        print(f"  Target bundle: {res.package_dir}")
-        if res.zip_path:
-            print(f"  ZIP Archive:   {res.zip_path} ({res.zip_path.stat().st_size} bytes)")
-        if res.tar_path:
-            print(f"  Tarball:       {res.tar_path} ({res.tar_path.stat().st_size} bytes)")
-        print(f"  Files packed:  {len(res.files_included)}")
-        return 0
-    else:
-        print(f"\nPackaging FAILED:")
+    for warning in res.warnings:
+        print(f"  [WARN] {warning}")
+    if not res.success:
+        print("\nPackaging FAILED:")
         for err in res.errors:
             print(f"  [ERROR] {err}")
+        if res.staging_dir and res.staging_dir.exists():
+            print(f"  (the staged files are kept for inspection in {res.staging_dir})")
         return 1
+    assert res.archive is not None and res.checksum_file is not None
+    print("\nPackaging SUCCESSFUL:")
+    print(f"  Version:   {res.info.get('version')} ({res.info.get('platform')})")
+    print(f"  Archive:   {res.archive} ({res.archive.stat().st_size} bytes, {len(res.files)} files)")
+    print(f"  Checksums: {res.checksum_file}")
+    print(f"  Check it:  python3 tools/ci/package_smoke.py \"{res.archive}\"")
+    return 0
 
 
 def cmd_test(args: argparse.Namespace) -> int:
@@ -512,12 +517,25 @@ def build_parser() -> argparse.ArgumentParser:
     # JSON -> CSV is the default since Phase 4; the old flag is still accepted and does nothing.
     sync_p.add_argument("--prefer-json", action="store_true", help=argparse.SUPPRESS)
 
-    pkg_p = subparsers.add_parser("package", help="Assemble a release bundle (Roadmap Phase 9 reworks it).")
-    pkg_p.add_argument("--out-dir", type=str, default=None, help="Output directory (default: release/).")
-    pkg_p.add_argument("--version", type=str, default="1.0.0", help="Release version string.")
-    pkg_p.add_argument("--no-build", action="store_true", help="Do not try to compile a missing executable.")
-    pkg_p.add_argument("--no-zip", action="store_true", help="Skip the .zip archive.")
-    pkg_p.add_argument("--no-tar", action="store_true", help="Skip the .tar.gz archive.")
+    pkg_p = subparsers.add_parser(
+        "package",
+        help="Build this OS's release package with CMake: zip (macOS, Windows) or tar.gz (Linux), plus SHA256SUMS.")
+    pkg_p.add_argument("--out-dir", type=str, default=None, help="Output folder (default: release/).")
+    pkg_p.add_argument("--preset", type=str, default=None,
+                       help="CMake configure/build preset (default: package-macos, package-windows-msvc or "
+                            "package-linux for this OS).")
+    pkg_p.add_argument("--build-dir", type=str, default=None,
+                       help="Package an already configured build tree instead of a preset (e.g. a "
+                            "cross-compile); it is built, not configured.")
+    pkg_p.add_argument("--no-build", action="store_true",
+                       help="Do not configure or build: install and archive the build as it is.")
+    pkg_p.add_argument("--expect-version", type=str, default=None, metavar="X.Y.Z",
+                       help="Fail unless CMake's project(VERSION) is X.Y.Z (release tags).")
+    pkg_p.add_argument("--clean", action="store_true",
+                       help="Remove earlier neo-wolf-* archives and SHA256SUMS from the output folder first.")
+    pkg_p.add_argument("--keep-staging", action="store_true",
+                       help="Keep the installed tree in <out-dir>/.staging/ after archiving.")
+    pkg_p.add_argument("--cmake", type=str, default=None, help="The cmake executable (default: from PATH).")
 
     subparsers.add_parser("test", help="Run the DevKit's unit tests.")
     return parser

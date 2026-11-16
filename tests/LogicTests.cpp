@@ -1102,6 +1102,12 @@ void TestContentRootResolution() {
     result = FindContentRoot(BuildContentRootCandidates(bundleInputs));
     TEST_ASSERT(result.found);
     TEST_ASSERT(result.root == (bundle / "Resources").lexically_normal());
+    // What SDL_GetBasePath() really returns inside a .app: Contents/Resources (Phase 9 package).
+    bundleInputs.basePath = PathToUtf8(bundle / "Resources") + "/";
+    result = FindContentRoot(BuildContentRootCandidates(bundleInputs));
+    TEST_ASSERT(result.found);
+    TEST_ASSERT(result.root == (bundle / "Resources").lexically_normal());
+    TEST_ASSERT(result.source == "app bundle Resources");
 
     // The working directory is used when nothing near the executable matches.
     ContentRootInputs cwdInputs{};

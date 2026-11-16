@@ -289,21 +289,40 @@ and does nothing.
 
 ---
 
-### `package` — release bundle
+### `package` — release package
 
 ```bash
-./tools/devkit/neo_devkit package --version 1.0.0 --out-dir release
+./tools/devkit/neo_devkit package                 # or ./package.sh, package.cmd, package.ps1
+python3 tools/ci/package_smoke.py release         # check the result
 ```
+
+Builds this OS's release package through CMake ([RELEASE.md](RELEASE.md)): validates the content
+like `validate --strict`, configures and builds the `package-macos` / `package-windows-msvc` /
+`package-linux` preset, runs `cmake --install` into `<out-dir>/.staging/<package>/`, checks the
+tree, writes `<out-dir>/neo-wolf-<version>-<platform>.zip` (macOS, Windows) or `.tar.gz` (Linux)
+and adds its SHA-256 to `<out-dir>/SHA256SUMS`. The version is CMake's `project(VERSION)`.
+
+Exit code 1, and no archive, when the content does not validate, configure/build/install fails,
+or the staged tree lacks the executable (known issue D1), `game/maps`/`game/defs`, `README.txt`
+(with the version), `LICENSE.md`, `docs/CONTROLS.md`, `docs/TROUBLESHOOTING.md` or the files in
+`LICENSES/`, or contains `neo_wolf_tests`/`neo_wolf_autoplay`; on macOS also when the
+`Info.plist` version or executable name is wrong or `codesign --verify --deep --strict` fails.
+The staged files are then kept for inspection.
 
 | Option | Meaning |
 |---|---|
-| `--version V` | Version string for the bundle name (default `1.0.0`). |
-| `--out-dir DIR` | Output folder (default `release/` in the root). |
-| `--no-build` | Do not try to compile a missing executable. |
-| `--no-zip`, `--no-tar` | Skip the `.zip` / `.tar.gz` archive. |
+| `--out-dir DIR` | Output folder (default `release/` in the root; relative to the current directory). |
+| `--preset NAME` | Another configure/build preset (default: the package preset for this OS). |
+| `--build-dir DIR` | Package an already configured build folder instead (e.g. a MinGW cross-build); it is built, not configured. |
+| `--no-build` | Do not configure or build; install and archive the build as it is. |
+| `--expect-version X.Y.Z` | Fail unless the CMake version is `X.Y.Z` (release tags; CI uses it on `v*` tags). |
+| `--clean` | Delete earlier `neo-wolf-*` archives and `SHA256SUMS` in the output folder first. |
+| `--keep-staging` | Keep `<out-dir>/.staging/` after archiving. |
+| `--cmake PATH` | The `cmake` to use (default: `PATH`; on Windows also the CMake bundled with Visual Studio, via vswhere). |
 
-Known issue D1: the fallback compile is broken and the bundle can lack an executable; Roadmap
-Phase 9 replaces this command.
+The old options `--version`, `--no-zip` and `--no-tar` are gone (the version comes from CMake,
+the format from the OS). The icon and the package `README.txt` are generated during the build by
+`gen_icon.py` and `release_readme.py` (below).
 
 ---
 
@@ -330,7 +349,9 @@ Runs every `tools/devkit/tests/test_*.py` (`unittest`); CTest runs it as `devkit
 | `def_tools.py` | Entity JSON/CSV conversion (`sync-entities`) |
 | `asset_tools.py`, `gen_sprites.py`, `gen_textures.py` | Asset inspection and generation |
 | `level_docs.py` | Level pages: checks that `docs/levels/levelNN.md` shows the shipped map byte for byte and regenerates its annotated entity grid (`python3 -m tools.devkit.level_docs [--write]`; [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#8-document-it)) |
-| `packager.py` | `package` |
+| `packager.py` | `package`: drives CMake, checks the staged package, writes the archive and `SHA256SUMS` |
+| `gen_icon.py` | The application icon (macOS `.iconset` for `iconutil`, Windows `.ico`, PNG); run by the build |
+| `release_readme.py` | The package `README.txt` per OS, its controls converted from `docs/CONTROLS.md`; run by the build |
 | `tests/` | Unit tests; `fixture_builder.py` builds the multi-level fixture campaigns they use |
 
 The engine and DevKit readers are kept in step by the parity fixtures in

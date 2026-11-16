@@ -15,6 +15,11 @@ if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
+# --- The version: the single source -------------------------------------------------------
+# Everything else is derived from it: `neo_wolf --version` and the log, the autoplay report,
+# NeoWolf.app's Info.plist, neo_wolf.exe's version resource, the package README.txt and the
+# package file names (cmake/Packaging.cmake). Change it here only, in the release commit that
+# is tagged v<version> (docs/RELEASE.md, "Versioning"); 1.0.0 is set by Roadmap Phase 12.
 project(NeoWolf VERSION 0.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -108,6 +113,11 @@ else()
     endif()
     target_link_libraries(neowolf_sdl2 INTERFACE SDL2::SDL2-static)
     message(STATUS "Neo-Wolf: using static SDL2 ${NEOWOLF_SDL2_VERSION} built from source (${sdl2_SOURCE_DIR})")
+    set(NEOWOLF_SDL2_LINKED_VERSION "${NEOWOLF_SDL2_VERSION}")
+    set(NEOWOLF_SDL2_LICENSE_FILE "${sdl2_SOURCE_DIR}/LICENSE.txt")
+endif()
+if(NOT NEOWOLF_SDL2_LINKED_VERSION)
+    set(NEOWOLF_SDL2_LINKED_VERSION "${SDL2_VERSION}")  # system SDL2
 endif()
 
 # main() is a plain C++ main (src/main.cpp and tests/LogicTests.cpp). SDL_MAIN_HANDLED stops
@@ -115,23 +125,27 @@ endif()
 target_compile_definitions(neowolf_sdl2 INTERFACE SDL_MAIN_HANDLED)
 
 # --- Warning flags (our targets only; SDL is never affected) ------------------------------
+# C/C++ only: neo_wolf also has a Windows resource script (.rc, Phase 9), and the resource
+# compilers (rc.exe, windres) do not understand these flags.
 add_library(neowolf_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(neowolf_warnings INTERFACE /W4 /permissive- /utf-8 /EHsc /Zc:__cplusplus)
+    set(neowolf_warning_flags /W4 /permissive- /utf-8 /EHsc /Zc:__cplusplus)
     if(NEOWOLF_WERROR)
-        target_compile_options(neowolf_warnings INTERFACE /WX)
+        list(APPEND neowolf_warning_flags /WX)
     endif()
 else()
-    target_compile_options(neowolf_warnings INTERFACE -Wall -Wextra -Wpedantic)
+    set(neowolf_warning_flags -Wall -Wextra -Wpedantic)
     if(NEOWOLF_WERROR)
-        target_compile_options(neowolf_warnings INTERFACE -Werror)
+        list(APPEND neowolf_warning_flags -Werror)
     endif()
 endif()
+target_compile_options(neowolf_warnings INTERFACE "$<$<COMPILE_LANGUAGE:C,CXX>:${neowolf_warning_flags}>")
 
 # --- nlohmann/json (vendored, header-only) -----------------------------------------------
 # third_party/nlohmann/json.hpp, version and checksum in third_party/README.md. SYSTEM: the
 # header is included as a system header, so it never triggers our warning flags (or -Werror /
 # /WX; CMake passes it to MSVC with /external:I and /external:W0).
+set(NEOWOLF_JSON_VERSION "3.12.0")  # keep in step with third_party/README.md
 add_library(neowolf_json INTERFACE)
 target_include_directories(neowolf_json SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/third_party)
 
@@ -216,6 +230,11 @@ if(WIN32)
     endif()
     target_link_libraries(neo_wolf PRIVATE shell32)
 endif()
+
+# --- Packaging (Roadmap Phase 9) -------------------------------------------------------------
+# Python 3 generates the icon and the package README.txt at build time, and runs the DevKit tests.
+find_package(Python3 COMPONENTS Interpreter)
+include(cmake/Packaging.cmake)
 
 # --- Tests -------------------------------------------------------------------------------
 if(NEOWOLF_BUILD_TESTS)
@@ -500,7 +519,6 @@ if(NEOWOLF_BUILD_TESTS)
         TIMEOUT 300
         ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")
 
-    find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME devkit_tests
                  COMMAND ${Python3_EXECUTABLE} tools/devkit/devkit.py --no-color test
@@ -515,5 +533,29 @@ if(NEOWOLF_BUILD_TESTS)
         set_tests_properties(devkit_tests content_validation content_validation_campaign_size PROPERTIES LABELS devkit)
     else()
         message(WARNING "Python 3 not found: devkit_tests, content_validation and content_validation_campaign_size are not registered.")
+    endif()
+
+    # Package tests (Roadmap Phase 9), opt-in because they build a separate Release tree
+    # (build/package-<os>/, a few minutes the first time): `cmake --preset macos
+    # -DNEOWOLF_PACKAGE_TESTS=ON`, then `ctest --preset macos -L package`. package.build runs the
+    # DevKit `package` command into build/<preset>/package-test/; package.smoke checks the result
+    # with tools/ci/package_smoke.py (extract to a path with a space, run headless, cwd-independence,
+    # signature/architectures/libraries on macOS). CI runs the same two steps (job `package`).
+    option(NEOWOLF_PACKAGE_TESTS "Register the slow package.build and package.smoke CTest tests" OFF)
+    if(NEOWOLF_PACKAGE_TESTS AND Python3_Interpreter_FOUND)
+        set(NEOWOLF_PACKAGE_TEST_DIR "${CMAKE_BINARY_DIR}/package-test")
+        add_test(NAME package.build
+                 COMMAND ${Python3_EXECUTABLE} tools/devkit/devkit.py --no-color package
+                         --out-dir "${NEOWOLF_PACKAGE_TEST_DIR}" --clean
+                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        add_test(NAME package.smoke
+                 COMMAND ${Python3_EXECUTABLE} tools/ci/package_smoke.py "${NEOWOLF_PACKAGE_TEST_DIR}"
+                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        set_tests_properties(package.build PROPERTIES FIXTURES_SETUP neowolf_package)
+        set_tests_properties(package.smoke PROPERTIES FIXTURES_REQUIRED neowolf_package)
+        set_tests_properties(package.build package.smoke PROPERTIES
+            LABELS package
+            TIMEOUT 1800
+            ENVIRONMENT_MODIFICATION "SDL_VIDEODRIVER=set:dummy;SDL_AUDIODRIVER=set:dummy;NEOWOLF_DATA_DIR=unset:;NEOWOLF_PREF_DIR=unset:")
     endif()
 endif()

@@ -61,47 +61,25 @@ checks without `--strict`, so warnings do not fail it.)
 
 ---
 
-## 4. Release Packaging (Phase 26)
+## 4. Release packages
 
-Neo-Wolf provides automated packaging tools that create completely self-contained, standalone distribution bundles.
-
-### Generating a Release Bundle
-```bash
-# Via Makefile:
-make package
-
-# Via packaging script:
-./package.sh 1.0.0 release
-
-# Via DevKit CLI directly:
-./tools/devkit/neo_devkit package --version 1.0.0 --out-dir release
-```
-
-### Package Bundle Contents
-The generated standalone folder `release/neo-wolf-v1.0.0-<platform>/` includes:
-
-```text
-neo-wolf-v1.0.0-linux/
-|-- neo_wolf                  # Standalone game executable binary
-|-- launch.sh                 # Executable Unix launch script
-|-- README.txt                # Player controls, quick start, system requirements
-|-- RELEASE_NOTES.md          # Version release notes and features
-|-- SHA256SUMS                # Cryptographic file checksums
-`-- game/                     # Complete game content bundle
-    |-- assets/               # PPM textures and WAV audio
-    |-- maps/                 # Grid map files
-    `-- defs/                 # Game definitions and entity tables
-```
-
-In addition to the directory bundle, DevKit automatically creates compressed archives:
-- `release/neo-wolf-v1.0.0-linux.tar.gz`
-- `release/neo-wolf-v1.0.0-linux.zip`
-
-### Verifying Standalone Execution
-The release package can be run directly from any folder without requiring the development toolchain:
+Packaging is described in full in [RELEASE.md](RELEASE.md) (versioning, package contents,
+checksums, the smoke test, the release checklist, and what is not done: no notarization, no
+Windows code signing). In short:
 
 ```bash
-cd release/neo-wolf-v1.0.0-linux
-./launch.sh
+./package.sh                                  # macOS / Linux (or: make package)
+python3 tools/ci/package_smoke.py release     # check the result (or: make package-smoke)
 ```
-Relative paths to `game/assets/`, `game/maps/`, and `game/defs/` resolve cleanly relative to the packaged executable.
+
+```cmd
+package.cmd                                   rem Windows (or .\package.ps1)
+```
+
+The DevKit `package` command behind these scripts configures and builds the package preset
+for the OS (`package-macos`, `package-windows-msvc`, `package-linux`), installs it with
+`cmake --install` and writes `release/neo-wolf-<version>-<platform>.zip` (macOS: `NeoWolf.app`;
+Windows: `neo_wolf.exe`) or `.tar.gz` (Linux), plus `release/SHA256SUMS`. The version comes
+from `project(VERSION)` in `CMakeLists.txt`. It fails, without writing an archive, when the
+content does not validate, the build fails, or the package lacks the executable, the content,
+the README, the licence or the third-party notices.
