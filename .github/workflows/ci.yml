@@ -181,3 +181,5 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File package.ps1 --no-such-option
           if %ERRORLEVEL% NEQ 2 (echo package.ps1 --no-such-option: expected exit code 2, got %ERRORLEVEL% & exit /b 1)
           echo package scripts: exit codes OK
+          rem echo does not reset ERRORLEVEL; without this the step inherits the expected 2.
+          exit /b 0
