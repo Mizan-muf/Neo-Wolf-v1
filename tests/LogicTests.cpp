@@ -10,6 +10,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "engine/assets/AssetManager.h"
@@ -17,10 +18,12 @@
 #include "engine/assets/ContentConfig.h"
 #include "engine/assets/Texture.h"
 #include "engine/assets/TextureLoader.h"
+#include "engine/core/CommandLine.h"
 #include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"
+#include "engine/core/Paths.h"
 #include "engine/core/Vec2.h"
 #include "engine/interop/CommandBridge.h"
 #include "engine/interop/EngineInterop.h"
@@ -128,7 +131,7 @@ void TestVec2AndMathHelpers() {
     TEST_ASSERT_NEAR(Clamp(-2.0f, -1.0f, 3.0f), -1.0f, 0.0001f);
     TEST_ASSERT_NEAR(Clamp(1.5f, 0.0f, 3.0f), 1.5f, 0.0001f);
 
-    constexpr float kPi = 3.14159265358979323846f;
+    // kPi comes from engine/core/MathUtils.h (a local copy would shadow it: MSVC C4459).
     constexpr float kTwoPi = kPi * 2.0f;
 
     TEST_ASSERT_NEAR(NormalizeAngle(0.0f), 0.0f, 0.0001f);
@@ -860,6 +863,353 @@ void TestEngineInteropC_API() {
 
     nw_engine_destroy(handle);
 }
+// A fresh, empty directory under the system temp folder; removed when the object dies.
+class ScratchDir {
+public:
+    explicit ScratchDir(const std::string& name) {
+        path_ = std::filesystem::temp_directory_path() / ("neowolf-test-" + name);
+        std::error_code ec;
+        std::filesystem::remove_all(path_, ec);
+        std::filesystem::create_directories(path_);
+    }
+    ~ScratchDir() {
+        std::error_code ec;
+        std::filesystem::remove_all(path_, ec);
+    }
+    ScratchDir(const ScratchDir&) = delete;
+    ScratchDir& operator=(const ScratchDir&) = delete;
+
+    const std::filesystem::path& Path() const { return path_; }
+
+private:
+    std::filesystem::path path_;
+};
+
+void MakeContentRoot(const std::filesystem::path& dir) {
+    std::filesystem::create_directories(dir / "game" / "maps");
+    std::filesystem::create_directories(dir / "game" / "defs");
+}
+
+bool CandidateListContains(const std::vector<ContentRootCandidate>& list, const std::filesystem::path& dir) {
+    for (const ContentRootCandidate& candidate : list) {
+        if (candidate.directory == dir.lexically_normal()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void TestContentRootResolution() {
+    ScratchDir scratch("content-root");
+    const std::filesystem::path base = scratch.Path();
+    // <base>/repo/game/{maps,defs} is content; the "exe" lives in <base>/repo/build/preset/.
+    const std::filesystem::path repo = base / "repo";
+    MakeContentRoot(repo);
+    const std::filesystem::path exeDir = repo / "build" / "preset";
+    std::filesystem::create_directories(exeDir);
+    const std::filesystem::path elsewhere = base / "elsewhere" / "sub";
+    std::filesystem::create_directories(elsewhere);
+
+    // The sentinel needs both game/maps and game/defs.
+    TEST_ASSERT(IsContentRoot(repo));
+    TEST_ASSERT(!IsContentRoot(exeDir));
+    const std::filesystem::path halfRoot = base / "half";
+    std::filesystem::create_directories(halfRoot / "game" / "maps");
+    TEST_ASSERT(!IsContentRoot(halfRoot));
+
+    // Automatic order: exe dir, its parents (up to 3), <exe>/../Resources, cwd, cwd parent.
+    ContentRootInputs inputs{};
+    inputs.basePath = PathToUtf8(exeDir) + "/";  // SDL_GetBasePath ends with a separator
+    inputs.workingDir = PathToUtf8(elsewhere);
+    const std::vector<ContentRootCandidate> candidates = BuildContentRootCandidates(inputs);
+    TEST_ASSERT(candidates.size() == 7);
+    TEST_ASSERT(candidates[0].directory == exeDir.lexically_normal());
+    TEST_ASSERT(candidates[1].directory == (repo / "build").lexically_normal());
+    TEST_ASSERT(candidates[2].directory == repo.lexically_normal());
+    TEST_ASSERT(candidates[3].directory == base.lexically_normal());
+    TEST_ASSERT(candidates[4].directory == (repo / "build" / "Resources").lexically_normal());
+    TEST_ASSERT(candidates[5].directory == elsewhere.lexically_normal());
+    TEST_ASSERT(candidates[6].directory == (base / "elsewhere").lexically_normal());
+
+    ContentRootResult result = FindContentRoot(candidates);
+    TEST_ASSERT(result.found);
+    TEST_ASSERT(result.root == repo.lexically_normal());
+    TEST_ASSERT(result.searched.size() == 3);  // exe dir, build/, repo/
+    TEST_ASSERT(result.source.find("executable") != std::string::npos);
+
+    // Content in a macOS app bundle's Resources folder (base path = Contents/MacOS).
+    const std::filesystem::path bundle = base / "Neo-Wolf.app" / "Contents";
+    std::filesystem::create_directories(bundle / "MacOS");
+    MakeContentRoot(bundle / "Resources");
+    ContentRootInputs bundleInputs{};
+    bundleInputs.basePath = PathToUtf8(bundle / "MacOS");
+    result = FindContentRoot(BuildContentRootCandidates(bundleInputs));
+    TEST_ASSERT(result.found);
+    TEST_ASSERT(result.root == (bundle / "Resources").lexically_normal());
+
+    // The working directory is used when nothing near the executable matches.
+    ContentRootInputs cwdInputs{};
+    cwdInputs.basePath = PathToUtf8(elsewhere);
+    cwdInputs.workingDir = PathToUtf8(repo / "build");
+    result = FindContentRoot(BuildContentRootCandidates(cwdInputs));
+    TEST_ASSERT(result.found);
+    TEST_ASSERT(result.root == repo.lexically_normal());
+    TEST_ASSERT(result.source == "parent of the working directory");
+
+    // --data is exclusive: an empty directory fails even though other candidates would match.
+    const std::filesystem::path empty = base / "empty";
+    std::filesystem::create_directories(empty);
+    ContentRootInputs dataInputs = inputs;
+    dataInputs.dataOption = PathToUtf8(empty);
+    dataInputs.dataEnv = PathToUtf8(repo);
+    const std::vector<ContentRootCandidate> dataCandidates = BuildContentRootCandidates(dataInputs);
+    TEST_ASSERT(dataCandidates.size() == 1);
+    TEST_ASSERT(dataCandidates[0].source == "--data");
+    result = FindContentRoot(dataCandidates);
+    TEST_ASSERT(!result.found);
+    TEST_ASSERT(result.searched.size() == 1);
+    TEST_ASSERT(DescribeContentRootSearch(result).find(PathToUtf8(empty.lexically_normal())) != std::string::npos);
+
+    // A relative --data is relative to the working directory.
+    ContentRootInputs relativeInputs{};
+    relativeInputs.workingDir = PathToUtf8(base);
+    relativeInputs.dataOption = "repo";
+    result = FindContentRoot(BuildContentRootCandidates(relativeInputs));
+    TEST_ASSERT(result.found);
+    TEST_ASSERT(result.root == repo.lexically_normal());
+
+    // NEOWOLF_DATA_DIR is used (alone) when --data is absent.
+    ContentRootInputs envInputs = inputs;
+    envInputs.dataEnv = PathToUtf8(repo);
+    const std::vector<ContentRootCandidate> envCandidates = BuildContentRootCandidates(envInputs);
+    TEST_ASSERT(envCandidates.size() == 1);
+    TEST_ASSERT(envCandidates[0].source == "NEOWOLF_DATA_DIR");
+    TEST_ASSERT(FindContentRoot(envCandidates).found);
+
+    // Nothing found: every candidate is reported as searched.
+    ContentRootInputs noneInputs{};
+    noneInputs.basePath = PathToUtf8(empty);
+    noneInputs.workingDir = PathToUtf8(empty);
+    const std::vector<ContentRootCandidate> noneCandidates = BuildContentRootCandidates(noneInputs);
+    TEST_ASSERT(CandidateListContains(noneCandidates, empty));
+    result = FindContentRoot(noneCandidates);
+    TEST_ASSERT(!result.found);
+    TEST_ASSERT(result.searched.size() == noneCandidates.size());
+
+    // Joining: root / relative, with absolute paths and an empty root passed through.
+    TEST_ASSERT(PathFromUtf8(JoinContentPath(repo, "game/maps/level01.map")) == repo / "game" / "maps" / "level01.map");
+    TEST_ASSERT(JoinContentPath(std::filesystem::path(), "game/maps/level01.map") == "game/maps/level01.map");
+    const std::string absolute = PathToUtf8(empty / "x.map");
+    TEST_ASSERT(JoinContentPath(repo, absolute) == absolute);
+
+    // Non-ASCII directory names survive the UTF-8 round trip and work as a content root.
+    const std::string utf8Name = "d\xC3\xA9j\xC3\xA0 vu \xE2\x9C\x93";  // "déjà vu ✓"
+    const std::filesystem::path unicodeRoot = base / PathFromUtf8(utf8Name);
+    MakeContentRoot(unicodeRoot);
+    TEST_ASSERT(PathToUtf8(PathFromUtf8(utf8Name)) == utf8Name);
+    ContentRootInputs unicodeInputs{};
+    unicodeInputs.dataOption = PathToUtf8(unicodeRoot);
+    result = FindContentRoot(BuildContentRootCandidates(unicodeInputs));
+    TEST_ASSERT(result.found);
+    {
+        std::ofstream mapFile(unicodeRoot / "game" / "maps" / "t.map");
+        mapFile << "###\n#.#\n###\n";
+    }
+    Map unicodeMap{};
+    std::vector<std::string> errors;
+    TEST_ASSERT(LoadMapFromFile(JoinContentPath(result.root, "game/maps/t.map"), unicodeMap, errors));
+    TEST_ASSERT(unicodeMap.Width() == 3);
+}
+
+void TestCommandLineParsing() {
+    // No arguments: run with defaults.
+    CommandLineResult r = ParseCommandLine({});
+    TEST_ASSERT(r.action == CommandLineAction::Run);
+    TEST_ASSERT(r.options.dataDir.empty());
+    TEST_ASSERT(r.options.level == 1);
+    TEST_ASSERT(r.options.frames == 0);
+    TEST_ASSERT(r.options.windowMode == WindowModeOption::Default);
+
+    r = ParseCommandLine({"--data", "/some dir", "--level", "7", "--frames", "120", "--fullscreen"});
+    TEST_ASSERT(r.action == CommandLineAction::Run);
+    TEST_ASSERT(r.options.dataDir == "/some dir");
+    TEST_ASSERT(r.options.level == 7);
+    TEST_ASSERT(r.options.frames == 120);
+    TEST_ASSERT(r.options.windowMode == WindowModeOption::Fullscreen);
+
+    r = ParseCommandLine({"--data=C:\\Games\\Neo Wolf", "--level=12", "--windowed"});
+    TEST_ASSERT(r.action == CommandLineAction::Run);
+    TEST_ASSERT(r.options.dataDir == "C:\\Games\\Neo Wolf");
+    TEST_ASSERT(r.options.level == 12);
+    TEST_ASSERT(r.options.windowMode == WindowModeOption::Windowed);
+
+    TEST_ASSERT(ParseCommandLine({"--help"}).action == CommandLineAction::ShowHelp);
+    TEST_ASSERT(ParseCommandLine({"-h"}).action == CommandLineAction::ShowHelp);
+    TEST_ASSERT(ParseCommandLine({"--version"}).action == CommandLineAction::ShowVersion);
+    TEST_ASSERT(ParseCommandLine({"--frames", "5", "--version"}).action == CommandLineAction::ShowVersion);
+    // macOS Finder's legacy process serial number argument is ignored.
+    TEST_ASSERT(ParseCommandLine({"-psn_0_12345"}).action == CommandLineAction::Run);
+
+    // Invalid input -> Error with a message (main() prints usage and exits 2).
+    const std::vector<std::vector<std::string>> invalid = {
+        {"--bogus"},
+        {"stray"},
+        {"--data"},
+        {"--data", ""},
+        {"--level"},
+        {"--level", "0"},
+        {"--level", "100"},
+        {"--level", "-3"},
+        {"--level", "2x"},
+        {"--level", "abc"},
+        {"--frames", "0"},
+        {"--frames", "-1"},
+        {"--frames", "99999999999"},
+        {"--windowed", "--fullscreen"},
+        {"--version=2"},
+    };
+    for (const std::vector<std::string>& args : invalid) {
+        const CommandLineResult bad = ParseCommandLine(args);
+        TEST_ASSERT(bad.action == CommandLineAction::Error);
+        TEST_ASSERT(!bad.error.empty());
+    }
+    TEST_ASSERT(ParseCommandLine({"--bogus"}).error.find("--bogus") != std::string::npos);
+
+    // --level padding.
+    TEST_ASSERT(LevelMapPath(1) == "game/maps/level01.map");
+    TEST_ASSERT(LevelEntitiesPath(1) == "game/defs/level01.entities.json");
+    TEST_ASSERT(LevelMapPath(9) == "game/maps/level09.map");
+    TEST_ASSERT(LevelMapPath(10) == "game/maps/level10.map");
+    TEST_ASSERT(LevelEntitiesPath(99) == "game/defs/level99.entities.json");
+
+    // Version and usage text.
+    TEST_ASSERT(VersionString() == std::string("Neo-Wolf ") + NW_EXPECTED_VERSION);
+    const std::string usage = CommandLineUsage("neo_wolf");
+    for (const char* option : {"--help", "--version", "--data", "--level", "--frames", "--windowed", "--fullscreen"}) {
+        TEST_ASSERT(usage.find(option) != std::string::npos);
+    }
+}
+
+std::string ReadWholeFile(const std::string& path) {
+    std::ifstream file(PathFromUtf8(path), std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+// Writes `text` with every "\n" turned into "\r\n" (binary mode, so nothing is translated).
+void WriteWithCrlf(const std::filesystem::path& path, const std::string& text) {
+    std::string crlf;
+    for (const char c : text) {
+        if (c == '\n') {
+            crlf += '\r';
+        }
+        if (c != '\r') {
+            crlf += c;
+        }
+    }
+    std::ofstream file(path, std::ios::binary);
+    file << crlf;
+}
+
+void TestCrlfContentLoading() {
+    ScratchDir scratch("crlf");
+    std::vector<std::string> errors;
+
+    // Map: the shipped level plus a comment and a blank line, in LF and CRLF form.
+    const std::string mapText = "; comment line\n\n" + ReadWholeFile(ResolveRepoPath("game/maps/level01.map"));
+    TEST_ASSERT(mapText.find('\r') == std::string::npos);  // content files stay LF
+    const std::filesystem::path lfMapPath = scratch.Path() / "lf.map";
+    const std::filesystem::path crlfMapPath = scratch.Path() / "crlf.map";
+    {
+        std::ofstream lf(lfMapPath, std::ios::binary);
+        lf << mapText;
+    }
+    WriteWithCrlf(crlfMapPath, mapText);
+    TEST_ASSERT(ReadWholeFile(PathToUtf8(crlfMapPath)).find("\r\n") != std::string::npos);
+
+    Map lfMap{};
+    Map crlfMap{};
+    TEST_ASSERT(LoadMapFromFile(PathToUtf8(lfMapPath), lfMap, errors));
+    TEST_ASSERT(LoadMapFromFile(PathToUtf8(crlfMapPath), crlfMap, errors));
+    TEST_ASSERT(errors.empty());
+    TEST_ASSERT(lfMap.Width() == 16 && lfMap.Height() == 12);
+    TEST_ASSERT(crlfMap.Width() == lfMap.Width() && crlfMap.Height() == lfMap.Height());
+    for (int y = 0; y < lfMap.Height(); ++y) {
+        for (int x = 0; x < lfMap.Width(); ++x) {
+            TEST_ASSERT(crlfMap.GetCell(x, y) == lfMap.GetCell(x, y));
+        }
+    }
+
+    // Entity placements.
+    const std::string entitiesText = ReadWholeFile(ResolveRepoPath("game/defs/level01.entities.csv"));
+    const std::filesystem::path crlfEntitiesPath = scratch.Path() / "crlf.entities.csv";
+    WriteWithCrlf(crlfEntitiesPath, entitiesText);
+    std::vector<EntityPlacement> lfPlacements;
+    std::vector<EntityPlacement> crlfPlacements;
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), lfPlacements, errors));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(crlfEntitiesPath), crlfPlacements, errors));
+    TEST_ASSERT(errors.empty());
+    TEST_ASSERT(!lfPlacements.empty());
+    TEST_ASSERT(crlfPlacements.size() == lfPlacements.size());
+    for (std::size_t i = 0; i < lfPlacements.size(); ++i) {
+        TEST_ASSERT(crlfPlacements[i].type == lfPlacements[i].type);
+        TEST_ASSERT_NEAR(crlfPlacements[i].position.x, lfPlacements[i].position.x, 0.0001f);
+        TEST_ASSERT_NEAR(crlfPlacements[i].position.y, lfPlacements[i].position.y, 0.0001f);
+        TEST_ASSERT(crlfPlacements[i].mapX == lfPlacements[i].mapX);
+        TEST_ASSERT(crlfPlacements[i].mapY == lfPlacements[i].mapY);
+    }
+
+    // Key/value configs (AudioConfig.cpp and ContentConfig.cpp parsers).
+    const std::filesystem::path crlfAudioPath = scratch.Path() / "audio.cfg";
+    WriteWithCrlf(crlfAudioPath, ReadWholeFile(ResolveRepoPath("game/defs/audio.cfg")));
+    AudioEffectDefinitions lfAudio{};
+    AudioEffectDefinitions crlfAudio{};
+    TEST_ASSERT(LoadAudioEffectDefinitions(ResolveRepoPath("game/defs/audio.cfg"), lfAudio, errors));
+    TEST_ASSERT(LoadAudioEffectDefinitions(PathToUtf8(crlfAudioPath), crlfAudio, errors));
+    TEST_ASSERT(crlfAudio.doorOpen == lfAudio.doorOpen);
+    TEST_ASSERT(crlfAudio.weaponFire == lfAudio.weaponFire);
+    TEST_ASSERT(crlfAudio.doorOpen.find('\r') == std::string::npos);
+    TEST_ASSERT_NEAR(crlfAudio.masterVolume, lfAudio.masterVolume, 0.0001f);
+
+    const std::filesystem::path crlfWallPath = scratch.Path() / "wall_textures.cfg";
+    WriteWithCrlf(crlfWallPath, ReadWholeFile(ResolveRepoPath("game/defs/wall_textures.cfg")));
+    WallTextureAssignments lfWall{};
+    WallTextureAssignments crlfWall{};
+    TEST_ASSERT(LoadWallTextureAssignments(ResolveRepoPath("game/defs/wall_textures.cfg"), lfWall, errors));
+    TEST_ASSERT(LoadWallTextureAssignments(PathToUtf8(crlfWallPath), crlfWall, errors));
+    TEST_ASSERT(crlfWall.wall == lfWall.wall);
+    TEST_ASSERT(crlfWall.door == lfWall.door);
+    TEST_ASSERT(crlfWall.ceiling == lfWall.ceiling);
+    TEST_ASSERT(errors.empty());
+}
+
+void TestLogFileRotation() {
+    ScratchDir scratch("log-rotation");
+    const std::string logPath = PathToUtf8(scratch.Path() / "neowolf.log");
+    const std::string prevPath = PathToUtf8(scratch.Path() / "neowolf.prev.log");
+
+    TEST_ASSERT(StartFreshLogFile(logPath, prevPath));
+    LogInfo("first run");
+    TEST_ASSERT(GetLogFilePath() == logPath);
+    TEST_ASSERT(!std::filesystem::exists(PathFromUtf8(prevPath)));
+
+    TEST_ASSERT(StartFreshLogFile(logPath, prevPath));
+    LogInfo("second run");
+    TEST_ASSERT(StartFreshLogFile(logPath, prevPath));
+    LogInfo("third run");
+    SetLogFilePath("");
+
+    const std::string current = ReadWholeFile(logPath);
+    const std::string previous = ReadWholeFile(prevPath);
+    TEST_ASSERT(current.find("third run") != std::string::npos);
+    TEST_ASSERT(current.find("second run") == std::string::npos);  // truncated at each start
+    TEST_ASSERT(previous.find("second run") != std::string::npos);
+    TEST_ASSERT(previous.find("first run") == std::string::npos);  // only one previous run kept
+
+    // An uncreatable path turns file logging off instead of failing later.
+    TEST_ASSERT(!StartFreshLogFile(PathToUtf8(scratch.Path() / "missing-dir" / "x.log"), ""));
+    TEST_ASSERT(GetLogFilePath().empty());
+}
+
 struct TestCase {
     const char* id;    // used on the command line and as the CTest name (native.<id>)
     const char* name;  // human-readable description
@@ -892,6 +1242,11 @@ const TestCase kTests[] = {
      &TestMapPerimeterAndReachabilityValidation},
     {"asset_inventory_resilience", "Asset inventory and error resilience", &TestAssetInventoryAndErrorResilience},
     {"engine_interop_c_api", "Engine Interop C API", &TestEngineInteropC_API},
+    {"content_root_resolution", "Content root resolution (candidates, sentinel, searched list)",
+     &TestContentRootResolution},
+    {"command_line_parsing", "Command-line parsing", &TestCommandLineParsing},
+    {"crlf_content_loading", "CRLF content files load like LF ones", &TestCrlfContentLoading},
+    {"log_file_rotation", "Log file rotation", &TestLogFileRotation},
 };
 
 void PrintUsage(const char* program) {

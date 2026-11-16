@@ -33,9 +33,12 @@ and linked statically by CMake, so there is nothing else to install. Details: [d
 
 ### 2. Launch Game
 ```bash
-# Run from the repository root (content is found relative to the working directory for now)
-./build/macos/neo_wolf
+./build/macos/neo_wolf            # works from any directory: it finds the repository's game/ folder
+./build/macos/neo_wolf --help     # options: --data, --level, --frames, --fullscreen, --version
 ```
+
+If the game does not start, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (log file
+locations, missing content, no audio device, virtual machines).
 
 ---
 
@@ -144,14 +147,23 @@ The output directory `release/neo-wolf-v1.0.0-<platform>/` is fully portable and
 
 ## Controls & Debug Features
 
-| Action | Primary Key | Alternate Key | Description |
-| :--- | :--- | :--- | :--- |
-| **Move** | `W`, `S` | Up / Down Arrows | Move forward and backward |
-| **Strafe** | `A`, `D` | — | Strafe left and right |
-| **Turn** | Left / Right Arrows | `Q`, `E` | Rotate camera yaw |
-| **Interact** | `Space` | `F` | Open/close doors and activate triggers |
-| **Pause** | `P` | `Escape` | Pause simulation and display pause overlay |
-| **Minimap / Debug** | `M` | `F1` / `Tab` | Toggle overhead 2D raycast debug minimap |
+The bindings live in `engine/platform/PlatformSDL.cpp` (`MapScancodeToActions`); this table matches it.
+
+| Action | Keys | Notes |
+| :--- | :--- | :--- |
+| **Move forward / back** | `W` / `S`, or Up / Down arrows | |
+| **Strafe left / right** | `A` / `D` | |
+| **Turn left / right** | Left / Right arrows; `Q` also turns left | `E` is *not* a turn key (it is Interact) |
+| **Fire** | `Space`, `F`, left or right `Ctrl` | Also starts the game from the menu |
+| **Interact** (open/close doors) | `E` | Also starts the game from the menu. Pickups and the exit trigger work by walking into them. |
+| **Pause / resume** | `Esc` or `P` | `Enter` also resumes. The game pauses by itself when its window loses focus. |
+| **Restart level** | `R` | In play, paused, or on the game-over / victory screen |
+| **Confirm** | `Enter` (or keypad `Enter`) | Starts the game from the menu; returns to the menu from game-over / victory (`Esc`/`P` too) |
+| **Minimap and debug overlay** | `Tab` | On by default |
+| **Fullscreen on/off** | `F11` or `Alt+Enter`; on macOS also `Cmd+Ctrl+F` | Desktop fullscreen; the image keeps its 4:3 shape with black bars. `--fullscreen` starts in fullscreen. |
+| **Quit** | `Esc` on the main menu; close the window, `Cmd+Q` (macOS) or `Alt+F4` (Windows) | A Quit menu item comes with the menu rework (Roadmap Phase 5) |
+
+The window can be resized freely; the 320×240 image is scaled with sharp (nearest-neighbour) pixels.
 
 ---
 

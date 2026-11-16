@@ -5,6 +5,7 @@
 #include <string>
 
 #include "engine/core/Color.h"
+#include "engine/core/Paths.h"
 
 namespace {
 bool NextToken(std::istream& stream, std::string& outToken) {
@@ -33,7 +34,7 @@ bool ParseIntToken(std::istream& stream, int& outValue) {
 } // namespace
 
 bool TextureLoader::LoadPPM(const std::string& filePath, Texture& outTexture) {
-    std::ifstream file(filePath);
+    std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         return false;
     }

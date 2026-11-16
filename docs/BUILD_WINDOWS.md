@@ -108,17 +108,42 @@ Output goes to `build\<configure preset>\<Config>\`, for example
 
 ## Running the game
 
-Run the game **from the repository root**, because the engine currently finds `game\` relative
-to the working directory (fixed in Roadmap Phase 3):
-
 ```cmd
 build\windows-msvc\Release\neo_wolf.exe
 rem or, after a Debug build:
 build\windows-msvc\Debug\neo_wolf.exe
 ```
 
-The game currently uses the console subsystem, so a console window opens next to the game
-window. Phase 3 switches to a normal windowed (WIN32 subsystem) application.
+The game works from **any working directory** and when double-clicked in Explorer: it looks for
+`game\` in `--data <dir>` (or `NEOWOLF_DATA_DIR`), else next to the executable and up to 3
+folders above it (so `build\windows-msvc\Release\neo_wolf.exe` finds the repository's `game\`),
+else in the working directory and its parent. If no content is found it shows an error box and
+exits with code 1. The options (`--data`, `--level`, `--frames`, `--windowed`, `--fullscreen`,
+`--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
+with non-ASCII characters are supported (the command line is read as UTF-16 and converted).
+
+**Console or not.** Release-type builds (Release, RelWithDebInfo, MinSizeRel) are normal windowed
+applications (WIN32 subsystem, linked with `/ENTRY:mainCRTStartup` so the plain `main()` still
+runs): no console window opens. Debug builds keep the console subsystem, so the log is visible in
+a console window. Consequences for a Release build:
+
+- The log is always written to `%APPDATA%\NeoWolf\NeoWolf\neowolf.log` (see
+  [TROUBLESHOOTING.md](TROUBLESHOOTING.md)); it is not shown in a console.
+- `neo_wolf.exe --help` / `--version` / a bad option attach to the console of the Command Prompt
+  or PowerShell that started them and print there. Because Windows does not wait for GUI
+  programs, the text can appear after the next prompt; press Enter to get a clean prompt.
+  Redirected output works normally (`neo_wolf.exe --version > version.txt`,
+  `neo_wolf.exe --version | more`), as do CTest and CI, which capture the output through pipes.
+- To wait for the exit code in cmd, use `start /wait build\windows-msvc\Release\neo_wolf.exe --frames 60`
+  then `echo %ERRORLEVEL%`. PowerShell: `(Start-Process -Wait -PassThru .\build\windows-msvc\Release\neo_wolf.exe -ArgumentList '--frames','60').ExitCode`.
+
+Headless smoke run (no window, no sound device; the software renderer is chosen automatically):
+
+```cmd
+set SDL_VIDEODRIVER=dummy
+set SDL_AUDIODRIVER=dummy
+build\windows-msvc\Release\neo_wolf.exe --frames 120
+```
 
 ## Compiler settings
 
@@ -156,6 +181,6 @@ configure with `-DFETCHCONTENT_SOURCE_DIR_SDL2=C:\path\to\SDL2-2.32.10`. See
 | `Generator ... does not match the generator used previously` or a `CMAKE_GENERATOR_INSTANCE` mismatch | `build\windows-msvc\` was configured with a different Visual Studio (or by hand with another generator). Delete `build\windows-msvc\` and run again. |
 | `Generator ... does not support platform specification` | `CMAKE_GENERATOR` is set in your environment (when running presets by hand). Unset it. |
 | SDL download fails, or `... does not match expected value` / `Hash mismatch` | Check network and proxy settings, or use an offline SDL copy (above). A hash mismatch means the downloaded file is not the pinned SDL2 2.32.10 tarball (for example a proxy error page); CMake deletes it, so just configure again once the network is fixed. |
-| `SDL_CreateRenderer failed: Couldn't find matching render driver` | No GPU renderer is available (virtual machine, Remote Desktop session, no GPU driver). Set `SDL_RENDER_DRIVER=software` before starting the game (`set SDL_RENDER_DRIVER=software` in cmd, `$env:SDL_RENDER_DRIVER="software"` in PowerShell). Known issue B11, fixed in Roadmap Phase 3. |
 | `devkit_tests` / `content_validation` are missing | CMake did not find Python 3. Install it from python.org (on `PATH`), then run `cmake --preset windows-msvc --fresh`. |
-| The game starts with no content | Start it from the repository root. |
+| `Game content not found` (error box or log) | `game\` is not next to/above the executable. Start it with `--data <folder that contains game\>`. |
+| Other problems when running the game (no window, no sound, black screen, VMs) | See [TROUBLESHOOTING.md](TROUBLESHOOTING.md). |

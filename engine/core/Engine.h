@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,16 @@
 
 class PlatformSDL;
 
+// Startup settings (filled from the command line by App; the defaults suit the C API and tests).
+struct EngineOptions {
+    std::string dataDir{};  // --data (UTF-8); empty = automatic content-root search
+    std::string mapPath{"game/maps/level01.map"};             // relative to the content root
+    std::string entitiesPath{"game/defs/level01.entities.json"};
+    bool fullscreen = false;
+    // Show a message box for fatal startup errors. Off for automated runs (--frames).
+    bool errorDialogs = true;
+};
+
 class Engine {
 public:
     Engine() = default;
@@ -27,7 +38,9 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
-    bool Init();
+    // Returns false (after logging and, if enabled, showing an error box) when the game
+    // cannot start: no content root, no window/renderer, or the first level fails to load.
+    bool Init(const EngineOptions& options = EngineOptions{});
     void Update(double deltaSeconds);
     void Render();
     void Shutdown();
@@ -40,6 +53,11 @@ public:
     bool LoadLevel(const std::string& mapPath, const std::string& entitiesPath);
     void ShowMessage(const std::string& message, float duration = 2.0f);
     void PlayerAttack();
+    // Content-relative path (e.g. "game/maps/level01.map") -> path under the content root
+    // (UTF-8). Without a content root (tests, C API before Init) the path is returned as is,
+    // i.e. relative to the working directory.
+    std::string ResolveContentPath(const std::string& relativePath) const;
+    const std::filesystem::path& ContentRoot() const { return contentRoot_; }
 
     PlatformSDL* platform_ = nullptr;
     InputState input_{};
@@ -74,6 +92,7 @@ public:
     int playerMaxAmmo_ = 99;
     std::string hudMessage_{};
     float hudMessageTimer_ = 0.0f;
+    std::filesystem::path contentRoot_{};
     std::string currentMapPath_{"game/maps/level01.map"};
     std::string currentEntitiesPath_{"game/defs/level01.entities.json"};
     CommandBridge bridge_{};

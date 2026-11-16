@@ -2,33 +2,25 @@
 
 #include <cmath>
 #include <filesystem>
-#include <iostream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"
+#include "engine/core/Paths.h"
 #include "engine/world/EntityPlacementLoader.h"
 #include "engine/world/InteractionRules.h"
 #include "engine/world/MapLoader.h"
 #include "engine/world/MovementRules.h"
 
-namespace {
-std::string ResolveContentPath(const std::string& relativePath) {
-    if (std::filesystem::exists(relativePath)) {
-        return relativePath;
-    }
-    const std::string candidate = "../" + relativePath;
-    if (std::filesystem::exists(candidate)) {
-        return candidate;
-    }
-    return relativePath;
-}
-} // namespace
-
 Engine::~Engine() {
     Shutdown();
+}
+
+std::string Engine::ResolveContentPath(const std::string& relativePath) const {
+    return JoinContentPath(contentRoot_, relativePath);
 }
 
 bool Engine::IsRunning() const {
@@ -96,8 +88,19 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     errors.clear();
     const std::string resolvedEntitiesPath = ResolveContentPath(entitiesPath);
     bool loadedEntities = false;
-    if (std::filesystem::exists(resolvedEntitiesPath)) {
+    std::error_code existsError;
+    if (std::filesystem::exists(PathFromUtf8(resolvedEntitiesPath), existsError)) {
         loadedEntities = LoadEntityPlacementsFromFile(resolvedEntitiesPath, placements, errors);
+        if (!loadedEntities) {
+            // Known issue C1 (Roadmap Phase 4): the placement loader only reads CSV, so the
+            // JSON entity files always end up here.
+            LogWarning("Could not read entity placements from " + resolvedEntitiesPath + " (" +
+                       std::to_string(errors.size()) + " error(s)" +
+                       (errors.empty() ? std::string() : "; first: " + errors.front()) +
+                       "); using the built-in layout.");
+        }
+    } else {
+        LogWarning("Entity placement file not found: " + resolvedEntitiesPath + "; using the built-in layout.");
     }
 
     if (loadedEntities) {

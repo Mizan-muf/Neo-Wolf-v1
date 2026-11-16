@@ -17,6 +17,7 @@ enum class InputAction : std::uint8_t {
     Restart,
     Confirm,
     ToggleDebugView,
+    Back,  // Escape only: leaves the current screen (quits from the main menu)
     Count
 };
 
@@ -28,9 +29,11 @@ struct ActionButtonState {
 
 struct InputState {
     bool quitRequested = false;
+    bool focusLost = false;  // the window lost keyboard focus this frame
     std::array<ActionButtonState, static_cast<std::size_t>(InputAction::Count)> actions{};
 
     void BeginFrame() {
+        focusLost = false;
         for (ActionButtonState& state : actions) {
             state.wasPressed = false;
             state.wasReleased = false;

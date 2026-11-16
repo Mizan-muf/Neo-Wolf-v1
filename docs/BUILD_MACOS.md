@@ -78,24 +78,50 @@ cmake --preset macos -DCMAKE_OSX_ARCHITECTURES=arm64
 
 ## Running the game
 
-Run the game **from the repository root**:
-
 ```bash
 ./build/macos/neo_wolf
 ```
 
-The engine currently finds `game/` relative to the working directory (or its parent). Launching
-it from Finder or from another folder loses all content. This is a known limitation
-(KNOWN_ISSUES B6) and is fixed in Roadmap Phase 3.
+The game works from **any working directory**. At startup it looks for its content root (the
+folder that contains `game/maps` and `game/defs`) in this order and logs the one it uses:
 
-The engine asks SDL for a hardware-accelerated renderer. In a headless session (for example
-`SDL_VIDEODRIVER=dummy`) there is none, and the game exits with
-`SDL_CreateRenderer failed: Couldn't find matching render driver`. For a headless smoke test,
-also select SDL's software renderer:
+1. `--data <dir>` if given, otherwise the `NEOWOLF_DATA_DIR` environment variable if set. An
+   explicit choice is the only place searched: if it has no `game/` folder the game stops with
+   an error instead of quietly using another copy.
+2. The executable's folder and up to 3 folders above it (so `build/macos/neo_wolf` finds the
+   repository's `game/`), then `<executable folder>/../Resources` (a macOS `.app` bundle).
+3. The current working directory and its parent.
+
+If no content root is found, or the first level cannot be loaded, the game logs the folders it
+searched, shows an error dialog and exits with code 1.
+
+Command-line options (`./build/macos/neo_wolf --help` lists them):
+
+| Option | Meaning |
+|---|---|
+| `--data <dir>` | Use the content in `<dir>` (the folder that contains `game/`). |
+| `--level <N>` | Start on level N (1–99): `game/maps/levelNN.map` and `game/defs/levelNN.entities.json`. Only level 1 exists for now. |
+| `--frames <N>` | Run N frames, then exit with code 0. For automated smoke tests; error dialogs are suppressed. |
+| `--windowed` / `--fullscreen` | Start in a window (default) or in desktop fullscreen. |
+| `--version` / `--help` | Print the version or the usage and exit. |
+
+Exit codes: `0` normal exit, `1` startup failed (for example content not found), `2` bad command line.
+
+The log goes to the terminal and to `~/Library/Application Support/NeoWolf/NeoWolf/neowolf.log`
+(the previous run's log is kept as `neowolf.prev.log`). See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+### Headless runs
+
+With SDL's dummy drivers no window or sound device is needed. There is no GPU renderer then, so
+the game falls back to SDL's software renderer by itself (no `SDL_RENDER_DRIVER` needed any more):
 
 ```bash
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software ./build/macos/neo_wolf
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/macos/neo_wolf --frames 120
 ```
+
+Frame pacing: the game uses vsync when the renderer supports it; otherwise (software renderer,
+dummy driver, or `SDL_RENDER_VSYNC=0`) it caps the frame rate at the display's refresh rate
+(60 FPS if unknown). 120 frames therefore take about 2 seconds headless.
 
 ## Build options
 
@@ -166,5 +192,5 @@ local copy. An existing build directory keeps its downloaded copy in
 | `SHA256 hash of ... SDL2-2.32.10.tar.gz does not match expected value` / `Hash mismatch, removing...` | The downloaded file is not the pinned release (for example a proxy error page). CMake deletes the bad file; fix the network problem and configure again. |
 | Strange errors after changing options or upgrading CMake | Reconfigure from scratch: `cmake --preset macos --fresh`, or `rm -rf build/macos`. |
 | `devkit_tests` / `content_validation` are missing from `ctest` | CMake did not find Python 3. Check `python3 --version`, then reconfigure with `--fresh`. |
-| The game starts with no textures, map or sounds | Run it from the repository root (see [Running the game](#running-the-game)). |
-| `SDL_CreateRenderer failed: Couldn't find matching render driver` | No GPU renderer is available (headless or dummy driver). Set `SDL_RENDER_DRIVER=software`. |
+| `Game content not found` (error dialog or log) | The `game/` folder is not next to/above the executable. Pass `--data <folder that contains game/>` (see [Running the game](#running-the-game)). |
+| Other problems when running the game | See [TROUBLESHOOTING.md](TROUBLESHOOTING.md). |

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/core/Paths.h"
 #include "engine/world/Map.h"
 
 namespace {
@@ -30,7 +31,7 @@ TileType DecodeTile(char c, bool& valid) {
 } // namespace
 
 bool LoadMapFromFile(const std::string& filePath, Map& outMap, std::vector<std::string>& errors) {
-    std::ifstream file(filePath);
+    std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         errors.push_back("Unable to open map file: " + filePath);
         return false;
@@ -39,6 +40,9 @@ bool LoadMapFromFile(const std::string& filePath, Map& outMap, std::vector<std::
     std::vector<std::string> rows;
     std::string line;
     while (std::getline(file, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();  // CRLF file
+        }
         if (line.empty() || line[0] == ';') {
             continue;
         }

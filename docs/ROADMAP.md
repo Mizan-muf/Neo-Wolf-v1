@@ -40,23 +40,24 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - **Done when:** a fresh clone passes `cmake --preset macos && cmake --build --preset macos && ctest --preset macos`
 
 ## Phase 2 — CI (macOS + Windows)
-> Note: the GitHub Actions workflow is written (`.github/workflows/ci.yml`: macOS `ci-macos`, Windows `ci-windows-msvc`, Linux `ci-linux`; configure, build, ctest, 5-second headless smoke run via `tools/ci/smoke_run.py`) and the CI section of `TESTING.md` describes it, but it has **not run yet**. The items below stay unticked until the jobs pass.
-- [ ] GitHub Actions on `macos-14` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run
+> Note: the GitHub Actions workflow is written (`.github/workflows/ci.yml`: macOS `ci-macos` on `macos-latest`, Windows `ci-windows-msvc`, Linux `ci-linux`; configure, build, ctest, headless smoke run via `tools/ci/smoke_run.py`, since Phase 3 `--frames 300` with exit code 0 required) and the CI section of `TESTING.md` describes it. First run (commit `1b10a57`): Linux and `windows-scripts` passed, the Windows preset job failed on MSVC C4459 (fixed in Phase 3), the macOS job did not start (`macos-14` image retired; now `macos-latest`). The items below stay unticked until the jobs pass.
+- [ ] GitHub Actions on `macos-latest` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run
 - [ ] Later phases add the bot over all levels and package artifacts
 - [ ] Docs: CI section in `TESTING.md`, badge in README
 - **Done when:** both jobs pass (requires a push)
 
 ## Phase 3 — Runtime robustness
-- [ ] One content-root resolver: `--data` / `NEOWOLF_DATA_DIR`, the executable's directory, `.app/Contents/Resources`, then the working directory
-- [ ] Fatal error message box when content is missing
-- [ ] Log file in the per-user preferences folder (`SDL_GetPrefPath`)
-- [ ] Audio initialised separately from video; the game runs without an audio device
-- [ ] Vsync or frame cap, single present per frame, delta-time clamp
-- [ ] HiDPI, fullscreen toggle, pause on focus loss, Quit menu item, Cmd+Q
-- [ ] CLI: `--level N`, `--data`, `--version`, `--frames N`
-- [ ] CRLF-tolerant loaders
-- [ ] Docs: `TROUBLESHOOTING.md`
-- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI
+> Status: implemented; ticked items are verified on macOS. Windows behaviour depends on CI (the `game_smoke_*` CTest tests and the `--frames 300` smoke run) and partly on a real Windows machine (KNOWN_ISSUES B14).
+- [x] One content-root resolver: `--data` / `NEOWOLF_DATA_DIR`, the executable's directory, `.app/Contents/Resources`, then the working directory (`engine/core/Paths.{h,cpp}`; explicit `--data`/`NEOWOLF_DATA_DIR` are exclusive; verified from `/`, from a copied folder whose path contains a space, and with temp-directory unit tests)
+- [x] Fatal error message box when content is missing (also when the first level fails to load; exit code 1; dialogs suppressed with `--frames`; with the dummy video driver SDL has no message box and the failure is only logged)
+- [x] Log file in the per-user preferences folder (`SDL_GetPrefPath`; fresh per launch, previous run kept as `neowolf.prev.log`)
+- [x] Audio initialised separately from video; the game runs without an audio device (verified with `SDL_AUDIODRIVER=nonexistent`)
+- [x] Vsync or frame cap, single present per frame, delta-time clamp (software renderer fallback fixes B11)
+- [ ] HiDPI, fullscreen toggle, pause on focus loss, Quit menu item, Cmd+Q (done and verified on macOS: HiDPI (2048×1536 output for the 1024×768 window), resizable letterboxed window, `F11`/`Alt+Enter`/`Cmd+Ctrl+F` fullscreen, `--fullscreen`, pause on focus loss, `Esc` quits from the menu, clean exit on `SDL_QUIT` (window close / `Cmd+Q`); the toggles, pause and quit were driven with synthetic SDL events, not by hand. Open: the Quit menu item (menu rework, Phase 5))
+- [x] CLI: `--level N`, `--data`, `--version`, `--frames N` (plus `--help`, `--windowed`, `--fullscreen`; `engine/core/CommandLine.{h,cpp}`; exit code 2 for bad options)
+- [x] CRLF-tolerant loaders
+- [x] Docs: `TROUBLESHOOTING.md`
+- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI (any directory and headless macOS: done; Finder needs the `.app` from Phase 9; Windows CI: pending)
 
 ## Phase 4 — Data pipeline defects
 - [ ] JSON entity placements loaded properly (vendored MIT JSON library); JSON is canonical, CSV is an optional export

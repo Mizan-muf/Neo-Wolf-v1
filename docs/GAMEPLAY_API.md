@@ -23,8 +23,28 @@ struct Player {
 
 ### Controls & Input Actions (`engine/core/InputState.h`)
 
-| Action | Primary Key | Alternate Key | Behavior |
-| :--- | :--- | :--- | :--- |
+| Action | Keys | Behavior |
+| :--- | :--- | :--- |
+| `MoveForward` | `W`, Up Arrow | Moves player forward along camera direction vector |
+| `MoveBackward` | `S`, Down Arrow | Moves player backward |
+| `StrafeLeft` | `A` | Strafes player perpendicular to camera direction |
+| `StrafeRight` | `D` | Strafes player right |
+| `TurnLeft` | Left Arrow, `Q` | Rotates camera yaw left |
+| `TurnRight` | Right Arrow | Rotates camera yaw right |
+| `Interact` | `E` | Opens/closes a door within reach; starts the game from the menu |
+| `Attack` | `Space`, `F`, left/right `Ctrl` | Fires the weapon; starts the game from the menu |
+| `Pause` | `Esc`, `P` | Pauses / resumes; from game-over or victory returns to the menu |
+| `Back` | `Esc` | Quits from the main menu |
+| `Restart` | `R` | Restarts the level |
+| `Confirm` | `Enter`, keypad `Enter` | Starts the game; resumes from pause; returns to the menu from game-over/victory |
+| `ToggleDebugView` | `Tab` | Toggles the overhead minimap and debug overlay |
+
+Window-level keys are handled by `PlatformSDL` and are not input actions: `F11`, `Alt+Enter`
+(and `Cmd+Ctrl+F` on macOS) toggle desktop fullscreen. Losing window focus during gameplay
+pauses the game. The bindings are defined in `engine/platform/PlatformSDL.cpp`
+(`MapScancodeToActions`).
+
+--- | :--- | :--- | :--- |
 | `MoveForward` | `W` | `Up Arrow` | Moves player forward along camera direction vector |
 | `MoveBackward` | `S` | `Down Arrow` | Moves player backward |
 | `StrafeLeft` | `A` | — | Strafes player perpendicular to camera direction |

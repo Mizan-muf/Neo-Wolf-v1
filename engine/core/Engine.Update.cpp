@@ -22,8 +22,13 @@ void Engine::Update(double deltaSeconds) {
         input_.BeginFrame();
         platform_->PumpEvents(input_);
         if (input_.quitRequested) {
+            LogInfo("Quit requested (window closed or quit shortcut).");
             running_ = false;
             return;
+        }
+        if (input_.focusLost && state_ == GameState::Gameplay) {
+            LogInfo("Window lost focus: pausing.");
+            SetState(GameState::Paused);
         }
     }
 
@@ -49,6 +54,12 @@ void Engine::Update(double deltaSeconds) {
 
     // State machine updates
     if (state_ == GameState::Menu) {
+        // Escape on the main menu quits (a Quit menu item comes with the menu rework, Phase 5).
+        if (input_.WasPressed(InputAction::Back)) {
+            LogInfo("Quit from the main menu.");
+            running_ = false;
+            return;
+        }
         if (input_.WasPressed(InputAction::Confirm) ||
             input_.WasPressed(InputAction::Interact) ||
             input_.WasPressed(InputAction::Attack)) {

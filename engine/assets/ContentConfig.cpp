@@ -9,6 +9,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "engine/core/Paths.h"
+
 namespace {
 std::string Trim(const std::string& value) {
     std::size_t start = 0;
@@ -28,7 +30,7 @@ bool LoadKeyValueConfig(
     const std::string& filePath,
     std::unordered_map<std::string, std::string>& outValues,
     std::vector<std::string>& errors) {
-    std::ifstream file(filePath);
+    std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         errors.push_back("Unable to open config: " + filePath);
         return false;
@@ -39,6 +41,9 @@ bool LoadKeyValueConfig(
     int lineNumber = 0;
     while (std::getline(file, line)) {
         ++lineNumber;
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();  // CRLF file
+        }
         const std::string trimmed = Trim(line);
         if (trimmed.empty() || trimmed[0] == '#') {
             continue;
@@ -139,7 +144,7 @@ bool LoadGameplayDefinitions(
     const std::string& filePath,
     GameplayDefinitions& outDefinitions,
     std::vector<std::string>& errors) {
-    std::ifstream file(filePath);
+    std::ifstream file(PathFromUtf8(filePath));
     if (!file.is_open()) {
         errors.push_back("Unable to open gameplay definitions: " + filePath);
         return false;

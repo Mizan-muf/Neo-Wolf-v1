@@ -15,8 +15,10 @@ this. Any failing test makes them exit non-zero.
 
 | CTest name | Label | What it runs | What it covers |
 |---|---|---|---|
-| `native.<id>` (23 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging, level reset, a scripted vertical-slice run, map reachability, and the C interop API. Source: `tests/LogicTests.cpp`. |
+| `native.<id>` (27 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, and CRLF content files. Source: `tests/LogicTests.cpp`. |
 | `native_test_registry` | `native` | `cmake -P cmake/CheckTestRegistry.cmake` | Checks that every test case compiled into `neo_wolf_tests` has a CTest entry and the reverse. Catches a test that was added but never registered. |
+| `game_smoke_frames` | `game` | `cmake -P cmake/RunGame.cmake` → `neo_wolf --frames 120` | Starts the real game headless (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`, set with the `ENVIRONMENT_MODIFICATION` test property, which also **removes** `SDL_RENDER_DRIVER` and `NEOWOLF_DATA_DIR`). Runs from the build directory, so content must be found relative to the executable. Passes if the game exits with 0 and logs its content root, its renderer and 120 frames. Proves the software-renderer fallback (B11) and the content-root search. Takes about 2 s (60 FPS cap). |
+| `game_smoke_missing_data` | `game` | `neo_wolf --data <build>/test-empty-data --frames 10` | Passes if the game exits with code 1 and reports `Game content not found` (fail-fast startup). |
 | `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 19 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions, validator, packager. |
 | `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets, `.cfg` definition files (`wall_textures.cfg`, `sprites.cfg`, `audio.cfg`), entity placement files and `entities.json` in `game/`. Warnings count as failures. It does **not** check `gameplay.json`, `sprites.json` or `textures.json` yet (Roadmap Phases 4 and 7). |
 
@@ -25,7 +27,8 @@ The two `devkit` tests are only registered when CMake finds a Python 3 interpret
 not, configure prints a warning and the two tests are **not registered** at all: they do not
 appear in `ctest -N` and are not reported as skipped, so CTest runs only the native tests.
 
-Every test runs with the repository root as its working directory. The native tests also find
+The native and DevKit tests run with the repository root as their working directory; the
+`game_smoke_*` tests run in the build directory. The native tests also find
 repository files through the `NW_SOURCE_DIR` compile definition (the absolute source path), so
 `neo_wolf_tests` works from any directory. If that path no longer exists, they fall back to the
 current directory and then its parent.
@@ -39,6 +42,7 @@ ctest --preset macos -R native.map_queries      # one test
 ctest --preset macos -R 'native\.(map|raycast)' # several
 ctest --preset macos -L native                  # all C++ tests
 ctest --preset macos -L devkit                  # DevKit tests + content validation
+ctest --preset macos -L game                    # the two headless game runs
 ctest --preset macos --rerun-failed             # only the tests that failed last time
 ctest --preset macos -N                         # list tests without running them
 ```
@@ -120,15 +124,18 @@ cmake --preset ci-macos && cmake --build --preset ci-macos && ctest --preset ci-
 
 ## Continuous integration
 
-**Status: the workflow is written but has not run yet** (it first runs when the branch is
-pushed; Roadmap Phase 2 is done when all jobs pass).
+**Status: not all jobs have passed yet** (Roadmap Phase 2 is done when they do). On the first
+run (commit `1b10a57`) the Linux job and the `windows-scripts` job passed; the Windows preset job
+failed on an MSVC `/WX` warning in `tests/LogicTests.cpp` (C4459, fixed since); the macOS job
+never started because the `macos-14` runner image is retired (the workflow now uses
+`macos-latest`).
 
 `.github/workflows/ci.yml` runs on pushes to `main` and `completion/**`, on pull requests and on
 demand. It has one job per OS:
 
 | Job | Runner | Preset | Smoke-run executable |
 |---|---|---|---|
-| macOS (universal, clang) | `macos-14` | `ci-macos` | `build/ci-macos/neo_wolf` |
+| macOS (universal, clang) | `macos-latest` | `ci-macos` | `build/ci-macos/neo_wolf` |
 | Windows (MSVC x64) | `windows-latest` | `ci-windows-msvc` | `build/ci-windows-msvc/Release/neo_wolf.exe` |
 | Linux (gcc) | `ubuntu-latest` | `ci-linux` | `build/ci-linux/neo_wolf` |
 
@@ -138,13 +145,18 @@ Each job runs:
 cmake --preset <preset>
 cmake --build --preset <preset>
 ctest --preset <preset>                              # every test layer above, warnings as errors
-python tools/ci/smoke_run.py <executable> --seconds 5  # headless smoke run
+python tools/ci/smoke_run.py <executable> --frames 300  # headless smoke run, must exit 0
 ```
 
-`tools/ci/smoke_run.py` starts the game from the repository root with SDL's dummy video and
-audio drivers and the software renderer (`SDL_RENDER_DRIVER=software`, see known issue B11),
-and passes if the game is still running after the given number of seconds. It then stops the
-game. Run it locally the same way, e.g. `python3 tools/ci/smoke_run.py build/macos/neo_wolf --seconds 3`.
+`tools/ci/smoke_run.py` starts the game from a fresh temporary directory (so content must be
+found relative to the executable) with SDL's dummy video and audio drivers. It removes
+`SDL_RENDER_DRIVER` from the environment: the game has to fall back to the software renderer by
+itself (known issue B11, fixed). With `--frames N` the game renders N frames and exits; the run
+passes if the exit code is 0 within `--timeout` seconds (default 60). 300 frames take about 5
+seconds at the 60 FPS cap. Without `--frames`, the older mode applies: the game must still be
+running after `--seconds` (default 5) and is then stopped. Run it locally the same way, e.g.
+`python3 tools/ci/smoke_run.py build/macos/neo_wolf --frames 300`. Unrecognised options are
+passed to the game; `--cwd DIR` overrides the working directory.
 
 A separate job, `windows-scripts`, runs the user-facing Windows entry points that the preset
 job bypasses: `build.cmd` from Command Prompt (Release) and `.\build.ps1 -Config Debug` from

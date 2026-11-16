@@ -14,5 +14,11 @@ void LogInfo(std::string_view message);
 void LogWarning(std::string_view message);
 void LogError(std::string_view message);
 
+// Appends every later message to `path` (UTF-8). An empty path turns file output off.
 void SetLogFilePath(std::string_view path);
 std::string GetLogFilePath();
+
+// Starts a fresh log file for this run: an existing `path` is renamed to `previousPath`
+// (replacing it), then `path` is created empty and becomes the log file. Returns false,
+// and leaves file output off, if `path` cannot be created.
+bool StartFreshLogFile(std::string_view path, std::string_view previousPath);

@@ -137,12 +137,14 @@ add_library(neowolf_engine STATIC
     engine/assets/TextureLoader.cpp
     engine/audio/AudioSystem.cpp
     engine/core/App.cpp
+    engine/core/CommandLine.cpp
     engine/core/Engine.Core.cpp
     engine/core/Engine.Init.cpp
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
     engine/core/Engine.Update.cpp
     engine/core/Log.cpp
+    engine/core/Paths.cpp
     engine/interop/CommandBridge.cpp
     engine/interop/EngineInterop.cpp
     engine/particles/Particle.cpp
@@ -164,11 +166,23 @@ target_compile_features(neowolf_engine PUBLIC cxx_std_17)
 target_link_libraries(neowolf_engine
     PUBLIC  neowolf_sdl2
     PRIVATE neowolf_warnings)
+# `neo_wolf --version` prints this (engine/core/CommandLine.cpp).
+target_compile_definitions(neowolf_engine PRIVATE NEOWOLF_VERSION="${PROJECT_VERSION}")
 
 # --- Game executable -----------------------------------------------------------------------
-# Console subsystem on Windows for now; Phase 3 switches to the WIN32 subsystem.
 add_executable(neo_wolf src/main.cpp)
 target_link_libraries(neo_wolf PRIVATE neowolf_engine neowolf_warnings)
+if(WIN32)
+    # Release-type builds are GUI-subsystem apps (no console window); Debug keeps the console
+    # for log output. main() stays a plain main(): MSVC needs the console CRT entry point for
+    # that (MinGW's -mwindows runtime calls main() by itself). src/main.cpp attaches to the
+    # parent console for --help/--version, and uses CommandLineToArgvW (shell32) for UTF-8 argv.
+    set_target_properties(neo_wolf PROPERTIES WIN32_EXECUTABLE "$<NOT:$<CONFIG:Debug>>")
+    if(MSVC)
+        target_link_options(neo_wolf PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/ENTRY:mainCRTStartup>")
+    endif()
+    target_link_libraries(neo_wolf PRIVATE shell32)
+endif()
 
 # --- Tests -------------------------------------------------------------------------------
 if(NEOWOLF_BUILD_TESTS)
@@ -176,7 +190,9 @@ if(NEOWOLF_BUILD_TESTS)
 
     add_executable(neo_wolf_tests tests/LogicTests.cpp)
     target_link_libraries(neo_wolf_tests PRIVATE neowolf_engine neowolf_warnings)
-    target_compile_definitions(neo_wolf_tests PRIVATE NW_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+    target_compile_definitions(neo_wolf_tests PRIVATE
+        NW_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        NW_EXPECTED_VERSION="${PROJECT_VERSION}")
 
     # One CTest entry per native test case. Keep this list in sync with the table at the
     # bottom of tests/LogicTests.cpp; `native_test_registry` fails if the two drift apart.
@@ -204,6 +220,10 @@ if(NEOWOLF_BUILD_TESTS)
         map_perimeter_reachability
         asset_inventory_resilience
         engine_interop_c_api
+        content_root_resolution
+        command_line_parsing
+        crlf_content_loading
+        log_file_rotation
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -219,6 +239,38 @@ if(NEOWOLF_BUILD_TESTS)
                      -P ${PROJECT_SOURCE_DIR}/cmake/CheckTestRegistry.cmake
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     set_tests_properties(native_test_registry PROPERTIES LABELS native)
+
+    # Headless runs of the game itself, with SDL's dummy video and audio drivers. They run
+    # from the build directory, so content must be found next to/above the executable, and
+    # SDL_RENDER_DRIVER is removed from the environment: the renderer must fall back to
+    # software on its own (known issue B11).
+    set(NEOWOLF_HEADLESS_ENV
+        "SDL_VIDEODRIVER=set:dummy"
+        "SDL_AUDIODRIVER=set:dummy"
+        "SDL_RENDER_DRIVER=unset:"
+        "NEOWOLF_DATA_DIR=unset:")
+    add_test(NAME game_smoke_frames
+             COMMAND ${CMAKE_COMMAND}
+                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
+                     "-DGAME_ARGS=--frames;120"
+                     -DEXPECT_EXIT=0
+                     "-DEXPECT_REGEX=Content root: .*Renderer: .*Ran 120 frame"
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
+    file(MAKE_DIRECTORY "${NEOWOLF_EMPTY_DATA_DIR}")
+    add_test(NAME game_smoke_missing_data
+             COMMAND ${CMAKE_COMMAND}
+                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
+                     "-DGAME_ARGS=--data;${NEOWOLF_EMPTY_DATA_DIR};--frames;10"
+                     -DEXPECT_EXIT=1
+                     "-DEXPECT_REGEX=Game content not found"
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    set_tests_properties(game_smoke_frames game_smoke_missing_data PROPERTIES
+        LABELS game
+        TIMEOUT 120
+        ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)

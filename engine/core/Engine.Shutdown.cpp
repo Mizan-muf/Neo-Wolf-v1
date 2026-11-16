@@ -10,6 +10,9 @@ void Engine::Shutdown() {
 
     LogInfo("Engine shutdown started.");
 
+    // Audio first: its SDL subsystem must be closed before the platform calls SDL_Quit.
+    audio_.Shutdown();
+
     if (platform_ != nullptr) {
         platform_->Shutdown();
         delete platform_;
@@ -22,7 +25,7 @@ void Engine::Shutdown() {
     map_ = {};
     player_ = {};
     assets_.Clear();
-    audio_.Shutdown();
+    contentRoot_.clear();
     wallTexture_ = nullptr;
     wallAltATexture_ = nullptr;
     wallAltBTexture_ = nullptr;

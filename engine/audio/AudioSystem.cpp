@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <string>
 #include <utility>
 
 #include "engine/core/Log.h"
@@ -18,6 +19,14 @@ bool AudioSystem::Init(int sampleRate, int channels, int samples) {
         return true;
     }
 
+    // Audio is its own SDL subsystem, so a machine without a usable audio device still runs
+    // the game (silently). Engine::Init logs the warning when this returns false.
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        LogWarning(std::string("SDL audio initialisation failed: ") + SDL_GetError());
+        return false;
+    }
+    subsystemInitialized_ = true;
+
     SDL_AudioSpec desired{};
     desired.freq = sampleRate;
     desired.format = AUDIO_S16LSB;
@@ -28,7 +37,9 @@ bool AudioSystem::Init(int sampleRate, int channels, int samples) {
     SDL_AudioSpec obtained{};
     deviceId_ = SDL_OpenAudioDevice(nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
     if (deviceId_ == 0) {
-        LogError(std::string("SDL_OpenAudioDevice failed: ") + SDL_GetError());
+        LogWarning(std::string("SDL_OpenAudioDevice failed: ") + SDL_GetError());
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        subsystemInitialized_ = false;
         return false;
     }
 
@@ -37,6 +48,9 @@ bool AudioSystem::Init(int sampleRate, int channels, int samples) {
     deviceChannels_ = obtained.channels;
     SDL_PauseAudioDevice(deviceId_, 0);
     initialized_ = true;
+    const char* driver = SDL_GetCurrentAudioDriver();
+    LogInfo(std::string("Audio: driver ") + (driver != nullptr ? driver : "?") + ", " +
+            std::to_string(deviceFrequency_) + " Hz, " + std::to_string(deviceChannels_) + " channel(s)");
     return true;
 }
 
@@ -47,6 +61,11 @@ void AudioSystem::Shutdown() {
         SDL_ClearQueuedAudio(deviceId_);
         SDL_CloseAudioDevice(deviceId_);
         deviceId_ = 0;
+    }
+
+    if (subsystemInitialized_) {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        subsystemInitialized_ = false;
     }
 
     deviceFrequency_ = 0;

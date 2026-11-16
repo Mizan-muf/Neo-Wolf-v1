@@ -2,61 +2,90 @@
 
 #include <SDL.h>
 
-#include <iostream>
+#include <algorithm>
+#include <cstddef>
+#include <string>
 
 #include "engine/core/InputState.h"
+#include "engine/core/Log.h"
 #include "engine/render/Framebuffer.h"
 
 namespace {
-bool TryMapScancodeToAction(SDL_Scancode scancode, InputAction& action) {
+// Fills `actions` with the actions bound to `scancode` and returns how many there are.
+// This table is the source of truth for the controls (README.md "Controls").
+std::size_t MapScancodeToActions(SDL_Scancode scancode, InputAction (&actions)[2]) {
     switch (scancode) {
     case SDL_SCANCODE_W:
     case SDL_SCANCODE_UP:
-        action = InputAction::MoveForward;
-        return true;
+        actions[0] = InputAction::MoveForward;
+        return 1;
     case SDL_SCANCODE_S:
     case SDL_SCANCODE_DOWN:
-        action = InputAction::MoveBackward;
-        return true;
+        actions[0] = InputAction::MoveBackward;
+        return 1;
     case SDL_SCANCODE_A:
-        action = InputAction::StrafeLeft;
-        return true;
+        actions[0] = InputAction::StrafeLeft;
+        return 1;
     case SDL_SCANCODE_D:
-        action = InputAction::StrafeRight;
-        return true;
+        actions[0] = InputAction::StrafeRight;
+        return 1;
     case SDL_SCANCODE_LEFT:
     case SDL_SCANCODE_Q:
-        action = InputAction::TurnLeft;
-        return true;
+        actions[0] = InputAction::TurnLeft;
+        return 1;
     case SDL_SCANCODE_RIGHT:
-        action = InputAction::TurnRight;
-        return true;
+        actions[0] = InputAction::TurnRight;
+        return 1;
     case SDL_SCANCODE_E:
-        action = InputAction::Interact;
-        return true;
+        actions[0] = InputAction::Interact;
+        return 1;
     case SDL_SCANCODE_SPACE:
     case SDL_SCANCODE_LCTRL:
     case SDL_SCANCODE_RCTRL:
     case SDL_SCANCODE_F:
-        action = InputAction::Attack;
-        return true;
+        actions[0] = InputAction::Attack;
+        return 1;
     case SDL_SCANCODE_ESCAPE:
+        actions[0] = InputAction::Pause;
+        actions[1] = InputAction::Back;
+        return 2;
     case SDL_SCANCODE_P:
-        action = InputAction::Pause;
-        return true;
+        actions[0] = InputAction::Pause;
+        return 1;
     case SDL_SCANCODE_R:
-        action = InputAction::Restart;
-        return true;
+        actions[0] = InputAction::Restart;
+        return 1;
     case SDL_SCANCODE_RETURN:
     case SDL_SCANCODE_KP_ENTER:
-        action = InputAction::Confirm;
-        return true;
+        actions[0] = InputAction::Confirm;
+        return 1;
     case SDL_SCANCODE_TAB:
-        action = InputAction::ToggleDebugView;
-        return true;
+        actions[0] = InputAction::ToggleDebugView;
+        return 1;
     default:
-        return false;
+        return 0;
     }
+}
+
+// F11 and Alt+Enter everywhere; Cmd+Ctrl+F (the standard shortcut) on macOS.
+bool IsFullscreenShortcut(const SDL_Keysym& key) {
+    if (key.scancode == SDL_SCANCODE_F11) {
+        return true;
+    }
+    if ((key.scancode == SDL_SCANCODE_RETURN || key.scancode == SDL_SCANCODE_KP_ENTER) &&
+        (key.mod & KMOD_ALT) != 0) {
+        return true;
+    }
+#if defined(__APPLE__)
+    if (key.scancode == SDL_SCANCODE_F && (key.mod & KMOD_GUI) != 0 && (key.mod & KMOD_CTRL) != 0) {
+        return true;
+    }
+#endif
+    return false;
+}
+
+std::string SdlError() {
+    return SDL_GetError();
 }
 } // namespace
 
@@ -64,61 +93,156 @@ PlatformSDL::~PlatformSDL() {
     Shutdown();
 }
 
-bool PlatformSDL::Init(const char* title, int width, int height) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << '\n';
+bool PlatformSDL::Init(const PlatformConfig& config) {
+    logicalWidth_ = config.logicalWidth;
+    logicalHeight_ = config.logicalHeight;
+
+    // Hints must be set before the subsystem / texture they affect is created.
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");  // nearest-neighbour scaling
+    // Windows: be DPI aware and scale window coordinates like macOS points (SDL 2.24+).
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
+
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+        LogError("SDL video initialisation failed: " + SdlError());
         return false;
     }
+    videoInitialized_ = true;
 
+    const char* videoDriver = SDL_GetCurrentVideoDriver();
+    LogInfo(std::string("SDL video driver: ") + (videoDriver != nullptr ? videoDriver : "(none)"));
+
+    // Keep the initial window inside the usable desktop area (small or scaled displays).
+    int width = config.windowWidth;
+    int height = config.windowHeight;
+    SDL_Rect usable{};
+    if (SDL_GetDisplayUsableBounds(0, &usable) == 0 && usable.w > 0 && usable.h > 0) {
+        const double scale = std::min({1.0,
+                                       0.9 * usable.w / static_cast<double>(width),
+                                       0.9 * usable.h / static_cast<double>(height)});
+        width = std::max(config.logicalWidth, static_cast<int>(width * scale));
+        height = std::max(config.logicalHeight, static_cast<int>(height * scale));
+    }
+
+    Uint32 windowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
+    if (config.fullscreen) {
+        windowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
     window_ = SDL_CreateWindow(
-        title,
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        width,
-        height,
-        SDL_WINDOW_SHOWN);
+        config.title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, windowFlags);
     if (window_ == nullptr) {
-        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << '\n';
-        SDL_Quit();
+        LogError("SDL_CreateWindow failed: " + SdlError());
+        Shutdown();
         return false;
     }
+    SDL_SetWindowMinimumSize(window_, config.logicalWidth, config.logicalHeight);
 
-    renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED);
-    if (renderer_ == nullptr) {
-        std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << '\n';
-        SDL_DestroyWindow(window_);
-        window_ = nullptr;
-        SDL_Quit();
+    if (!CreateRenderer()) {
+        Shutdown();
         return false;
     }
-
     return true;
 }
 
-void PlatformSDL::PumpEvents(InputState& input) const {
+bool PlatformSDL::CreateRenderer() {
+    renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (renderer_ == nullptr) {
+        // No GPU renderer: dummy/offscreen video driver, VMs, remote sessions, missing drivers.
+        LogWarning("No accelerated renderer (" + SdlError() + "); falling back to the software renderer.");
+        renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_SOFTWARE);
+    }
+    if (renderer_ == nullptr) {
+        LogError("SDL_CreateRenderer failed (software fallback too): " + SdlError());
+        return false;
+    }
+
+    SDL_RendererInfo info{};
+    if (SDL_GetRendererInfo(renderer_, &info) == 0) {
+        // The software driver always advertises PRESENTVSYNC (a capability, not the state),
+        // and we created it without vsync, so only trust the flag for accelerated renderers.
+        const bool accelerated = (info.flags & SDL_RENDERER_ACCELERATED) != 0;
+        vsync_ = accelerated && (info.flags & SDL_RENDERER_PRESENTVSYNC) != 0;
+        int outputWidth = 0;
+        int outputHeight = 0;
+        SDL_GetRendererOutputSize(renderer_, &outputWidth, &outputHeight);
+        LogInfo(std::string("Renderer: ") + (info.name != nullptr ? info.name : "?") +
+                (accelerated ? " (accelerated)" : " (not accelerated)") +
+                ", vsync " + (vsync_ ? "on" : "off") + ", output " + std::to_string(outputWidth) + "x" +
+                std::to_string(outputHeight) + " pixels");
+    }
+
+    // Letterboxed, aspect-correct scaling of the 320x240 framebuffer at any window size.
+    if (SDL_RenderSetLogicalSize(renderer_, logicalWidth_, logicalHeight_) != 0) {
+        LogWarning("SDL_RenderSetLogicalSize failed: " + SdlError());
+    }
+    return true;
+}
+
+void PlatformSDL::PumpEvents(InputState& input) {
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
-        if (event.type == SDL_QUIT) {
+        switch (event.type) {
+        case SDL_QUIT:  // window close button, Cmd+Q, Alt+F4, system shutdown
             input.quitRequested = true;
-            continue;
-        }
-
-        if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
-            InputAction action = InputAction::MoveForward;
-            if (TryMapScancodeToAction(event.key.keysym.scancode, action)) {
-                input.SetActionState(action, event.type == SDL_KEYDOWN);
+            break;
+        case SDL_WINDOWEVENT:
+            if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                input.focusLost = true;
             }
+            break;
+        case SDL_KEYDOWN:
+        case SDL_KEYUP: {
+            const bool down = event.type == SDL_KEYDOWN;
+            if (down && IsFullscreenShortcut(event.key.keysym)) {
+                if (event.key.repeat == 0) {
+                    ToggleFullscreen();
+                }
+                break;
+            }
+            InputAction actions[2] = {InputAction::MoveForward, InputAction::MoveForward};
+            const std::size_t count = MapScancodeToActions(event.key.keysym.scancode, actions);
+            for (std::size_t i = 0; i < count; ++i) {
+                input.SetActionState(actions[i], down);
+            }
+            break;
+        }
+        default:
+            break;
         }
     }
 }
 
-void PlatformSDL::Clear(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a) const {
-    SDL_SetRenderDrawColor(renderer_, r, g, b, a);
-    SDL_RenderClear(renderer_);
+void PlatformSDL::ToggleFullscreen() {
+    if (window_ == nullptr) {
+        return;
+    }
+    const bool isFullscreen = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+    if (SDL_SetWindowFullscreen(window_, isFullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
+        LogWarning("Could not change fullscreen mode: " + SdlError());
+        return;
+    }
+    LogInfo(isFullscreen ? "Windowed mode." : "Fullscreen (desktop) mode.");
 }
 
-void PlatformSDL::Present() const {
-    SDL_RenderPresent(renderer_);
+int PlatformSDL::DisplayRefreshRate() const {
+    if (window_ == nullptr) {
+        return 0;
+    }
+    const int displayIndex = SDL_GetWindowDisplayIndex(window_);
+    SDL_DisplayMode mode{};
+    if (displayIndex < 0 || SDL_GetDesktopDisplayMode(displayIndex, &mode) != 0) {
+        return 0;
+    }
+    return mode.refresh_rate;
+}
+
+bool PlatformSDL::IsMinimized() const {
+    return window_ != nullptr && (SDL_GetWindowFlags(window_) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) != 0;
+}
+
+void PlatformSDL::ShowErrorMessageBox(const std::string& title, const std::string& message) {
+    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), message.c_str(), nullptr) != 0) {
+        LogInfo("No error dialog shown (" + SdlError() + ").");
+    }
 }
 
 void PlatformSDL::PresentFramebuffer(const Framebuffer& framebuffer) {
@@ -134,18 +258,16 @@ void PlatformSDL::PresentFramebuffer(const Framebuffer& framebuffer) {
         return;
     }
 
-    if (SDL_UpdateTexture(
-            framebufferTexture_,
-            nullptr,
-            framebuffer.Data(),
-            framebuffer.PitchBytes()) != 0) {
-        std::cerr << "SDL_UpdateTexture failed: " << SDL_GetError() << '\n';
+    if (SDL_UpdateTexture(framebufferTexture_, nullptr, framebuffer.Data(), framebuffer.PitchBytes()) != 0) {
+        LogError("SDL_UpdateTexture failed: " + SdlError());
         return;
     }
 
+    // Black letterbox bars outside the logical viewport.
+    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
     SDL_RenderClear(renderer_);
     if (SDL_RenderCopy(renderer_, framebufferTexture_, nullptr, nullptr) != 0) {
-        std::cerr << "SDL_RenderCopy failed: " << SDL_GetError() << '\n';
+        LogError("SDL_RenderCopy failed: " + SdlError());
         return;
     }
 
@@ -157,9 +279,7 @@ bool PlatformSDL::EnsureFramebufferTexture(int width, int height) {
         return false;
     }
 
-    if (framebufferTexture_ != nullptr &&
-        framebufferTextureWidth_ == width &&
-        framebufferTextureHeight_ == height) {
+    if (framebufferTexture_ != nullptr && framebufferTextureWidth_ == width && framebufferTextureHeight_ == height) {
         return true;
     }
 
@@ -168,14 +288,10 @@ bool PlatformSDL::EnsureFramebufferTexture(int width, int height) {
         framebufferTexture_ = nullptr;
     }
 
-    framebufferTexture_ = SDL_CreateTexture(
-        renderer_,
-        SDL_PIXELFORMAT_ARGB8888,
-        SDL_TEXTUREACCESS_STREAMING,
-        width,
-        height);
+    framebufferTexture_ =
+        SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
     if (framebufferTexture_ == nullptr) {
-        std::cerr << "SDL_CreateTexture failed: " << SDL_GetError() << '\n';
+        LogError("SDL_CreateTexture failed: " + SdlError());
         framebufferTextureWidth_ = 0;
         framebufferTextureHeight_ = 0;
         return false;
@@ -204,8 +320,13 @@ void PlatformSDL::Shutdown() {
         window_ = nullptr;
     }
 
-    if (SDL_WasInit(0) != 0) {
-        SDL_Quit();
+    if (videoInitialized_) {
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        videoInitialized_ = false;
+        // The audio subsystem is shut down first (Engine::Shutdown), so this is the last user.
+        if (SDL_WasInit(SDL_INIT_EVERYTHING) == 0) {
+            SDL_Quit();
+        }
     }
+    vsync_ = false;
 }
-

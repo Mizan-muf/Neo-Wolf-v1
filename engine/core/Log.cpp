@@ -2,11 +2,15 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <system_error>
+
+#include "engine/core/Paths.h"
 
 namespace {
 std::string g_logFilePath{};
@@ -29,6 +33,25 @@ const char* LevelToText(LogLevel level) {
 void SetLogFilePath(std::string_view path) {
     std::lock_guard<std::mutex> lock(g_logMutex);
     g_logFilePath = std::string(path);
+}
+
+bool StartFreshLogFile(std::string_view path, std::string_view previousPath) {
+    const std::filesystem::path logPath = PathFromUtf8(path);
+    std::error_code ec;
+    if (!previousPath.empty() && std::filesystem::exists(logPath, ec)) {
+        const std::filesystem::path prevPath = PathFromUtf8(previousPath);
+        std::filesystem::remove(prevPath, ec);  // rename() does not replace on every OS
+        std::filesystem::rename(logPath, prevPath, ec);
+    }
+
+    std::lock_guard<std::mutex> lock(g_logMutex);
+    std::ofstream file(logPath, std::ios::out | std::ios::trunc);
+    if (!file.is_open()) {
+        g_logFilePath.clear();
+        return false;
+    }
+    g_logFilePath = std::string(path);
+    return true;
 }
 
 std::string GetLogFilePath() {
@@ -55,7 +78,7 @@ void LogMessage(LogLevel level, std::string_view message) {
            << message << '\n';
 
     if (!g_logFilePath.empty()) {
-        std::ofstream file(g_logFilePath, std::ios::out | std::ios::app);
+        std::ofstream file(PathFromUtf8(g_logFilePath), std::ios::out | std::ios::app);
         if (file.is_open()) {
             file << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
                  << "[" << LevelToText(level) << "] "

@@ -99,8 +99,7 @@ void Engine::Render() {
 
     if (state_ == GameState::Menu) {
         UiRenderer::DrawMenuScreen(framebuffer_);
-        platform_->PresentFramebuffer(framebuffer_);
-        platform_->Present();
+        platform_->PresentFramebuffer(framebuffer_);  // the frame's only present
         return;
     }
 
@@ -176,6 +175,5 @@ void Engine::Render() {
             cellY);
     }
 
-    platform_->PresentFramebuffer(framebuffer_);
-    platform_->Present();
+    platform_->PresentFramebuffer(framebuffer_);  // the frame's only present
 }
