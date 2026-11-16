@@ -1,9 +1,11 @@
 # Building Neo-Wolf on Windows
 
-> **Status: not yet built or tested on Windows.** Presets and scripts were written and reviewed
-> on macOS (and the sources cross-compile with MinGW); Windows CI (Phase 2) will verify them.
-> CI runs both the CMake presets and the scripts (`build.cmd`, `build.ps1 -Config Debug`, job
-> `windows-scripts`). Until CI has passed, please report any problem you hit.
+> **Status: built and tested headless in CI; not yet played interactively on a Windows PC.**
+> GitHub Actions (`windows-latest`, run 43820751721 at commit `65c26b0`) builds with the
+> `ci-windows-msvc` preset (`/W4 /WX`), passes every CTest test, runs `neo_wolf.exe --frames 300`
+> headless (exit code 0), and runs `build.cmd` and `build.ps1 -Config Debug` (job
+> `windows-scripts`). Not covered by CI: a run on a desktop (window, input, sound, HiDPI, the
+> error box); see KNOWN_ISSUES B14. Please report any problem you hit.
 
 For macOS see [BUILD_MACOS.md](BUILD_MACOS.md); for the test suites see [TESTING.md](TESTING.md).
 
@@ -21,7 +23,8 @@ SDL2 statically. Internet access is needed the first time a build directory is c
 
 **No runtime installers should be needed for players.** The build is configured to link SDL2 and
 the Microsoft C/C++ runtime statically (`/MT`), so `neo_wolf.exe` should need neither `SDL2.dll`
-nor the Visual C++ Redistributable (to be confirmed by Windows CI).
+nor the Visual C++ Redistributable. CI builds with these settings, but its machines have the
+redistributable installed, so this is not yet confirmed on a clean PC (Roadmap Phases 9 and 11).
 
 ## Quick start
 
@@ -152,8 +155,9 @@ build\windows-msvc\Release\neo_wolf.exe --frames 120
 - C runtime: configured as `CMAKE_MSVC_RUNTIME_LIBRARY = MultiThreaded$<$<CONFIG:Debug>:Debug>`
   (static CRT, `/MT` or `/MTd`) for every target, SDL included (`SDL_FORCE_STATIC_VCRT=ON`,
   `SDL_LIBC=ON`; SDL 2.32.10 enables policy CMP0091 itself, so it honours this setting). A value
-  passed with `-DCMAKE_MSVC_RUNTIME_LIBRARY=...` takes precedence. Not yet confirmed on Windows
-  (Windows CI will check it).
+  passed with `-DCMAKE_MSVC_RUNTIME_LIBRARY=...` takes precedence. CI builds and runs with this
+  setting; the executable's DLL dependencies have not been inspected yet (for example with
+  `dumpbin /dependents`).
 - SDL is added as a `SYSTEM` dependency, so its headers do not trigger our warning flags.
 - `SDL_MAIN_HANDLED` is defined, so `<SDL.h>` never renames `main`, and `SDL2main` is not used.
 

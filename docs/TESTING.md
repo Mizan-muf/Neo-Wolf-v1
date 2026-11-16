@@ -4,8 +4,8 @@ All tests are registered with CTest, so one command runs everything:
 
 ```bash
 ctest --preset macos            # macOS   (after cmake --preset macos && cmake --build --preset macos)
-ctest --preset linux            # Linux   (not yet run on Linux)
-ctest --preset windows-msvc     # Windows (not yet run on Windows; windows-msvc-debug for Debug)
+ctest --preset linux            # Linux   (run in CI as ci-linux)
+ctest --preset windows-msvc     # Windows (run in CI as ci-windows-msvc; windows-msvc-debug for Debug)
 ```
 
 `./build.sh`, `build.cmd`, `build.ps1` and `make check` configure, build and then run exactly
@@ -15,12 +15,13 @@ this. Any failing test makes them exit non-zero.
 
 | CTest name | Label | What it runs | What it covers |
 |---|---|---|---|
-| `native.<id>` (27 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, and CRLF content files. Source: `tests/LogicTests.cpp`. |
+| `native.<id>` (34 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, CRLF content files, and the data pipeline: exact `gameplay.json` values and its validation errors, JSON/CSV entity placements and their error messages, decorations and sprite sync, pickup kind from data, failing level loads, and `edited_data_changes_game` (writes modified `gameplay.json` and entity files into a temporary content root and checks the new values through `Engine::LoadGameplay`, `Engine::LoadLevel` and `Engine::Update`). Source: `tests/LogicTests.cpp`. |
 | `native_test_registry` | `native` | `cmake -P cmake/CheckTestRegistry.cmake` | Checks that every test case compiled into `neo_wolf_tests` has a CTest entry and the reverse. Catches a test that was added but never registered. |
 | `game_smoke_frames` | `game` | `cmake -P cmake/RunGame.cmake` → `neo_wolf --frames 120` | Starts the real game headless (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`, set with the `ENVIRONMENT_MODIFICATION` test property, which also **removes** `SDL_RENDER_DRIVER` and `NEOWOLF_DATA_DIR`). Runs from the build directory, so content must be found relative to the executable. Passes if the game exits with 0 and logs its content root, its renderer and 120 frames. Proves the software-renderer fallback (B11) and the content-root search. Takes about 2 s (60 FPS cap). |
 | `game_smoke_missing_data` | `game` | `neo_wolf --data <build>/test-empty-data --frames 10` | Passes if the game exits with code 1 and reports `Game content not found` (fail-fast startup). |
-| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 19 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions, validator, packager. |
-| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets, `.cfg` definition files (`wall_textures.cfg`, `sprites.cfg`, `audio.cfg`), entity placement files and `entities.json` in `game/`. Warnings count as failures. It does **not** check `gameplay.json`, `sprites.json` or `textures.json` yet (Roadmap Phases 4 and 7). |
+| `game_smoke_invalid_gameplay` | `game` | `neo_wolf --data <build>/test-bad-gameplay --frames 10` | The content root's `gameplay.json` (written at configure time) has a string where an integer belongs. Passes if the game exits with code 1 and names the key (`weapon.damage must be an integer`). |
+| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 24 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions (CSV/JSON export), validator, packager. |
+| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets, `.cfg` definition files (`wall_textures.cfg`, `sprites.cfg`, `audio.cfg`) and the entity placement files (`*.entities.json` and `*.entities.csv`, with the engine's rules) in `game/`. Warnings count as failures. It does **not** check `gameplay.json` yet (the engine does, at startup; DevKit check: Roadmap Phase 7). |
 
 `<Python3_EXECUTABLE>` is the interpreter CMake found at configure time (`find_package(Python3)`).
 The two `devkit` tests are only registered when CMake finds a Python 3 interpreter. If it does
@@ -42,7 +43,7 @@ ctest --preset macos -R native.map_queries      # one test
 ctest --preset macos -R 'native\.(map|raycast)' # several
 ctest --preset macos -L native                  # all C++ tests
 ctest --preset macos -L devkit                  # DevKit tests + content validation
-ctest --preset macos -L game                    # the two headless game runs
+ctest --preset macos -L game                    # the three headless game runs
 ctest --preset macos --rerun-failed             # only the tests that failed last time
 ctest --preset macos -N                         # list tests without running them
 ```
@@ -59,7 +60,7 @@ build/macos/neo_wolf_tests map raycast        # otherwise: every test whose id o
 build/macos/neo_wolf_tests --help
 ```
 
-### Windows notes (not yet run on Windows)
+### Windows notes (verified in CI, not yet on a Windows PC)
 
 - Use the `windows-msvc` preset for Release and `windows-msvc-debug` for Debug, e.g.
   `ctest --preset windows-msvc-debug -L native`. Both use the one `build\windows-msvc\` directory.
@@ -124,11 +125,11 @@ cmake --preset ci-macos && cmake --build --preset ci-macos && ctest --preset ci-
 
 ## Continuous integration
 
-**Status: not all jobs have passed yet** (Roadmap Phase 2 is done when they do). On the first
-run (commit `1b10a57`) the Linux job and the `windows-scripts` job passed; the Windows preset job
-failed on an MSVC `/WX` warning in `tests/LogicTests.cpp` (C4459, fixed since); the macOS job
-never started because the `macos-14` runner image is retired (the workflow now uses
-`macos-latest`).
+**Status: green.** Run 43820751721 on commit `65c26b0` passed all four jobs below (macOS,
+Windows MSVC, Linux, `windows-scripts`). CI runs everything headless with SDL's dummy drivers:
+it proves that the game builds, passes its tests and starts on each OS, not how it plays on a
+desktop. (On the first run, at `1b10a57`, the Windows preset job failed on MSVC C4459 and the
+macOS job did not start on the retired `macos-14` image; both were fixed in Phase 3.)
 
 `.github/workflows/ci.yml` runs on pushes to `main` and `completion/**`, on pull requests and on
 demand. It has one job per OS:

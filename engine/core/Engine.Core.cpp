@@ -1,19 +1,26 @@
 #include "engine/core/Engine.h"
 
 #include <cmath>
-#include <filesystem>
 #include <string>
-#include <system_error>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "engine/assets/GameplayConfig.h"
 #include "engine/core/Log.h"
-#include "engine/core/MathUtils.h"
 #include "engine/core/Paths.h"
 #include "engine/world/EntityPlacementLoader.h"
 #include "engine/world/InteractionRules.h"
+#include "engine/world/LevelBuilder.h"
 #include "engine/world/MapLoader.h"
-#include "engine/world/MovementRules.h"
+
+namespace {
+void LogMessages(const std::vector<std::string>& messages, void (*log)(std::string_view)) {
+    for (const std::string& message : messages) {
+        log("  " + message);
+    }
+}
+} // namespace
 
 Engine::~Engine() {
     Shutdown();
@@ -49,115 +56,89 @@ void Engine::ShowMessage(const std::string& message, float duration) {
 
 void Engine::ResetLevel() {
     LogInfo("Resetting level...");
-    LoadLevel(currentMapPath_, currentEntitiesPath_);
+    if (!LoadLevel(currentMapPath_, currentEntitiesPath_)) {
+        LogError("Level reset failed (see above); continuing with the current level state.");
+    }
     state_ = GameState::Gameplay;
+}
+
+bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::string>* outErrors) {
+    const std::string resolvedPath = ResolveContentPath(relativePath);
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    GameplayDefinitions definitions = gameplay_;
+    const bool loaded = LoadGameplayDefinitions(resolvedPath, definitions, errors, warnings);
+    if (!warnings.empty()) {
+        LogWarning("Gameplay definitions " + resolvedPath + ": " + std::to_string(warnings.size()) + " warning(s):");
+        LogMessages(warnings, &LogWarning);
+    }
+    if (!loaded) {
+        LogError("Invalid gameplay definitions " + resolvedPath + ":");
+        LogMessages(errors, &LogError);
+        if (outErrors != nullptr) {
+            *outErrors = errors;
+        }
+        return false;
+    }
+    gameplay_ = definitions;
+    LogInfo("Gameplay definitions loaded from " + resolvedPath + ": " + DescribeGameplayDefinitions(gameplay_));
+    return true;
 }
 
 bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPath) {
     LogInfo("Loading level map: " + mapPath + ", entities: " + entitiesPath);
 
+    // Everything is loaded and built into locals first: a level that fails to load leaves
+    // the current one untouched.
     std::vector<std::string> errors;
+    std::vector<std::string> warnings;
     Map newMap{};
     const std::string resolvedMapPath = ResolveContentPath(mapPath);
     if (!LoadMapFromFile(resolvedMapPath, newMap, errors)) {
         LogError("Failed to load map: " + resolvedMapPath);
-        for (const std::string& error : errors) {
-            LogError("  " + error);
-        }
+        LogMessages(errors, &LogError);
         return false;
     }
 
-    map_ = std::move(newMap);
+    std::vector<EntityPlacement> placements;
+    const std::string resolvedEntitiesPath = ResolveContentPath(entitiesPath);
+    const bool placementsLoaded = LoadEntityPlacementsFromFile(resolvedEntitiesPath, placements, errors, warnings);
+    if (!warnings.empty()) {
+        LogWarning("Entity placements " + resolvedEntitiesPath + ": " + std::to_string(warnings.size()) +
+                   " warning(s):");
+        LogMessages(warnings, &LogWarning);
+    }
+    if (!placementsLoaded) {
+        LogError("Failed to load entity placements: " + resolvedEntitiesPath);
+        LogMessages(errors, &LogError);
+        return false;
+    }
 
-    entityManager_.Clear();
-    sprites_.clear();
+    LevelContents contents{};
+    if (!BuildLevelFromPlacements(newMap, placements, gameplay_, contents, errors)) {
+        LogError("Invalid entity placements in " + resolvedEntitiesPath + ":");
+        LogMessages(errors, &LogError);
+        return false;
+    }
+    LogInfo("Level entities: " + DescribeLevelContents(contents));
+
+    map_ = std::move(newMap);
+    entityManager_ = std::move(contents.entities);
+    sprites_ = std::move(contents.sprites);
+    player_ = contents.player;
     particleManager_.Clear();
     latestRayHits_.clear();
     latestWallDepthBuffer_.clear();
 
-    player_ = Player{};
-    playerHealth_ = 100;
-    playerAmmo_ = 24;
+    playerHealth_ = gameplay_.player.initialHealth;
+    playerAmmo_ = gameplay_.weapon.initialAmmo;
+    playerMaxHealth_ = gameplay_.player.maxHealth;
+    playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
     ambientDustSpawnTimer_ = 0.0f;
     enemyAlertCooldown_ = 0.0f;
     playerAttackCooldown_ = 0.0f;
     hudMessage_.clear();
     hudMessageTimer_ = 0.0f;
-
-    std::vector<EntityPlacement> placements;
-    errors.clear();
-    const std::string resolvedEntitiesPath = ResolveContentPath(entitiesPath);
-    bool loadedEntities = false;
-    std::error_code existsError;
-    if (std::filesystem::exists(PathFromUtf8(resolvedEntitiesPath), existsError)) {
-        loadedEntities = LoadEntityPlacementsFromFile(resolvedEntitiesPath, placements, errors);
-        if (!loadedEntities) {
-            // Known issue C1 (Roadmap Phase 4): the placement loader only reads CSV, so the
-            // JSON entity files always end up here.
-            LogWarning("Could not read entity placements from " + resolvedEntitiesPath + " (" +
-                       std::to_string(errors.size()) + " error(s)" +
-                       (errors.empty() ? std::string() : "; first: " + errors.front()) +
-                       "); using the built-in layout.");
-        }
-    } else {
-        LogWarning("Entity placement file not found: " + resolvedEntitiesPath + "; using the built-in layout.");
-    }
-
-    if (loadedEntities) {
-        for (const EntityPlacement& placement : placements) {
-            if (placement.type == PlacementType::Player) {
-                player_.position = placement.position;
-                Entity& playerEntity = entityManager_.CreateEntity(EntityType::Player, placement.position);
-                playerEntity.visible = false;
-            } else if (placement.type == PlacementType::Enemy) {
-                Entity& entity = entityManager_.CreateEntity(EntityType::Enemy, placement.position);
-                entity.health = 50;
-                entity.maxHealth = 50;
-                entity.damage = 10;
-                sprites_.push_back(SpriteEntity{entity.position, 0, entity.id, SpriteType::Enemy, true, true});
-            } else if (placement.type == PlacementType::Pickup) {
-                Entity& entity = entityManager_.CreateEntity(EntityType::Pickup, placement.position);
-                entity.pickupType = (entityManager_.Entities().size() % 2 == 0) ? PickupType::Ammo : PickupType::Health;
-                sprites_.push_back(SpriteEntity{entity.position, 1, entity.id, SpriteType::Pickup, true, true});
-            } else if (placement.type == PlacementType::Door) {
-                Entity& entity = entityManager_.CreateEntity(EntityType::Door, placement.position);
-                entity.mapX = placement.mapX;
-                entity.mapY = placement.mapY;
-                entity.doorOpen = false;
-                if (entity.mapX >= 0 && entity.mapY >= 0) {
-                    map_.SetCell(entity.mapX, entity.mapY, TileType::Door);
-                }
-            } else if (placement.type == PlacementType::Trigger) {
-                Entity& entity = entityManager_.CreateEntity(EntityType::Trigger, placement.position);
-                entity.mapX = placement.mapX;
-                entity.mapY = placement.mapY;
-                entity.triggerActivated = false;
-                if (entity.mapX >= 0 && entity.mapY >= 0) {
-                    map_.SetCell(entity.mapX, entity.mapY, TileType::Trigger);
-                }
-            } else if (placement.type == PlacementType::Decoration) {
-                Entity& entity = entityManager_.CreateEntity(EntityType::Trigger, placement.position);
-                sprites_.push_back(SpriteEntity{entity.position, 2, entity.id, SpriteType::Decoration, true, true});
-            }
-        }
-    } else {
-        // Fallback default setup
-        player_.position = {2.5f, 2.5f};
-        Entity& playerEntity = entityManager_.CreateEntity(EntityType::Player, player_.position);
-        playerEntity.visible = false;
-        Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, {6.5f, 2.8f});
-        sprites_.push_back(SpriteEntity{enemy.position, 0, enemy.id, SpriteType::Enemy, true, true});
-        Entity& pickup = entityManager_.CreateEntity(EntityType::Pickup, {11.8f, 6.6f});
-        sprites_.push_back(SpriteEntity{pickup.position, 1, pickup.id, SpriteType::Pickup, true, true});
-        Entity& door = entityManager_.CreateEntity(EntityType::Door, {8.5f, 7.5f});
-        door.mapX = 8;
-        door.mapY = 7;
-        map_.SetCell(door.mapX, door.mapY, TileType::Door);
-        Entity& trigger = entityManager_.CreateEntity(EntityType::Trigger, {13.5f, 8.5f});
-        trigger.mapX = 13;
-        trigger.mapY = 8;
-        map_.SetCell(trigger.mapX, trigger.mapY, TileType::Trigger);
-    }
 
     currentMapPath_ = mapPath;
     currentEntitiesPath_ = entitiesPath;
@@ -181,10 +162,11 @@ void Engine::PlayerAttack() {
         return;
     }
 
-    playerAttackCooldown_ = 0.25f;
+    playerAttackCooldown_ = gameplay_.weapon.fireRate;
 
     GameplayEvents events{};
-    const bool fired = PerformPlayerAttack(entityManager_, map_, player_, playerAmmo_, 35, 12.0f, events);
+    const bool fired = PerformPlayerAttack(
+        entityManager_, map_, player_, playerAmmo_, gameplay_.weapon.damage, gameplay_.weapon.range, events);
     if (!fired) {
         return;
     }
@@ -201,7 +183,7 @@ void Engine::PlayerAttack() {
     bridge_.PushEvent(atkEvt);
 
     if (events.enemyDamaged) {
-        ShowMessage("Hit enemy! (-35 HP)", 1.0f);
+        ShowMessage("Hit enemy! (-" + std::to_string(events.enemyDamageAmount) + " HP)", 1.0f);
         particleManager_.SpawnHitSpark(events.hitPosition);
 
         InteropEvent dmgEvt{};

@@ -128,11 +128,19 @@ else()
     endif()
 endif()
 
+# --- nlohmann/json (vendored, header-only) -----------------------------------------------
+# third_party/nlohmann/json.hpp, version and checksum in third_party/README.md. SYSTEM: the
+# header is included as a system header, so it never triggers our warning flags (or -Werror /
+# /WX; CMake passes it to MSVC with /external:I and /external:W0).
+add_library(neowolf_json INTERFACE)
+target_include_directories(neowolf_json SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/third_party)
+
 # --- Engine library ----------------------------------------------------------------------
 add_library(neowolf_engine STATIC
     engine/assets/AssetManager.cpp
     engine/assets/AudioConfig.cpp
     engine/assets/ContentConfig.cpp
+    engine/assets/GameplayConfig.cpp
     engine/assets/Texture.cpp
     engine/assets/TextureLoader.cpp
     engine/audio/AudioSystem.cpp
@@ -143,6 +151,7 @@ add_library(neowolf_engine STATIC
     engine/core/Engine.Render.cpp
     engine/core/Engine.Shutdown.cpp
     engine/core/Engine.Update.cpp
+    engine/core/JsonDocument.cpp
     engine/core/Log.cpp
     engine/core/Paths.cpp
     engine/interop/CommandBridge.cpp
@@ -157,6 +166,7 @@ add_library(neowolf_engine STATIC
     engine/world/Entity.cpp
     engine/world/EntityPlacementLoader.cpp
     engine/world/InteractionRules.cpp
+    engine/world/LevelBuilder.cpp
     engine/world/Map.cpp
     engine/world/MapLoader.cpp
     engine/world/MovementRules.cpp
@@ -165,7 +175,7 @@ target_include_directories(neowolf_engine PUBLIC ${PROJECT_SOURCE_DIR})
 target_compile_features(neowolf_engine PUBLIC cxx_std_17)
 target_link_libraries(neowolf_engine
     PUBLIC  neowolf_sdl2
-    PRIVATE neowolf_warnings)
+    PRIVATE neowolf_json neowolf_warnings)
 # `neo_wolf --version` prints this (engine/core/CommandLine.cpp).
 target_compile_definitions(neowolf_engine PRIVATE NEOWOLF_VERSION="${PROJECT_VERSION}")
 
@@ -224,6 +234,13 @@ if(NEOWOLF_BUILD_TESTS)
         command_line_parsing
         crlf_content_loading
         log_file_rotation
+        gameplay_definitions_exact
+        gameplay_definitions_invalid
+        entity_placements_json_csv
+        decorations_and_sprite_sync
+        pickup_kind_from_data
+        edited_data_changes_game
+        level_load_failures
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -254,7 +271,7 @@ if(NEOWOLF_BUILD_TESTS)
                      -DGAME_EXE=$<TARGET_FILE:neo_wolf>
                      "-DGAME_ARGS=--frames;120"
                      -DEXPECT_EXIT=0
-                     "-DEXPECT_REGEX=Content root: .*Renderer: .*Ran 120 frame"
+                     "-DEXPECT_REGEX=Content root: .*Gameplay definitions loaded from .*Renderer: .*Level entities: 6 entities.*Ran 120 frame"
                      -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
     set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
@@ -267,7 +284,21 @@ if(NEOWOLF_BUILD_TESTS)
                      "-DEXPECT_REGEX=Game content not found"
                      -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-    set_tests_properties(game_smoke_frames game_smoke_missing_data PROPERTIES
+    # A content root whose gameplay.json is invalid (a string where an integer belongs):
+    # startup must fail with exit code 1 and name the bad key (fail fast, Roadmap Phase 4).
+    set(NEOWOLF_BAD_GAMEPLAY_DIR "${CMAKE_BINARY_DIR}/test-bad-gameplay")
+    file(MAKE_DIRECTORY "${NEOWOLF_BAD_GAMEPLAY_DIR}/game/maps")
+    file(WRITE "${NEOWOLF_BAD_GAMEPLAY_DIR}/game/defs/gameplay.json"
+         "{ \"weapon\": { \"damage\": \"lots\" } }\n")
+    add_test(NAME game_smoke_invalid_gameplay
+             COMMAND ${CMAKE_COMMAND}
+                     -DGAME_EXE=$<TARGET_FILE:neo_wolf>
+                     "-DGAME_ARGS=--data;${NEOWOLF_BAD_GAMEPLAY_DIR};--frames;10"
+                     -DEXPECT_EXIT=1
+                     "-DEXPECT_REGEX=weapon\\.damage must be an integer"
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    set_tests_properties(game_smoke_frames game_smoke_missing_data game_smoke_invalid_gameplay PROPERTIES
         LABELS game
         TIMEOUT 120
         ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")

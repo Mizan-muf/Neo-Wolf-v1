@@ -51,14 +51,6 @@ void UpdateEntityInteractions(
     bool interactPressed,
     GameplayEvents& outEvents);
 
-// Overload for backward compatibility
-inline void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, bool interactPressed) {
-    int dummyHealth = 100;
-    int dummyAmmo = 24;
-    GameplayEvents dummyEvents{};
-    UpdateEntityInteractions(entityManager, map, player, dummyHealth, dummyAmmo, 100, 99, interactPressed, dummyEvents);
-}
-
 void UpdateEnemyAi(
     EntityManager& entityManager,
     const Map& map,

@@ -377,10 +377,107 @@ def validate_cfg(file_path: Path, required_keys: Optional[Set[str]] = None) -> T
     return report, values
 
 
+PICKUP_KINDS = {"health", "ammo"}
+MAX_PICKUP_VALUE = 10000  # engine: kMaxGameplayStat
+# Fields each entity type reads; any other field is ignored by the engine (warning there and here).
+ENTITY_FIELDS = {
+    "player": {"type", "x", "y", "angle"},
+    "enemy": {"type", "x", "y", "variant"},
+    "pickup": {"type", "x", "y", "kind", "value"},
+    "door": {"type", "x", "y", "mapX", "mapY"},
+    "trigger": {"type", "x", "y", "mapX", "mapY"},
+    "decoration": {"type", "x", "y"},
+}
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _check_entity(
+    item: dict, label: str, map_dimensions: Optional[Tuple[int, int]], report: ValidationReport
+) -> bool:
+    """Checks one placement (the engine's rules, docs/CONTENT_DEFINITIONS.md). False on an error."""
+    etype = item.get("type")
+    if etype not in VALID_ENTITY_TYPES:
+        report.add_error(
+            f"{label}: invalid type {etype!r}. Valid types: {', '.join(sorted(VALID_ENTITY_TYPES))}"
+        )
+        return False
+
+    ok = True
+    x = item.get("x")
+    y = item.get("y")
+    if not _is_number(x) or not _is_number(y):
+        report.add_error(f"{label} ({etype}): x and y must be numbers, got {x!r}, {y!r}")
+        return False
+
+    for key in sorted(set(item) - ENTITY_FIELDS[etype]):
+        report.add_warning(f"{label} ({etype}): field '{key}' is not used by a {etype}; ignored")
+
+    map_x = item.get("mapX")
+    map_y = item.get("mapY")
+    if etype in ("door", "trigger"):
+        if not _is_int(map_x) or not _is_int(map_y) or map_x < 0 or map_y < 0:
+            report.add_error(
+                f"{label} ({etype}): mapX and mapY are required non-negative integers, got {map_x!r}, {map_y!r}"
+            )
+            ok = False
+            map_x = map_y = None
+
+    if etype == "pickup":
+        kind = item.get("kind")
+        if kind not in PICKUP_KINDS:
+            report.add_error(f"{label} (pickup): kind is required and must be 'health' or 'ammo', got {kind!r}")
+            ok = False
+        if "value" in item:
+            value = item["value"]
+            if not _is_int(value) or not (1 <= value <= MAX_PICKUP_VALUE):
+                report.add_error(
+                    f"{label} (pickup): value must be an integer from 1 to {MAX_PICKUP_VALUE}, got {value!r}"
+                )
+                ok = False
+
+    if etype == "player" and "angle" in item and not _is_number(item["angle"]):
+        report.add_error(f"{label} (player): angle must be a number (degrees), got {item['angle']!r}")
+        ok = False
+
+    if etype == "enemy" and "variant" in item:
+        variant = item["variant"]
+        if not isinstance(variant, str) or not variant:
+            report.add_error(f"{label} (enemy): variant must be a non-empty string, got {variant!r}")
+            ok = False
+
+    if map_dimensions:
+        mw, mh = map_dimensions
+        if not (0 <= x < mw and 0 <= y < mh):
+            report.add_error(f"{label}: position ({x}, {y}) is outside map bounds ({mw}x{mh})")
+            ok = False
+        if map_x is not None and map_y is not None and _is_int(map_x) and _is_int(map_y):
+            if not (0 <= map_x < mw and 0 <= map_y < mh):
+                report.add_error(f"{label}: map cell ({map_x}, {map_y}) is outside map bounds ({mw}x{mh})")
+                ok = False
+    return ok
+
+
+def _check_player_count(entities: List[dict], label: str, report: ValidationReport) -> None:
+    players = sum(1 for ent in entities if ent.get("type") == "player")
+    if players != 1:
+        report.add_error(
+            f"{label}: {players} 'player' entities; the engine requires exactly one (the level fails to load)."
+        )
+
+
 def validate_entity_csv(
     file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
 ) -> Tuple[ValidationReport, List[dict]]:
-    """Validate entity CSV file (type,x,y[,mapX,mapY])."""
+    """Validate an entity CSV file (type,x,y[,mapX,mapY[,kind[,value[,angle[,variant]]]]])."""
+    from tools.devkit.def_tools import CSV_COLUMNS
+
     report = ValidationReport()
     entities: List[dict] = []
     file_path = Path(file_path)
@@ -390,76 +487,43 @@ def validate_entity_csv(
         return report, entities
 
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding="utf-8-sig")
     except Exception as exc:
         report.add_error(f"Failed to read entity CSV {file_path}: {exc}")
         return report, entities
 
-    has_player = False
+    index = 0
     for line_num, line in enumerate(content.splitlines(), start=1):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
 
+        label = f"CSV {file_path}:{line_num} (entity {index})"
+        index += 1
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 3:
-            report.add_error(
-                f"CSV {file_path}:{line_num}: Expected at least 3 fields (type,x,y), got {len(parts)}"
-            )
+            report.add_error(f"{label}: Expected at least 3 fields (type,x,y), got {len(parts)}")
             continue
+        if len(parts) > len(CSV_COLUMNS):
+            report.add_warning(f"{label}: {len(parts) - len(CSV_COLUMNS)} extra column(s) ignored")
 
-        etype = parts[0]
-        if etype not in VALID_ENTITY_TYPES:
-            report.add_error(
-                f"CSV {file_path}:{line_num}: Unknown entity type '{etype}'. Valid types: {VALID_ENTITY_TYPES}"
-            )
-            continue
-
-        if etype == "player":
-            has_player = True
-
-        try:
-            x = float(parts[1])
-            y = float(parts[2])
-        except ValueError:
-            report.add_error(
-                f"CSV {file_path}:{line_num}: Invalid float coordinates ({parts[1]}, {parts[2]})"
-            )
-            continue
-
-        map_x, map_y = -1, -1
-        if len(parts) >= 5:
-            try:
-                map_x = int(parts[3])
-                map_y = int(parts[4])
-            except ValueError:
-                report.add_error(
-                    f"CSV {file_path}:{line_num}: Invalid integer map cell coordinates ({parts[3]}, {parts[4]})"
-                )
+        item: dict = {}
+        converted = True
+        for (name, kind), cell in zip(CSV_COLUMNS, parts):
+            if cell == "":
                 continue
+            try:
+                item[name] = kind(cell)
+            except ValueError:
+                report.add_error(f"{label}: column '{name}' has an invalid value {cell!r}")
+                converted = False
+        if not converted:
+            continue
 
-        if map_dimensions:
-            mw, mh = map_dimensions
-            if not (0 <= x < mw and 0 <= y < mh):
-                report.add_error(
-                    f"CSV {file_path}:{line_num}: Position ({x}, {y}) is outside map bounds ({mw}x{mh})"
-                )
-            if map_x != -1 and not (0 <= map_x < mw and 0 <= map_y < mh):
-                report.add_error(
-                    f"CSV {file_path}:{line_num}: Map cell ({map_x}, {map_y}) is outside map bounds ({mw}x{mh})"
-                )
+        if _check_entity(item, label, map_dimensions, report):
+            entities.append(item)
 
-        entity_entry = {"type": etype, "x": x, "y": y}
-        if map_x != -1:
-            entity_entry["mapX"] = map_x
-            entity_entry["mapY"] = map_y
-        entities.append(entity_entry)
-
-    if not has_player:
-        report.add_warning(
-            f"CSV {file_path}: No 'player' entity defined. The engine will fallback to default spawn."
-        )
-
+    _check_player_count(entities, f"CSV {file_path}", report)
     report.add_info(f"CSV {file_path.name}: Found {len(entities)} entity placements.")
     return report, entities
 
@@ -467,7 +531,7 @@ def validate_entity_csv(
 def validate_entity_json(
     file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
 ) -> Tuple[ValidationReport, List[dict]]:
-    """Validate entity JSON file (level, entities array)."""
+    """Validate an entity JSON file (level, entities array)."""
     report = ValidationReport()
     entities: List[dict] = []
     file_path = Path(file_path)
@@ -477,7 +541,7 @@ def validate_entity_json(
         return report, entities
 
     try:
-        data = json.loads(file_path.read_text(encoding="utf-8"))
+        data = json.loads(file_path.read_text(encoding="utf-8-sig"))
     except Exception as exc:
         report.add_error(f"JSON syntax error in {file_path}: {exc}")
         return report, entities
@@ -490,54 +554,18 @@ def validate_entity_json(
         report.add_error(f"JSON {file_path}: Missing 'entities' array.")
         return report, entities
 
-    has_player = False
+    for key in sorted(set(data) - {"level", "entities"}):
+        report.add_warning(f"JSON {file_path}: unknown top-level field '{key}' ignored")
+
     for idx, item in enumerate(data["entities"]):
+        label = f"JSON {file_path}: entities[{idx}]"
         if not isinstance(item, dict):
-            report.add_error(f"JSON {file_path}: Entity #{idx} is not an object.")
+            report.add_error(f"{label} is not an object.")
             continue
+        if _check_entity(item, label, map_dimensions, report):
+            entities.append(item)
 
-        etype = item.get("type")
-        if etype not in VALID_ENTITY_TYPES:
-            report.add_error(
-                f"JSON {file_path}: Entity #{idx} has invalid type '{etype}'."
-            )
-            continue
-
-        if etype == "player":
-            has_player = True
-
-        x = item.get("x")
-        y = item.get("y")
-        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
-            report.add_error(f"JSON {file_path}: Entity #{idx} has invalid x/y numbers.")
-            continue
-
-        map_x = item.get("mapX")
-        map_y = item.get("mapY")
-        if map_x is not None and not isinstance(map_x, int):
-            report.add_error(f"JSON {file_path}: Entity #{idx} mapX must be integer.")
-        if map_y is not None and not isinstance(map_y, int):
-            report.add_error(f"JSON {file_path}: Entity #{idx} mapY must be integer.")
-
-        if map_dimensions:
-            mw, mh = map_dimensions
-            if not (0 <= x < mw and 0 <= y < mh):
-                report.add_error(
-                    f"JSON {file_path}: Entity #{idx} position ({x}, {y}) is outside map bounds ({mw}x{mh})"
-                )
-            if isinstance(map_x, int) and isinstance(map_y, int):
-                if not (0 <= map_x < mw and 0 <= map_y < mh):
-                    report.add_error(
-                        f"JSON {file_path}: Entity #{idx} cell ({map_x}, {map_y}) is outside map bounds ({mw}x{mh})"
-                    )
-
-        entities.append(item)
-
-    if not has_player:
-        report.add_warning(
-            f"JSON {file_path}: No 'player' entity defined in 'entities' array."
-        )
-
+    _check_player_count(entities, f"JSON {file_path}", report)
     report.add_info(f"JSON {file_path.name}: Found {len(entities)} entity placements.")
     return report, entities
 
@@ -648,7 +676,7 @@ def validate_project(project_root: Path) -> ValidationReport:
         else:
             report.add_error(f"Missing audio.cfg in {defs_dir}")
 
-        # Entities JSON & CSVs
+        # Entity placements: <level>.entities.json (canonical) and the optional CSV export.
         for csv_file in defs_dir.glob("*.entities.csv"):
             level_name = csv_file.name.replace(".entities.csv", "")
             dims = map_dimensions.get(level_name)
@@ -660,25 +688,5 @@ def validate_project(project_root: Path) -> ValidationReport:
             dims = map_dimensions.get(level_name)
             json_rep, _ = validate_entity_json(json_file, dims)
             report.merge(json_rep)
-
-        # Main entities.json registry
-        main_ent_json = defs_dir / "entities.json"
-        if main_ent_json.exists():
-            try:
-                data = json.loads(main_ent_json.read_text(encoding="utf-8"))
-                levels = data.get("levels", [])
-                for lvl in levels:
-                    lvl_map = project_root / lvl.get("map", "")
-                    lvl_ent = project_root / lvl.get("entities", "")
-                    if not lvl_map.exists():
-                        report.add_error(
-                            f"entities.json level '{lvl.get('id')}' references missing map: {lvl.get('map')}"
-                        )
-                    if not lvl_ent.exists():
-                        report.add_error(
-                            f"entities.json level '{lvl.get('id')}' references missing entities: {lvl.get('entities')}"
-                        )
-            except Exception as exc:
-                report.add_error(f"Failed to parse entities.json: {exc}")
 
     return report

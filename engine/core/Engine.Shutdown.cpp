@@ -45,8 +45,11 @@ void Engine::Shutdown() {
     ambientDustSpawnTimer_ = 0.0f;
     enemyAlertCooldown_ = 0.0f;
     playerAttackCooldown_ = 0.0f;
-    playerHealth_ = 100;
-    playerAmmo_ = 24;
+    gameplay_ = GameplayDefinitions{};
+    playerHealth_ = gameplay_.player.initialHealth;
+    playerAmmo_ = gameplay_.weapon.initialAmmo;
+    playerMaxHealth_ = gameplay_.player.maxHealth;
+    playerMaxAmmo_ = gameplay_.weapon.maxAmmo;
     hudMessage_.clear();
     hudMessageTimer_ = 0.0f;
     state_ = GameState::Menu;

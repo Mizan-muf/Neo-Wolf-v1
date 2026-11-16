@@ -4,7 +4,6 @@
 #include <cctype>
 #include <cstddef>
 #include <fstream>
-#include <iterator>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -82,27 +81,6 @@ bool RequireKey(
     outValue = it->second;
     return true;
 }
-
-std::string ExtractJsonNumber(const std::string& content, const std::string& key) {
-    const std::string needle = "\"" + key + "\"";
-    std::size_t pos = content.find(needle);
-    if (pos == std::string::npos) {
-        return "";
-    }
-    pos = content.find(':', pos);
-    if (pos == std::string::npos) {
-        return "";
-    }
-    ++pos;
-    while (pos < content.size() && (content[pos] == ' ' || content[pos] == '\t' || content[pos] == '\r' || content[pos] == '\n')) {
-        ++pos;
-    }
-    std::size_t end = pos;
-    while (end < content.size() && (std::isdigit(static_cast<unsigned char>(content[end])) || content[end] == '.' || content[end] == '-')) {
-        ++end;
-    }
-    return content.substr(pos, end - pos);
-}
 } // namespace
 
 bool LoadWallTextureAssignments(
@@ -138,47 +116,4 @@ bool LoadSpriteTextureDefinitions(
     ok = RequireKey(values, "pickup", outDefinitions.pickup, filePath, errors) && ok;
     ok = RequireKey(values, "decoration", outDefinitions.decoration, filePath, errors) && ok;
     return ok;
-}
-
-bool LoadGameplayDefinitions(
-    const std::string& filePath,
-    GameplayDefinitions& outDefinitions,
-    std::vector<std::string>& errors) {
-    std::ifstream file(PathFromUtf8(filePath));
-    if (!file.is_open()) {
-        errors.push_back("Unable to open gameplay definitions: " + filePath);
-        return false;
-    }
-
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    file.close();
-
-    const auto parseVal = [&](const std::string& key, float defaultVal) -> float {
-        const std::string str = ExtractJsonNumber(content, key);
-        if (str.empty()) return defaultVal;
-        try {
-            return std::stof(str);
-        } catch (...) {
-            return defaultVal;
-        }
-    };
-
-    outDefinitions.enemyHealth = static_cast<int>(parseVal("health", static_cast<float>(outDefinitions.enemyHealth)));
-    outDefinitions.enemyDamage = static_cast<int>(parseVal("damage", static_cast<float>(outDefinitions.enemyDamage)));
-    outDefinitions.enemyMoveSpeed = parseVal("moveSpeed", outDefinitions.enemyMoveSpeed);
-    outDefinitions.enemyAlertRadius = parseVal("alertRadius", outDefinitions.enemyAlertRadius);
-    outDefinitions.enemyAttackRadius = parseVal("attackRadius", outDefinitions.enemyAttackRadius);
-    outDefinitions.enemyAttackRate = parseVal("attackRate", outDefinitions.enemyAttackRate);
-
-    outDefinitions.weaponDamage = static_cast<int>(parseVal("damage", static_cast<float>(outDefinitions.weaponDamage)));
-    outDefinitions.weaponFireRate = parseVal("fireRate", outDefinitions.weaponFireRate);
-    outDefinitions.weaponRange = parseVal("range", outDefinitions.weaponRange);
-    outDefinitions.initialAmmo = static_cast<int>(parseVal("initialAmmo", static_cast<float>(outDefinitions.initialAmmo)));
-
-    outDefinitions.initialHealth = static_cast<int>(parseVal("initialHealth", static_cast<float>(outDefinitions.initialHealth)));
-    outDefinitions.playerMoveSpeed = parseVal("moveSpeed", outDefinitions.playerMoveSpeed);
-    outDefinitions.playerTurnSpeed = parseVal("turnSpeed", outDefinitions.playerTurnSpeed);
-    outDefinitions.playerCollisionRadius = parseVal("collisionRadius", outDefinitions.playerCollisionRadius);
-
-    return true;
 }

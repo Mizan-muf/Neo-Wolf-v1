@@ -191,7 +191,7 @@ def cmd_create_asset(args: argparse.Namespace) -> int:
 
 def cmd_sync_entities(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else find_project_root()
-    synced = sync_entity_definitions(root, prefer_csv=not args.prefer_json)
+    synced = sync_entity_definitions(root, from_csv=args.from_csv)
     for s in synced:
         print(f"  {s}")
     print(f"Entity definitions synchronization complete ({len(synced)} file pairs).")
@@ -289,8 +289,17 @@ def build_parser() -> argparse.ArgumentParser:
     cast_p.add_argument("--duration", type=float, default=0.25)
 
     # sync-entities
-    sync_p = subparsers.add_parser("sync-entities", help="Synchronize CSV and JSON entity definition files.")
-    sync_p.add_argument("--prefer-json", action="store_true", help="Use JSON as source of truth instead of CSV.")
+    sync_p = subparsers.add_parser(
+        "sync-entities",
+        help="Export the canonical <level>.entities.json files to <level>.entities.csv (overwrites the CSVs).",
+    )
+    sync_p.add_argument(
+        "--from-csv",
+        action="store_true",
+        help="Reverse direction: overwrite each <level>.entities.json from its CSV.",
+    )
+    # JSON -> CSV is the default since Phase 4; the old flag is still accepted and does nothing.
+    sync_p.add_argument("--prefer-json", action="store_true", help=argparse.SUPPRESS)
 
     # package
     pkg_p = subparsers.add_parser("package", help="Assemble standalone release bundle.")

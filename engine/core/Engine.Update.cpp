@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 
 #include "engine/core/Log.h"
 #include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
 #include "engine/world/InteractionRules.h"
+#include "engine/world/LevelBuilder.h"
 #include "engine/world/MovementRules.h"
 
 void Engine::Update(double deltaSeconds) {
@@ -161,10 +163,11 @@ void Engine::Update(double deltaSeconds) {
     if (events.pickupCollected) {
         audio_.PlayEffect("pickup");
         particleManager_.SpawnPickupSparkle(player_.position);
+        const std::string amount = std::to_string(events.pickupValue);
         if (events.pickupType == PickupType::Health) {
-            ShowMessage("HEALTH RESTORED (+25 HP)", 1.5f);
+            ShowMessage("HEALTH RESTORED (+" + amount + " HP)", 1.5f);
         } else {
-            ShowMessage("AMMO REPLENISHED (+10 AMMO)", 1.5f);
+            ShowMessage("AMMO REPLENISHED (+" + amount + " AMMO)", 1.5f);
         }
 
         InteropEvent pEvt{};
@@ -225,18 +228,8 @@ void Engine::Update(double deltaSeconds) {
         }
     }
 
-    // Sync Sprites
-    sprites_.clear();
-    for (const Entity& ent : entityManager_.Entities()) {
-        if (!ent.active || !ent.visible) {
-            continue;
-        }
-        if (ent.type == EntityType::Enemy) {
-            sprites_.push_back(SpriteEntity{ent.position, 0, ent.id, SpriteType::Enemy, true, true});
-        } else if (ent.type == EntityType::Pickup) {
-            sprites_.push_back(SpriteEntity{ent.position, 1, ent.id, SpriteType::Pickup, true, true});
-        }
-    }
+    // Sprites follow their entities (positions, hidden when collected or dead).
+    SyncSpritesWithEntities(entityManager_, sprites_);
 
     // Update Particles
     particleManager_.Update(dt);

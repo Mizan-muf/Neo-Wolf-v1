@@ -46,6 +46,22 @@ The error dialog and the log list every folder that was searched. Fixes:
 The game exits with code 1 in this case. The same happens if the first level's map cannot be
 loaded (for example `--level 5` when there is no `game/maps/level05.map`).
 
+## "Invalid gameplay definitions" or "Failed to load entity placements"
+
+The content was found, but `game/defs/gameplay.json` or the level's entity file
+(`game/defs/levelNN.entities.json`) is missing or invalid. The game exits with code 1 and the
+log lists every problem, with the file, the entry and the field, for example:
+
+```text
+[ERROR]   .../game/defs/gameplay.json: weapon.damage must be an integer from 1 to 10000, got "35"
+[ERROR]   .../game/defs/level01.entities.json: entities[2] (pickup): field "kind" is required ("health" or "ammo")
+```
+
+Fix the file (formats, ranges and defaults: [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md))
+or restore it from the release. `python3 tools/devkit/devkit.py validate --strict` checks the
+entity files without starting the game. Warnings such as `unknown key ... ignored` do not stop
+the game, but mean that a value you edited is not used (usually a typo).
+
 ## No sound
 
 If there is no usable audio device (none installed, a remote session, a broken driver, or an

@@ -78,10 +78,15 @@ void RenderTopDownMap(
 
     // Sprites on minimap
     for (const SpriteEntity& spr : sprites) {
-        if (!spr.active) continue;
+        if (!spr.active || !spr.visible) continue;
         const int sx = kOffsetX + static_cast<int>(spr.position.x * kCellSize);
         const int sy = kOffsetY + static_cast<int>(spr.position.y * kCellSize);
-        const std::uint32_t col = (spr.type == SpriteType::Enemy) ? 0xFFFF3333u : 0xFF33FF33u;
+        std::uint32_t col = 0xFF33FF33u;  // pickup
+        if (spr.type == SpriteType::Enemy) {
+            col = 0xFFFF3333u;
+        } else if (spr.type == SpriteType::Decoration) {
+            col = 0xFF9A9A9Au;
+        }
         framebuffer.DrawRect(sx - 1, sy - 1, 3, 3, col);
     }
 

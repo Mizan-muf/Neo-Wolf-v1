@@ -12,6 +12,7 @@ from tools.devkit.def_tools import (
     load_entity_json,
     save_entity_csv,
     save_entity_json,
+    sync_entity_definitions,
 )
 
 
@@ -51,6 +52,38 @@ class TestDefTools(unittest.TestCase):
         self.assertEqual(len(ents_back), 3)
         self.assertEqual(ents_back[0]["type"], "player")
         self.assertEqual(ents_back[2]["mapX"], 8)
+
+    def test_json_to_csv_keeps_phase4_fields(self) -> None:
+        entities = [
+            {"type": "player", "x": 2.5, "y": 2.5, "angle": 90.0},
+            {"type": "enemy", "x": 6.5, "y": 2.8, "variant": "guard"},
+            {"type": "pickup", "x": 11.8, "y": 6.6, "kind": "ammo", "value": 30},
+            {"type": "pickup", "x": 3.0, "y": 3.0, "kind": "health"},
+            {"type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7},
+        ]
+        json_file = self.dir_path / "lvl.entities.json"
+        csv_file = self.dir_path / "lvl.entities.csv"
+        save_entity_json("lvl", entities, json_file)
+        json_to_csv(json_file, csv_file)
+
+        lines = csv_file.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(lines[0], "# type,x,y,mapX,mapY,kind,value,angle,variant")
+        self.assertEqual(lines[3], "pickup,11.8,6.6,,,ammo,30")
+        self.assertEqual(lines[4], "pickup,3.0,3.0,,,health")
+        self.assertEqual(load_entity_csv(csv_file), entities)
+
+    def test_sync_defaults_to_json_to_csv(self) -> None:
+        defs = self.dir_path / "game" / "defs"
+        defs.mkdir(parents=True)
+        save_entity_json("level01", [{"type": "player", "x": 1.5, "y": 1.5}], defs / "level01.entities.json")
+        (defs / "level01.entities.csv").write_text("# stale\nplayer,9.5,9.5\n", encoding="utf-8")
+
+        synced = sync_entity_definitions(self.dir_path)
+        self.assertEqual(synced, ["Synced level01.entities.json -> level01.entities.csv"])
+        self.assertEqual(load_entity_csv(defs / "level01.entities.csv"), [{"type": "player", "x": 1.5, "y": 1.5}])
+
+        synced = sync_entity_definitions(self.dir_path, from_csv=True)
+        self.assertEqual(synced, ["Synced level01.entities.csv -> level01.entities.json"])
 
 
 if __name__ == "__main__":

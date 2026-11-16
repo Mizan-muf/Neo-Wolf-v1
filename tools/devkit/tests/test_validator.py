@@ -131,7 +131,7 @@ class TestValidator(unittest.TestCase):
             "level": "level01",
             "entities": [
                 {"type": "player", "x": 2.5, "y": 2.5},
-                {"type": "pickup", "x": 4.0, "y": 4.0},
+                {"type": "pickup", "x": 4.0, "y": 4.0, "kind": "health"},
             ],
         }
         json_file = self.dir_path / "test.entities.json"
@@ -140,6 +140,59 @@ class TestValidator(unittest.TestCase):
         report, ents = validate_entity_json(json_file, map_dimensions=(10, 10))
         self.assertTrue(report.is_valid)
         self.assertEqual(len(ents), 2)
+
+    def test_validate_entity_json_phase4_fields(self) -> None:
+        json_data = {
+            "level": "level01",
+            "entities": [
+                {"type": "player", "x": 2.5, "y": 2.5, "angle": 90},
+                {"type": "enemy", "x": 5.0, "y": 5.0, "variant": "guard"},
+                {"type": "pickup", "x": 4.0, "y": 4.0, "kind": "ammo", "value": 30},
+                {"type": "door", "x": 3.5, "y": 4.5, "mapX": 3, "mapY": 4},
+                {"type": "decoration", "x": 6.0, "y": 6.0},
+            ],
+        }
+        json_file = self.dir_path / "fields.entities.json"
+        json_file.write_text(json.dumps(json_data), encoding="utf-8")
+
+        report, ents = validate_entity_json(json_file, map_dimensions=(10, 10))
+        self.assertTrue(report.is_valid, report.errors)
+        self.assertEqual(report.warnings, [])
+        self.assertEqual(len(ents), 5)
+
+    def test_validate_entity_json_requires_pickup_kind(self) -> None:
+        json_data = {
+            "entities": [
+                {"type": "player", "x": 2.5, "y": 2.5},
+                {"type": "pickup", "x": 4.0, "y": 4.0},
+                {"type": "pickup", "x": 5.0, "y": 4.0, "kind": "armor"},
+                {"type": "door", "x": 3.5, "y": 4.5},
+            ],
+        }
+        json_file = self.dir_path / "nokind.entities.json"
+        json_file.write_text(json.dumps(json_data), encoding="utf-8")
+
+        report, _ = validate_entity_json(json_file, map_dimensions=(10, 10))
+        self.assertFalse(report.is_valid)
+        self.assertTrue(any("entities[1]" in err and "kind is required" in err for err in report.errors))
+        self.assertTrue(any("entities[2]" in err and "'armor'" in err for err in report.errors))
+        self.assertTrue(any("entities[3]" in err and "mapX and mapY" in err for err in report.errors))
+
+    def test_validate_entity_csv_kind_column(self) -> None:
+        csv_file = self.dir_path / "kind.entities.csv"
+        csv_file.write_text(
+            "# type,x,y,mapX,mapY,kind,value,angle,variant\n"
+            "player,2.5,2.5,,,,,45\n"
+            "pickup,4.0,4.0,,,ammo,20\n"
+            "pickup,5.0,4.0\n",
+            encoding="utf-8",
+        )
+        report, ents = validate_entity_csv(csv_file, map_dimensions=(10, 10))
+        self.assertFalse(report.is_valid)  # the last pickup has no kind
+        self.assertEqual(len(ents), 2)
+        self.assertEqual(ents[1]["kind"], "ammo")
+        self.assertEqual(ents[1]["value"], 20)
+        self.assertTrue(any(":4 (entity 2)" in err and "kind is required" in err for err in report.errors))
 
 
 if __name__ == "__main__":

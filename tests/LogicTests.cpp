@@ -6,6 +6,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -16,9 +17,11 @@
 #include "engine/assets/AssetManager.h"
 #include "engine/assets/AudioConfig.h"
 #include "engine/assets/ContentConfig.h"
+#include "engine/assets/GameplayConfig.h"
 #include "engine/assets/Texture.h"
 #include "engine/assets/TextureLoader.h"
 #include "engine/core/CommandLine.h"
+#include "engine/core/Engine.h"
 #include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
 #include "engine/core/Log.h"
@@ -34,7 +37,9 @@
 #include "engine/ui/UiRenderer.h"
 #include "engine/world/Entity.h"
 #include "engine/world/EntityPlacementLoader.h"
+#include "engine/world/GameplayDefinitions.h"
 #include "engine/world/InteractionRules.h"
+#include "engine/world/LevelBuilder.h"
 #include "engine/world/Map.h"
 #include "engine/world/MapLoader.h"
 #include "engine/world/MovementRules.h"
@@ -374,17 +379,14 @@ void TestEntityInteractionRules() {
 
 void TestContentFileLoaders() {
     std::vector<std::string> errors;
+    std::vector<std::string> warnings;
 
     WallTextureAssignments wall{};
     SpriteTextureDefinitions sprites{};
-    GameplayDefinitions gameplay{};
     TEST_ASSERT(LoadWallTextureAssignments(ResolveRepoPath("game/defs/wall_textures.cfg"), wall, errors));
     TEST_ASSERT(LoadSpriteTextureDefinitions(ResolveRepoPath("game/defs/sprites.cfg"), sprites, errors));
-    TEST_ASSERT(LoadGameplayDefinitions(ResolveRepoPath("game/defs/gameplay.json"), gameplay, errors));
     TEST_ASSERT(!wall.wall.empty());
     TEST_ASSERT(!sprites.enemy.empty());
-    TEST_ASSERT(gameplay.enemyHealth > 0);
-    TEST_ASSERT(gameplay.weaponDamage > 0);
 
     Map map{};
     TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), map, errors));
@@ -393,8 +395,9 @@ void TestContentFileLoaders() {
     TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
 
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), placements, errors));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
     TEST_ASSERT(!placements.empty());
+    TEST_ASSERT(errors.empty() && warnings.empty());
 
     bool foundPlayer = false;
     bool foundDoor = false;
@@ -662,24 +665,20 @@ void TestLevelResetAndDynamicLoad() {
     const std::string mapPath = ResolveRepoPath("game/maps/level01.map");
     TEST_ASSERT(LoadMapFromFile(mapPath, map, errors));
 
-    // Multi-cycle load simulation
+    // Multi-cycle load simulation: every build of the same files gives the same level.
+    std::vector<std::string> warnings;
     for (int cycle = 0; cycle < 10; ++cycle) {
-        EntityManager manager{};
+        Map levelMap = map;
         std::vector<EntityPlacement> placements;
         errors.clear();
-        TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), placements, errors));
-        for (const auto& p : placements) {
-            if (p.type == PlacementType::Player) {
-                manager.CreateEntity(EntityType::Player, p.position);
-            } else if (p.type == PlacementType::Enemy) {
-                manager.CreateEntity(EntityType::Enemy, p.position);
-            } else if (p.type == PlacementType::Pickup) {
-                manager.CreateEntity(EntityType::Pickup, p.position);
-            }
-        }
-        TEST_ASSERT(manager.Entities().size() >= 3);
-        manager.Clear();
-        TEST_ASSERT(manager.Entities().empty());
+        TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
+        LevelContents level{};
+        TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, GameplayDefinitions{}, level, errors));
+        TEST_ASSERT(level.entities.Entities().size() == 6);
+        TEST_ASSERT(level.sprites.size() == 3);
+        TEST_ASSERT(level.entities.Entities().front().id == 1);
+        level.entities.Clear();
+        TEST_ASSERT(level.entities.Entities().empty());
     }
 }
 
@@ -1139,23 +1138,27 @@ void TestCrlfContentLoading() {
         }
     }
 
-    // Entity placements.
-    const std::string entitiesText = ReadWholeFile(ResolveRepoPath("game/defs/level01.entities.csv"));
-    const std::filesystem::path crlfEntitiesPath = scratch.Path() / "crlf.entities.csv";
-    WriteWithCrlf(crlfEntitiesPath, entitiesText);
-    std::vector<EntityPlacement> lfPlacements;
-    std::vector<EntityPlacement> crlfPlacements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), lfPlacements, errors));
-    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(crlfEntitiesPath), crlfPlacements, errors));
-    TEST_ASSERT(errors.empty());
-    TEST_ASSERT(!lfPlacements.empty());
-    TEST_ASSERT(crlfPlacements.size() == lfPlacements.size());
-    for (std::size_t i = 0; i < lfPlacements.size(); ++i) {
-        TEST_ASSERT(crlfPlacements[i].type == lfPlacements[i].type);
-        TEST_ASSERT_NEAR(crlfPlacements[i].position.x, lfPlacements[i].position.x, 0.0001f);
-        TEST_ASSERT_NEAR(crlfPlacements[i].position.y, lfPlacements[i].position.y, 0.0001f);
-        TEST_ASSERT(crlfPlacements[i].mapX == lfPlacements[i].mapX);
-        TEST_ASSERT(crlfPlacements[i].mapY == lfPlacements[i].mapY);
+    // Entity placements, in both formats (JSON canonical, CSV legacy).
+    std::vector<std::string> warnings;
+    for (const char* entitiesFile : {"level01.entities.json", "level01.entities.csv"}) {
+        const std::string lfEntitiesPath = ResolveRepoPath(std::string("game/defs/") + entitiesFile);
+        const std::filesystem::path crlfEntitiesPath = scratch.Path() / (std::string("crlf-") + entitiesFile);
+        WriteWithCrlf(crlfEntitiesPath, ReadWholeFile(lfEntitiesPath));
+        std::vector<EntityPlacement> lfPlacements;
+        std::vector<EntityPlacement> crlfPlacements;
+        TEST_ASSERT(LoadEntityPlacementsFromFile(lfEntitiesPath, lfPlacements, errors, warnings));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(crlfEntitiesPath), crlfPlacements, errors, warnings));
+        TEST_ASSERT(errors.empty() && warnings.empty());
+        TEST_ASSERT(lfPlacements.size() == 6);
+        TEST_ASSERT(crlfPlacements.size() == lfPlacements.size());
+        for (std::size_t i = 0; i < lfPlacements.size(); ++i) {
+            TEST_ASSERT(crlfPlacements[i].type == lfPlacements[i].type);
+            TEST_ASSERT_NEAR(crlfPlacements[i].position.x, lfPlacements[i].position.x, 0.0001f);
+            TEST_ASSERT_NEAR(crlfPlacements[i].position.y, lfPlacements[i].position.y, 0.0001f);
+            TEST_ASSERT(crlfPlacements[i].mapX == lfPlacements[i].mapX);
+            TEST_ASSERT(crlfPlacements[i].mapY == lfPlacements[i].mapY);
+            TEST_ASSERT(crlfPlacements[i].pickupKind == lfPlacements[i].pickupKind);
+        }
     }
 
     // Key/value configs (AudioConfig.cpp and ContentConfig.cpp parsers).
@@ -1210,6 +1213,559 @@ void TestLogFileRotation() {
     TEST_ASSERT(GetLogFilePath().empty());
 }
 
+// --- Phase 4: data pipeline ---------------------------------------------------------------
+
+void WriteTextFile(const std::filesystem::path& path, const std::string& text) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path, std::ios::binary);
+    file << text;
+}
+
+// True if one of `messages` contains every one of `parts`.
+bool AnyMessageContains(const std::vector<std::string>& messages, std::initializer_list<const char*> parts) {
+    for (const std::string& message : messages) {
+        bool all = true;
+        for (const char* part : parts) {
+            all = all && message.find(part) != std::string::npos;
+        }
+        if (all) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const Entity* FindFirstEntity(const EntityManager& manager, EntityType type) {
+    for (const Entity& entity : manager.Entities()) {
+        if (entity.type == type) {
+            return &entity;
+        }
+    }
+    return nullptr;
+}
+
+int CountEntities(const EntityManager& manager, EntityType type) {
+    int count = 0;
+    for (const Entity& entity : manager.Entities()) {
+        count += entity.type == type ? 1 : 0;
+    }
+    return count;
+}
+
+const SpriteEntity* FindSpriteFor(const std::vector<SpriteEntity>& sprites, int entityId) {
+    for (const SpriteEntity& sprite : sprites) {
+        if (sprite.entityId == entityId) {
+            return &sprite;
+        }
+    }
+    return nullptr;
+}
+
+void TestGameplayDefinitionsExactValues() {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    GameplayDefinitions g{};
+    g.weapon.damage = -1;  // overwritten by a successful load
+    TEST_ASSERT(LoadGameplayDefinitions(ResolveRepoPath("game/defs/gameplay.json"), g, errors, warnings));
+    TEST_ASSERT(errors.empty());
+    TEST_ASSERT(warnings.empty());
+
+    // The keys that collided in the old first-match parser (known issue C2).
+    TEST_ASSERT(g.weapon.damage == 35);
+    TEST_ASSERT(g.enemy.damage == 12);
+    TEST_ASSERT_NEAR(g.player.moveSpeed, 3.0f, 1e-6f);
+    TEST_ASSERT_NEAR(g.enemy.moveSpeed, 1.6f, 1e-6f);
+    TEST_ASSERT(g.enemy.health == 50);
+
+    TEST_ASSERT(g.player.initialHealth == 100);
+    TEST_ASSERT(g.player.maxHealth == 100);
+    TEST_ASSERT_NEAR(g.player.turnSpeed, 1.8f, 1e-6f);
+    TEST_ASSERT_NEAR(g.player.collisionRadius, 0.22f, 1e-6f);
+    TEST_ASSERT_NEAR(g.weapon.fireRate, 0.25f, 1e-6f);
+    TEST_ASSERT_NEAR(g.weapon.range, 12.0f, 1e-6f);
+    TEST_ASSERT(g.weapon.initialAmmo == 24);
+    TEST_ASSERT(g.weapon.maxAmmo == 99);
+    TEST_ASSERT_NEAR(g.enemy.alertRadius, 6.5f, 1e-6f);
+    TEST_ASSERT_NEAR(g.enemy.attackRadius, 1.1f, 1e-6f);
+    TEST_ASSERT_NEAR(g.enemy.attackRate, 1.0f, 1e-6f);
+    TEST_ASSERT(g.pickups.health.value == 25);
+    TEST_ASSERT(g.pickups.ammo.value == 12);
+
+    // The same key name in two sections gives two independent values; missing keys keep
+    // the documented defaults.
+    const std::string partial =
+        "{\"enemy\": {\"damage\": 7, \"moveSpeed\": 0.5}, \"weapon\": {\"damage\": 70}, \"player\": {\"moveSpeed\": 4.5}}";
+    GameplayDefinitions p{};
+    TEST_ASSERT(ParseGameplayDefinitions(partial, "partial.json", p, errors, warnings));
+    TEST_ASSERT(p.enemy.damage == 7);
+    TEST_ASSERT(p.weapon.damage == 70);
+    TEST_ASSERT_NEAR(p.player.moveSpeed, 4.5f, 1e-6f);
+    TEST_ASSERT_NEAR(p.enemy.moveSpeed, 0.5f, 1e-6f);
+    TEST_ASSERT(p.enemy.health == kDefaultEnemyDefinition.health);
+    TEST_ASSERT(p.player.maxHealth == kDefaultPlayerDefinition.maxHealth);
+    TEST_ASSERT(p.pickups.ammo.value == kDefaultPickupDefinitions.ammo.value);
+
+    GameplayDefinitions empty{};
+    empty.enemy.health = 1;
+    TEST_ASSERT(ParseGameplayDefinitions("{}", "empty.json", empty, errors, warnings));
+    TEST_ASSERT(empty.enemy.health == kDefaultEnemyDefinition.health);
+    TEST_ASSERT(errors.empty() && warnings.empty());
+}
+
+void TestGameplayDefinitionsInvalid() {
+    struct Case {
+        const char* json;
+        const char* expected;  // must appear in an error message
+    };
+    const Case cases[] = {
+        {"{\"player\": {\"moveSpeed\": 3.0,}}", "invalid JSON"},
+        {"", "invalid JSON"},
+        {"[1, 2]", "the top level must be an object"},
+        {"{\"player\": 5}", "player must be an object, got 5"},
+        {"{\"weapon\": {\"damage\": \"35\"}}", "weapon.damage must be an integer from 1 to 10000, got \"35\""},
+        {"{\"weapon\": {\"damage\": 35.5}}", "weapon.damage must be an integer from 1 to 10000, got 35.5"},
+        {"{\"weapon\": {\"damage\": true}}", "weapon.damage must be an integer"},
+        {"{\"weapon\": {\"damage\": 0}}", "weapon.damage must be an integer from 1 to 10000, got 0"},
+        {"{\"weapon\": {\"damage\": 99999999999999999999}}", "weapon.damage must be"},
+        {"{\"weapon\": {\"range\": 0}}", "weapon.range must be a number > 0 and <= 1000, got 0"},
+        {"{\"enemy\": {\"moveSpeed\": -1}}", "enemy.moveSpeed must be a number >= 0 and <= 20, got -1"},
+        {"{\"enemy\": {\"attackRate\": 0}}", "enemy.attackRate must be a number > 0"},
+        {"{\"player\": {\"collisionRadius\": 0.5}}", "player.collisionRadius must be a number > 0 and < 0.5"},
+        {"{\"player\": {\"turnSpeed\": null}}", "player.turnSpeed must be a number > 0 and <= 20, got null"},
+        {"{\"pickups\": {\"ammo\": {\"value\": 0}}}", "pickups.ammo.value must be an integer from 1"},
+        {"{\"pickups\": {\"health\": []}}", "pickups.health must be an object, got an array"},
+        {"{\"enemy\": {\"damage\": 12, \"damage\": 10}}", "duplicate key \"damage\" inside \"enemy\""},
+        {"{\"player\": {}, \"player\": {}}", "duplicate key \"player\" at the top level"},
+        {"{\"player\": {\"initialHealth\": 150}}", "player.initialHealth (150) must not exceed player.maxHealth (100)"},
+        {"{\"weapon\": {\"initialAmmo\": 100}}", "weapon.initialAmmo (100) must not exceed weapon.maxAmmo (99)"},
+    };
+    for (const Case& c : cases) {
+        std::vector<std::string> errors;
+        std::vector<std::string> warnings;
+        GameplayDefinitions g{};
+        g.weapon.damage = 777;  // must survive a failed load
+        const bool ok = ParseGameplayDefinitions(c.json, "bad/gameplay.json", g, errors, warnings);
+        if (ok || !AnyMessageContains(errors, {"bad/gameplay.json: ", c.expected})) {
+            std::string all;
+            for (const std::string& e : errors) {
+                all += "\n         " + e;
+            }
+            FailTest(__FILE__, __LINE__, std::string("case ") + c.json + ": expected an error containing '" +
+                                             c.expected + "', got:" + all);
+        }
+        TEST_ASSERT(g.weapon.damage == 777);
+    }
+
+    // A missing file is an error.
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    GameplayDefinitions g{};
+    TEST_ASSERT(!LoadGameplayDefinitions(ResolveRepoPath("game/defs") + "/no-such-gameplay.json", g, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"Unable to open gameplay definitions", "no-such-gameplay.json"}));
+
+    // Unknown keys are warnings only; the pre-Phase 4 keys say where they moved.
+    errors.clear();
+    const std::string withUnknown =
+        "{\"player\": {\"speed\": 9}, \"pickups\": {\"health\": {\"value\": 30, \"maxPlayerHealth\": 100}}, \"music\": 1}";
+    TEST_ASSERT(ParseGameplayDefinitions(withUnknown, "old.json", g, errors, warnings));
+    TEST_ASSERT(errors.empty());
+    TEST_ASSERT(g.pickups.health.value == 30);
+    TEST_ASSERT(warnings.size() == 3);
+    TEST_ASSERT(AnyMessageContains(warnings, {"old.json: unknown key player.speed ignored"}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"pickups.health.maxPlayerHealth", "moved to player.maxHealth"}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"unknown key music ignored"}));
+}
+
+void TestEntityPlacementsJsonAndCsv() {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    std::vector<EntityPlacement> fromJson;
+    std::vector<EntityPlacement> fromCsv;
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), fromJson, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), fromCsv, errors, warnings));
+    TEST_ASSERT(errors.empty());
+    TEST_ASSERT(warnings.empty());
+
+    // level01: exactly these six, in file order.
+    const PlacementType expectedTypes[] = {PlacementType::Player, PlacementType::Enemy, PlacementType::Pickup,
+                                           PlacementType::Door, PlacementType::Trigger, PlacementType::Decoration};
+    TEST_ASSERT(fromJson.size() == 6);
+    for (std::size_t i = 0; i < fromJson.size(); ++i) {
+        TEST_ASSERT(fromJson[i].type == expectedTypes[i]);
+    }
+    TEST_ASSERT_NEAR(fromJson[0].position.x, 2.5f, 1e-6f);
+    TEST_ASSERT_NEAR(fromJson[0].angleDegrees, 0.0f, 1e-6f);
+    TEST_ASSERT(fromJson[2].pickupKind == PickupType::Health);
+    TEST_ASSERT(!fromJson[2].pickupValue.has_value());
+    TEST_ASSERT(fromJson[3].mapX == 8 && fromJson[3].mapY == 7);
+    TEST_ASSERT(fromJson[4].mapX == 13 && fromJson[4].mapY == 8);
+    TEST_ASSERT(fromJson[2].source.find("entities[2]") != std::string::npos);
+
+    // The CSV export is equivalent, field by field.
+    TEST_ASSERT(fromCsv.size() == fromJson.size());
+    for (std::size_t i = 0; i < fromJson.size(); ++i) {
+        TEST_ASSERT(fromCsv[i].type == fromJson[i].type);
+        TEST_ASSERT_NEAR(fromCsv[i].position.x, fromJson[i].position.x, 1e-6f);
+        TEST_ASSERT_NEAR(fromCsv[i].position.y, fromJson[i].position.y, 1e-6f);
+        TEST_ASSERT(fromCsv[i].mapX == fromJson[i].mapX && fromCsv[i].mapY == fromJson[i].mapY);
+        TEST_ASSERT_NEAR(fromCsv[i].angleDegrees, fromJson[i].angleDegrees, 1e-6f);
+        TEST_ASSERT(fromCsv[i].pickupKind == fromJson[i].pickupKind);
+        TEST_ASSERT(fromCsv[i].pickupValue == fromJson[i].pickupValue);
+        TEST_ASSERT(fromCsv[i].variant == fromJson[i].variant);
+    }
+
+    // Every optional field, in both formats.
+    const std::string fullJson =
+        "{\"level\": \"t\", \"entities\": ["
+        "{\"type\": \"player\", \"x\": 1.5, \"y\": 1.5, \"angle\": 90},"
+        "{\"type\": \"enemy\", \"x\": 3, \"y\": 1.5, \"variant\": \"guard\"},"
+        "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"ammo\", \"value\": 30}]}";
+    const std::string fullCsv =
+        "# type,x,y,mapX,mapY,kind,value,angle,variant\n"
+        "player,1.5,1.5,,,,,90\n"
+        "enemy,3,1.5,,,,,,guard\n"
+        "pickup,2,2,,,ammo,30\n";
+    TEST_ASSERT(ParseEntityPlacementsJson(fullJson, "t.json", fromJson, errors, warnings));
+    TEST_ASSERT(ParseEntityPlacementsCsv(fullCsv, "t.csv", fromCsv, errors, warnings));
+    TEST_ASSERT(errors.empty() && warnings.empty());
+    TEST_ASSERT(fromJson.size() == 3 && fromCsv.size() == 3);
+    for (const std::vector<EntityPlacement>* list : {&fromJson, &fromCsv}) {
+        TEST_ASSERT_NEAR((*list)[0].angleDegrees, 90.0f, 1e-6f);
+        TEST_ASSERT((*list)[1].variant == "guard");
+        TEST_ASSERT((*list)[2].pickupKind == PickupType::Ammo);
+        TEST_ASSERT((*list)[2].pickupValue == 30);
+    }
+
+    // Errors name the file, the entity and the field; valid entries are still returned.
+    const std::string badJson =
+        "{\"level\": \"bad\", \"entities\": ["
+        "{\"type\": \"player\", \"x\": 1.5, \"y\": 1.5},"
+        "{\"type\": \"pickup\", \"x\": 2, \"y\": 2},"
+        "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"armor\"},"
+        "{\"type\": \"door\", \"x\": 3, \"y\": 3},"
+        "{\"type\": \"ghost\", \"x\": 1, \"y\": 1},"
+        "{\"type\": \"enemy\", \"x\": \"1\", \"y\": 1},"
+        "{\"type\": \"enemy\", \"x\": 1, \"y\": 1, \"colour\": \"red\", \"kind\": \"ammo\"},"
+        "{\"x\": 1, \"y\": 1}, 7]}";
+    std::vector<EntityPlacement> placements;
+    TEST_ASSERT(!ParseEntityPlacementsJson(badJson, "bad.entities.json", placements, errors, warnings));
+    TEST_ASSERT(placements.size() == 2);
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.json: entities[1] (pickup): field \"kind\" is required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[2] (pickup): field \"kind\" must be \"health\" or \"ammo\", got \"armor\""}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[3] (door): fields \"mapX\" and \"mapY\" are required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[4]: field \"type\" must be one of", "\"ghost\""}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[5] (enemy): field \"x\" must be a number, got \"1\""}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[7]: field \"type\" is required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"entities[8]: each entity must be an object, got 7"}));
+    TEST_ASSERT(errors.size() == 7);
+    TEST_ASSERT(AnyMessageContains(warnings, {"entities[6] (enemy): unknown field \"colour\" ignored"}));
+    TEST_ASSERT(AnyMessageContains(warnings, {"entities[6] (enemy): field \"kind\" only applies to pickup; ignored"}));
+
+    errors.clear();
+    TEST_ASSERT(!ParseEntityPlacementsJson("{\"level\": \"x\"}", "noarray.json", placements, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"noarray.json: field \"entities\" is required"}));
+    errors.clear();
+    TEST_ASSERT(!ParseEntityPlacementsJson("player,1,1\n", "csv-as.json", placements, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"csv-as.json: invalid JSON"}));
+
+    errors.clear();
+    const std::string badCsv = "# header\npickup,2,2\ndoor,3,3,x,1\nplayer,1\n";
+    TEST_ASSERT(!ParseEntityPlacementsCsv(badCsv, "bad.entities.csv", placements, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:2 (entity 0) (pickup): field \"kind\" is required"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:3 (entity 1): column \"mapX\" must be an integer, got 'x'"}));
+    TEST_ASSERT(AnyMessageContains(errors, {"bad.entities.csv:4 (entity 2): expected at least 3 columns"}));
+
+    errors.clear();
+    TEST_ASSERT(!LoadEntityPlacementsFromFile("level01.entities.txt", placements, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"level01.entities.txt: unsupported entity file type"}));
+    errors.clear();
+    TEST_ASSERT(!LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs") + "/missing.entities.json", placements, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(errors, {"Unable to open entity placement file", "missing.entities.json"}));
+}
+
+void TestDecorationsAndSpriteSync() {
+    TEST_ASSERT(static_cast<int>(EntityType::Decoration) == 5);  // appended: earlier values unchanged
+    TEST_ASSERT(static_cast<int>(EntityType::Trigger) == 4);
+
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    Map map{};
+    TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), map, errors));
+    std::vector<EntityPlacement> placements;
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
+    LevelContents level{};
+    TEST_ASSERT(BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+
+    TEST_ASSERT(CountEntities(level.entities, EntityType::Trigger) == 1);  // only the real exit
+    TEST_ASSERT(CountEntities(level.entities, EntityType::Decoration) == 1);
+    const Entity* decoration = FindFirstEntity(level.entities, EntityType::Decoration);
+    TEST_ASSERT(decoration != nullptr);
+    const int decorationId = decoration->id;
+    TEST_ASSERT_NEAR(decoration->position.x, 4.2f, 1e-6f);
+    const SpriteEntity* decorationSprite = FindSpriteFor(level.sprites, decorationId);
+    TEST_ASSERT(decorationSprite != nullptr);
+    TEST_ASSERT(decorationSprite->type == SpriteType::Decoration);
+    TEST_ASSERT(decorationSprite->textureId == 2);
+    TEST_ASSERT(map.GetCell(13, 8) == TileType::Trigger);
+    TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
+
+    // Standing on the decoration does nothing (it used to be a Trigger and won the level).
+    Player player = level.player;
+    player.position = decoration->position;
+    SyncPlayerEntity(level.entities, player);
+    int health = 100;
+    int ammo = 24;
+    GameplayEvents events{};
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, true, events);
+    TEST_ASSERT(!events.triggerActivated);
+    TEST_ASSERT(!events.pickupCollected);
+    TEST_ASSERT(!events.doorToggled);
+
+    // Sprite sync over ticks: the decoration survives, a collected pickup is hidden (not
+    // dropped), a moving enemy's sprite follows it.
+    Entity* pickup = nullptr;
+    Entity* enemy = nullptr;
+    for (Entity& entity : level.entities.Entities()) {
+        pickup = entity.type == EntityType::Pickup ? &entity : pickup;
+        enemy = entity.type == EntityType::Enemy ? &entity : enemy;
+    }
+    TEST_ASSERT(pickup != nullptr && enemy != nullptr);
+    player.position = pickup->position;
+    GameplayEvents pickupEvents{};
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, pickupEvents);
+    TEST_ASSERT(pickupEvents.pickupCollected);
+    enemy->position = {7.0f, 2.5f};
+    for (int tick = 0; tick < 3; ++tick) {
+        SyncSpritesWithEntities(level.entities, level.sprites);
+    }
+    TEST_ASSERT(level.sprites.size() == 3);
+    decorationSprite = FindSpriteFor(level.sprites, decorationId);
+    TEST_ASSERT(decorationSprite != nullptr && decorationSprite->active && decorationSprite->visible);
+    const SpriteEntity* pickupSprite = FindSpriteFor(level.sprites, pickup->id);
+    TEST_ASSERT(pickupSprite != nullptr && !pickupSprite->visible);
+    const SpriteEntity* enemySprite = FindSpriteFor(level.sprites, enemy->id);
+    TEST_ASSERT(enemySprite != nullptr && enemySprite->visible);
+    TEST_ASSERT_NEAR(enemySprite->position.x, 7.0f, 1e-6f);
+
+    // Destroyed entities lose their sprite; new ones (e.g. from the C API) get one.
+    const int enemyId = enemy->id;
+    TEST_ASSERT(level.entities.DestroyEntity(enemyId));
+    const int spawnedId = level.entities.CreateEntity(EntityType::Decoration, {3.0f, 3.0f}).id;
+    SyncSpritesWithEntities(level.entities, level.sprites);
+    TEST_ASSERT(FindSpriteFor(level.sprites, enemyId) == nullptr);
+    const SpriteEntity* spawnedSprite = FindSpriteFor(level.sprites, spawnedId);
+    TEST_ASSERT(spawnedSprite != nullptr && spawnedSprite->type == SpriteType::Decoration);
+    TEST_ASSERT(level.sprites.size() == 3);
+    TEST_ASSERT(FindSpriteFor(level.sprites, decorationId) != nullptr);
+}
+
+void TestPickupKindFromData() {
+    const std::string text =
+        "{\"entities\": ["
+        "{\"type\": \"player\", \"x\": 1.5, \"y\": 1.5},"
+        "{\"type\": \"pickup\", \"x\": 2.5, \"y\": 1.5, \"kind\": \"ammo\"},"
+        "{\"type\": \"pickup\", \"x\": 3.5, \"y\": 1.5, \"kind\": \"ammo\"},"
+        "{\"type\": \"pickup\", \"x\": 4.5, \"y\": 1.5, \"kind\": \"health\", \"value\": 5},"
+        "{\"type\": \"pickup\", \"x\": 5.5, \"y\": 1.5, \"kind\": \"health\"}]}";
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    std::vector<EntityPlacement> placements;
+    TEST_ASSERT(ParseEntityPlacementsJson(text, "pickups.json", placements, errors, warnings));
+
+    GameplayDefinitions gameplay{};
+    gameplay.pickups.health.value = 30;
+    gameplay.pickups.ammo.value = 7;
+    Map map(8, 4);
+    BuildBorderWalls(map);
+    LevelContents level{};
+    TEST_ASSERT(BuildLevelFromPlacements(map, placements, gameplay, level, errors));
+
+    // Kind and value come from the data (the old code alternated by entity count).
+    std::vector<const Entity*> pickups;
+    for (const Entity& entity : level.entities.Entities()) {
+        if (entity.type == EntityType::Pickup) {
+            pickups.push_back(&entity);
+        }
+    }
+    TEST_ASSERT(pickups.size() == 4);
+    TEST_ASSERT(pickups[0]->pickupType == PickupType::Ammo && pickups[0]->pickupValue == 7);
+    TEST_ASSERT(pickups[1]->pickupType == PickupType::Ammo && pickups[1]->pickupValue == 7);
+    TEST_ASSERT(pickups[2]->pickupType == PickupType::Health && pickups[2]->pickupValue == 5);
+    TEST_ASSERT(pickups[3]->pickupType == PickupType::Health && pickups[3]->pickupValue == 30);
+
+    // Collecting applies that value, capped by the maximum.
+    Player player = level.player;
+    player.position = pickups[0]->position;
+    int health = 90;
+    int ammo = 10;
+    GameplayEvents events{};
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, events);
+    TEST_ASSERT(events.pickupCollected && events.pickupType == PickupType::Ammo && events.pickupValue == 7);
+    TEST_ASSERT(ammo == 17);
+    player.position = pickups[3]->position;
+    GameplayEvents healthEvents{};
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, healthEvents);
+    TEST_ASSERT(healthEvents.pickupValue == 30);
+    TEST_ASSERT(health == 100);
+}
+
+// A content root with level01.map and the given gameplay.json and level01.entities.json.
+void WriteContentRoot(const std::filesystem::path& root, const std::string& gameplayJson, const std::string& entitiesJson) {
+    MakeContentRoot(root);
+    std::filesystem::copy_file(PathFromUtf8(ResolveRepoPath("game/maps/level01.map")), root / "game" / "maps" / "level01.map",
+                               std::filesystem::copy_options::overwrite_existing);
+    WriteTextFile(root / "game" / "defs" / "gameplay.json", gameplayJson);
+    WriteTextFile(root / "game" / "defs" / "level01.entities.json", entitiesJson);
+}
+
+void TestEditedDataChangesGame() {
+    ScratchDir scratch("edited-data");
+    const std::filesystem::path root = scratch.Path() / "content";
+    const std::string gameplay = R"({
+  "player": { "initialHealth": 50, "maxHealth": 150, "moveSpeed": 4.5 },
+  "weapon": { "damage": 20, "fireRate": 0.5, "initialAmmo": 7, "maxAmmo": 30 },
+  "enemy": { "health": 80, "damage": 9, "alertRadius": 3.0 },
+  "pickups": { "health": { "value": 40 }, "ammo": { "value": 6 } }
+})";
+    const std::string entities = R"({
+  "level": "level01",
+  "entities": [
+    { "type": "player", "x": 2.5, "y": 2.5, "angle": 90 },
+    { "type": "pickup", "x": 2.6, "y": 2.5, "kind": "health" },
+    { "type": "pickup", "x": 13.5, "y": 1.5, "kind": "ammo", "value": 11 },
+    { "type": "enemy", "x": 13.5, "y": 10.5, "variant": "guard" },
+    { "type": "decoration", "x": 4.5, "y": 1.5 },
+    { "type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7 },
+    { "type": "trigger", "x": 13.5, "y": 8.5, "mapX": 13, "mapY": 8 }
+  ]
+})";
+    WriteContentRoot(root, gameplay, entities);
+
+    // The real engine path: Engine::LoadGameplay + Engine::LoadLevel (as Init does), then a
+    // frame of Engine::Update. No window is needed.
+    Engine engine;
+    engine.contentRoot_ = root;
+    TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
+    TEST_ASSERT(engine.LoadLevel("game/maps/level01.map", "game/defs/level01.entities.json"));
+
+    TEST_ASSERT(engine.playerHealth_ == 50);
+    TEST_ASSERT(engine.playerMaxHealth_ == 150);
+    TEST_ASSERT(engine.playerAmmo_ == 7);
+    TEST_ASSERT(engine.playerMaxAmmo_ == 30);
+    TEST_ASSERT_NEAR(engine.player_.moveSpeed, 4.5f, 1e-6f);
+    TEST_ASSERT_NEAR(engine.player_.turnSpeedRadians, kDefaultPlayerDefinition.turnSpeed, 1e-6f);  // not in the file
+    TEST_ASSERT_NEAR(engine.player_.directionAngleRadians, kPi / 2.0f, 1e-5f);
+    TEST_ASSERT(engine.entityManager_.Entities().size() == 7);
+    const Entity* enemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
+    TEST_ASSERT(enemy != nullptr);
+    TEST_ASSERT(enemy->health == 80 && enemy->maxHealth == 80 && enemy->damage == 9);
+    TEST_ASSERT_NEAR(enemy->alertRadius, 3.0f, 1e-6f);
+    int ammoPickupValue = 0;
+    for (const Entity& entity : engine.entityManager_.Entities()) {
+        if (entity.type == EntityType::Pickup && entity.pickupType == PickupType::Ammo) {
+            ammoPickupValue = entity.pickupValue;
+        }
+    }
+    TEST_ASSERT(ammoPickupValue == 11);  // the placement's value overrides pickups.ammo.value
+
+    // One frame: the player stands on the health pickup.
+    engine.running_ = true;
+    engine.SetState(GameState::Gameplay);
+    engine.Update(1.0 / 60.0);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay);
+    TEST_ASSERT(engine.playerHealth_ == 90);
+    TEST_ASSERT(engine.hudMessage_ == "HEALTH RESTORED (+40 HP)");
+    const Entity* decoration = FindFirstEntity(engine.entityManager_, EntityType::Decoration);
+    TEST_ASSERT(decoration != nullptr);
+    const SpriteEntity* decorationSprite = FindSpriteFor(engine.sprites_, decoration->id);
+    TEST_ASSERT(decorationSprite != nullptr && decorationSprite->visible);  // survives the update tick
+    TEST_ASSERT(engine.sprites_.size() == 4);
+
+    // Shooting uses the weapon values.
+    engine.player_.position = {12.5f, 10.5f};
+    engine.player_.directionAngleRadians = 0.0f;  // facing the enemy at (13.5, 10.5)
+    engine.PlayerAttack();
+    TEST_ASSERT(engine.playerAmmo_ == 6);
+    TEST_ASSERT_NEAR(engine.playerAttackCooldown_, 0.5f, 1e-6f);
+    TEST_ASSERT(engine.hudMessage_ == "Hit enemy! (-20 HP)");
+    TEST_ASSERT(FindFirstEntity(engine.entityManager_, EntityType::Enemy)->health == 60);
+
+    // Edit the file again and reload: the new value applies to the next level load.
+    WriteTextFile(root / "game" / "defs" / "gameplay.json", "{\"enemy\": {\"health\": 25}}");
+    TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
+    engine.ResetLevel();
+    TEST_ASSERT(FindFirstEntity(engine.entityManager_, EntityType::Enemy)->health == 25);
+    TEST_ASSERT(engine.playerHealth_ == kDefaultPlayerDefinition.initialHealth);
+
+    // A broken file is rejected and the previous values stay.
+    WriteTextFile(root / "game" / "defs" / "gameplay.json", "{\"enemy\": {\"health\": \"lots\"}}");
+    TEST_ASSERT(!engine.LoadGameplay("game/defs/gameplay.json"));
+    TEST_ASSERT(engine.gameplay_.enemy.health == 25);
+
+    engine.running_ = false;
+}
+
+void TestLevelLoadFailures() {
+    ScratchDir scratch("level-load-failures");
+    const std::filesystem::path root = scratch.Path() / "content";
+    WriteContentRoot(root, ReadWholeFile(ResolveRepoPath("game/defs/gameplay.json")),
+                     ReadWholeFile(ResolveRepoPath("game/defs/level01.entities.json")));
+    std::filesystem::copy_file(PathFromUtf8(ResolveRepoPath("game/defs/level01.entities.csv")),
+                               root / "game" / "defs" / "level01.entities.csv");
+
+    Engine engine;
+    engine.contentRoot_ = root;
+    TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
+    const std::string mapPath = "game/maps/level01.map";
+    TEST_ASSERT(engine.LoadLevel(mapPath, "game/defs/level01.entities.json"));
+    TEST_ASSERT(engine.entityManager_.Entities().size() == 6);
+    TEST_ASSERT(engine.LoadLevel(mapPath, "game/defs/level01.entities.csv"));  // legacy format still loads
+    TEST_ASSERT(engine.entityManager_.Entities().size() == 6);
+
+    const auto writeEntities = [&](const std::string& name, const std::string& text) {
+        WriteTextFile(root / "game" / "defs" / name, text);
+        return "game/defs/" + name;
+    };
+    const std::string player = "{\"type\": \"player\", \"x\": 2.5, \"y\": 2.5}";
+    const std::string failing[] = {
+        "game/defs/missing.entities.json",  // no built-in layout any more
+        writeEntities("syntax.entities.json", "{\"entities\": [ {\"type\": \"player\", \"x\": 2.5 "),
+        writeEntities("nokind.entities.json",
+                      "{\"entities\": [" + player + ", {\"type\": \"pickup\", \"x\": 3.5, \"y\": 2.5}]}"),
+        writeEntities("noplayer.entities.json", "{\"entities\": [{\"type\": \"enemy\", \"x\": 3.5, \"y\": 2.5}]}"),
+        writeEntities("twoplayers.entities.json", "{\"entities\": [" + player + ", " + player + "]}"),
+        writeEntities("outside.entities.json",
+                      "{\"entities\": [" + player + ", {\"type\": \"enemy\", \"x\": 30.5, \"y\": 2.5}]}"),
+        writeEntities("badcell.entities.json",
+                      "{\"entities\": [" + player + ", {\"type\": \"door\", \"x\": 8.5, \"y\": 7.5, \"mapX\": 16, \"mapY\": 7}]}"),
+    };
+    for (const std::string& entitiesPath : failing) {
+        TEST_ASSERT(!engine.LoadLevel(mapPath, entitiesPath));
+        // A failed load leaves the current level as it was.
+        TEST_ASSERT(engine.entityManager_.Entities().size() == 6);
+        TEST_ASSERT(engine.currentEntitiesPath_ == "game/defs/level01.entities.csv");
+        TEST_ASSERT(engine.map_.GetCell(8, 7) == TileType::Door);
+    }
+    TEST_ASSERT(!engine.LoadLevel("game/maps/missing.map", "game/defs/level01.entities.json"));
+
+    // Builder messages name the file, the entity and the problem.
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    Map map{};
+    TEST_ASSERT(LoadMapFromFile(PathToUtf8(root / "game" / "maps" / "level01.map"), map, errors));
+    std::vector<EntityPlacement> placements;
+    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "badcell.entities.json"), placements, errors, warnings));
+    LevelContents level{};
+    const Map before = map;
+    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(AnyMessageContains(errors, {"badcell.entities.json: entities[1] (door): map cell (16, 7) is outside the 16x12 map"}));
+    TEST_ASSERT(map.GetCell(8, 7) == before.GetCell(8, 7));
+    errors.clear();
+    TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "noplayer.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(AnyMessageContains(errors, {"no player placement"}));
+}
+
 struct TestCase {
     const char* id;    // used on the command line and as the CTest name (native.<id>)
     const char* name;  // human-readable description
@@ -1247,6 +1803,13 @@ const TestCase kTests[] = {
     {"command_line_parsing", "Command-line parsing", &TestCommandLineParsing},
     {"crlf_content_loading", "CRLF content files load like LF ones", &TestCrlfContentLoading},
     {"log_file_rotation", "Log file rotation", &TestLogFileRotation},
+    {"gameplay_definitions_exact", "gameplay.json exact values per section", &TestGameplayDefinitionsExactValues},
+    {"gameplay_definitions_invalid", "Malformed or invalid gameplay.json is rejected", &TestGameplayDefinitionsInvalid},
+    {"entity_placements_json_csv", "JSON entity placements, errors, CSV equivalence", &TestEntityPlacementsJsonAndCsv},
+    {"decorations_and_sprite_sync", "Decorations are not triggers; sprites survive updates", &TestDecorationsAndSpriteSync},
+    {"pickup_kind_from_data", "Pickup kind and value come from data", &TestPickupKindFromData},
+    {"edited_data_changes_game", "Edited gameplay and entity files change the game", &TestEditedDataChangesGame},
+    {"level_load_failures", "Missing or invalid entity files fail the level load", &TestLevelLoadFailures},
 };
 
 void PrintUsage(const char* program) {

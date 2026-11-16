@@ -1,5 +1,7 @@
 # Neo-Wolf-v1
 
+[![CI](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml/badge.svg?branch=completion%2Fv1)](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml)
+
 A high-performance **2.5D software-rendered raycasting game engine** written in modern C++17 with SDL2, featuring a data-driven content pipeline, native particle simulation, audio system, and a comprehensive **DevKit CLI toolchain** (`tools/devkit/`).
 
 ---
@@ -14,10 +16,10 @@ A high-performance **2.5D software-rendered raycasting game engine** written in 
 - **GameState Machine**: Robust state separation (`Menu`, `Gameplay`, `Paused`, `GameOver`, `Victory`) with seamless transitions, overlays, and level reload/reset architecture.
 - **Gameplay Combat & AI**: Hitscan weapon attacks, ammo management, health pickups, and enemy AI state machine (Idle -> Alert -> Chase -> Attack -> Dead).
 - **C API Boundary & Interop Bridge**: Plain C ABI interface and bidirectional Command Bridge / Event Queue for decoupling gameplay scripting.
-- **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite configuration files (`.cfg`, `.json`), gameplay definitions (`gameplay.json`), and entity placement definitions (`.csv`, `.json`).
+- **Data-Driven Architecture**: Grid map files (`.map`), texture/sprite/audio configuration files (`.cfg`), gameplay values (`gameplay.json`), and entity placements (`<level>.entities.json`, with an optional `.csv` export). Editing them changes the game without recompiling; an invalid `gameplay.json`, map or entity file stops the game with a message that names the file, entry and field. See [docs/CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md).
 - **DevKit CLI Toolchain**: Complete developer toolkit (`tools/devkit/`) for map inspection, reachability analysis, asset verification, procedural generation, CSV/JSON sync, system doctor diagnostics, and release packaging.
 - **Dual-Engine Test Suite**: 100% automated test coverage across native C++ logic/asset loaders and Python DevKit validation suite.
-- **Cross-Platform**: macOS (primary, verified), Windows (presets and scripts written, not yet verified), Linux (best effort).
+- **Cross-Platform**: macOS (primary, verified), Windows (built and tested headless in CI; not yet played interactively on a Windows PC), Linux (best effort; built and tested headless in CI).
 
 ---
 
@@ -44,7 +46,7 @@ locations, missing content, no audio device, virtual machines).
 
 ## Quick Start (Linux)
 
-**Not yet run on Linux** (best effort; Linux CI is written but has not run yet). Needs a C++17
+**Best effort:** built and tested headless in CI (without desktop backends); not yet run on a Linux desktop. Needs a C++17
 compiler, CMake 3.25+, Ninja and Python 3. Ubuntu 22.04's packaged CMake (3.22) is too old for
 the presets: get a newer CMake (for example `pip install cmake`, or Kitware's apt repository).
 SDL2 is built from source by CMake (no `libsdl2-dev` needed), but that needs the X11/Wayland and
@@ -66,7 +68,7 @@ audio development packages SDL builds against; see [docs/BUILD_AND_RELEASE.md](d
 
 Needs Visual Studio 2022 or newer (any edition) with the *Desktop development with C++* workload,
 and Python 3. No vcpkg or SDL2 install is needed. Details: [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md)
-(**not yet built or tested on Windows**; Windows CI is written but has not run yet).
+(built and tested headless in CI with MSVC; not yet played interactively on a Windows PC).
 
 ### 1. Build and Run Tests
 ```cmd
@@ -103,7 +105,7 @@ The DevKit CLI provides developer tools for map inspection, asset validation, le
 # Create a new starter map template
 ./tools/devkit/neo_devkit create-map game/maps/level02.map --width 20 --height 15 --style dungeon
 
-# Synchronize CSV and JSON entity definitions
+# Export the entity placement JSON files to CSV (JSON is canonical)
 ./tools/devkit/neo_devkit sync-entities
 
 # Assemble standalone release package

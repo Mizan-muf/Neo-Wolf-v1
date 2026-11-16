@@ -1,19 +1,41 @@
-"""Definition and content synchronization tools for Neo-Wolf (CSV/JSON conversions)."""
+"""Definition and content synchronization tools for Neo-Wolf (CSV/JSON conversions).
+
+The JSON entity files (``<level>.entities.json``) are canonical: the engine loads them.
+The CSV files are an optional export in the legacy table format, which the engine also reads:
+
+    type,x,y,mapX,mapY,kind,value,angle,variant
+
+Trailing columns may be left out, and an empty column means "not given"
+(e.g. ``pickup,11.8,6.6,,,health``). See docs/CONTENT_DEFINITIONS.md.
+"""
 
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# CSV column order and value types (the engine's EntityPlacementLoader uses the same table).
+CSV_COLUMNS: List[Tuple[str, type]] = [
+    ("type", str),
+    ("x", float),
+    ("y", float),
+    ("mapX", int),
+    ("mapY", int),
+    ("kind", str),
+    ("value", int),
+    ("angle", float),
+    ("variant", str),
+]
+CSV_HEADER = "# " + ",".join(name for name, _ in CSV_COLUMNS)
+
 
 def load_entity_csv(file_path: Path) -> List[Dict[str, Any]]:
-
-    """Parse an entity placement CSV file into dictionaries."""
+    """Parse an entity placement CSV file into dictionaries (empty columns are omitted)."""
     file_path = Path(file_path)
     if not file_path.exists():
         raise FileNotFoundError(f"Entity CSV file not found: {file_path}")
 
     entities: List[Dict[str, Any]] = []
-    lines = file_path.read_text(encoding="utf-8").splitlines()
+    lines = file_path.read_text(encoding="utf-8-sig").splitlines()
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#"):
@@ -21,30 +43,28 @@ def load_entity_csv(file_path: Path) -> List[Dict[str, Any]]:
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 3:
             continue
-        entry: Dict[str, Any] = {
-            "type": parts[0],
-            "x": float(parts[1]),
-            "y": float(parts[2]),
-        }
-        if len(parts) >= 5:
-            entry["mapX"] = int(parts[3])
-            entry["mapY"] = int(parts[4])
+        entry: Dict[str, Any] = {}
+        for (name, kind), cell in zip(CSV_COLUMNS, parts):
+            if cell == "":
+                continue
+            entry[name] = kind(cell)
         entities.append(entry)
     return entities
 
 
+def _format_cell(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
 def save_entity_csv(entities: List[Dict[str, Any]], file_path: Path) -> None:
-    """Save entity dictionary list to CSV format."""
+    """Save entity dictionary list to CSV format (fields without a CSV column are dropped)."""
     file_path = Path(file_path)
-    lines: List[str] = ["# type,x,y,mapX,mapY"]
+    lines: List[str] = [CSV_HEADER]
     for ent in entities:
-        t = ent["type"]
-        x = ent["x"]
-        y = ent["y"]
-        if "mapX" in ent and "mapY" in ent:
-            lines.append(f"{t},{x},{y},{ent['mapX']},{ent['mapY']}")
-        else:
-            lines.append(f"{t},{x},{y}")
+        cells = [_format_cell(ent.get(name)) for name, _ in CSV_COLUMNS]
+        while len(cells) > 3 and cells[-1] == "":
+            cells.pop()
+        lines.append(",".join(cells))
     file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -54,7 +74,7 @@ def load_entity_json(file_path: Path) -> Tuple[str, List[Dict[str, Any]]]:
     if not file_path.exists():
         raise FileNotFoundError(f"Entity JSON file not found: {file_path}")
 
-    data = json.loads(file_path.read_text(encoding="utf-8"))
+    data = json.loads(file_path.read_text(encoding="utf-8-sig"))
     level_id = data.get("level", file_path.stem.replace(".entities", ""))
     entities = data.get("entities", [])
     return level_id, entities
@@ -88,23 +108,26 @@ def json_to_csv(json_path: Path, csv_path: Path) -> None:
     save_entity_csv(entities, csv_path)
 
 
-def sync_entity_definitions(project_root: Path, prefer_csv: bool = True) -> List[str]:
-    """Synchronize CSV and JSON entity files in game/defs/."""
+def sync_entity_definitions(project_root: Path, from_csv: bool = False) -> List[str]:
+    """Synchronize the entity files in game/defs/.
+
+    Default: JSON (canonical) -> CSV export, overwriting every <level>.entities.csv.
+    from_csv=True: the reverse, CSV -> JSON, overwriting every <level>.entities.json.
+    """
     defs_dir = Path(project_root) / "game" / "defs"
     synced: List[str] = []
 
-    if prefer_csv:
-        for csv_file in defs_dir.glob("*.entities.csv"):
+    if from_csv:
+        for csv_file in sorted(defs_dir.glob("*.entities.csv")):
             base_name = csv_file.name.replace(".entities.csv", "")
             json_file = defs_dir / f"{base_name}.entities.json"
             csv_to_json(csv_file, json_file, level_id=base_name)
             synced.append(f"Synced {csv_file.name} -> {json_file.name}")
     else:
-        for json_file in defs_dir.glob("*.entities.json"):
+        for json_file in sorted(defs_dir.glob("*.entities.json")):
             base_name = json_file.name.replace(".entities.json", "")
             csv_file = defs_dir / f"{base_name}.entities.csv"
             json_to_csv(json_file, csv_file)
             synced.append(f"Synced {json_file.name} -> {csv_file.name}")
 
     return synced
-

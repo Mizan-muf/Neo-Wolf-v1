@@ -92,8 +92,10 @@ folder that contains `game/maps` and `game/defs`) in this order and logs the one
    repository's `game/`), then `<executable folder>/../Resources` (a macOS `.app` bundle).
 3. The current working directory and its parent.
 
-If no content root is found, or the first level cannot be loaded, the game logs the folders it
-searched, shows an error dialog and exits with code 1.
+If no content root is found, the game logs the folders it searched, shows an error dialog and
+exits with code 1. An invalid `gameplay.json`, or a first level whose map or entity file is
+missing or invalid, also ends startup with an error dialog and exit code 1; the log names the
+file and the problem.
 
 Command-line options (`./build/macos/neo_wolf --help` lists them):
 

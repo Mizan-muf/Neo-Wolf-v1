@@ -32,22 +32,22 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] CMake: a `neowolf_engine` static library linked by the game and the tests; each source listed once
 - [x] Remove `/home/mizan` paths and `-lpthread -ldl -lm`
 - [x] SDL2 from a pinned source release via FetchContent, linked statically; `NEOWOLF_SYSTEM_SDL2` option (official SDL2 2.32.10 source tarball, SHA-256 pinned, no Git needed; a wrong hash fails configure; both modes verified on macOS)
-- [ ] `CMakePresets.json` with `macos`, `windows-msvc` and `linux` presets in debug and release (written; `macos`, `macos-debug`, `ci-macos` verified; Windows Debug is the `windows-msvc-debug` build/test preset on the multi-config `windows-msvc` configure; Windows and Linux presets not yet run)
-- [ ] Per-compiler warning flags, warnings-as-errors in CI, MSVC portability fixes (in place; `ci-macos` builds with `-Werror`; a MinGW cross-compile on macOS has 0 warnings; MSVC flags not yet compiled, needs Phase 2 CI)
+- [x] `CMakePresets.json` with `macos`, `windows-msvc` and `linux` presets in debug and release (`macos`, `macos-debug`, `ci-macos` verified locally; `ci-windows-msvc` and `ci-linux` pass in CI, and `build.ps1 -Config Debug` builds the Windows Debug configuration there; `linux-debug` not run)
+- [x] Per-compiler warning flags, warnings-as-errors in CI, MSVC portability fixes (`-Werror` on macOS and Linux, `/W4 /WX` with MSVC, all passing in CI at `65c26b0`)
 - [x] Test harness: failures are recorded instead of aborting; non-zero exit on failure; one CTest entry per test; fixed repo root
-- [ ] `build.sh` (macOS/Linux) and `build.cmd`/`build.ps1` (vswhere, any VS edition); no `|| true`; Makefile becomes a thin wrapper (written; `build.sh` and `make check` verified on macOS; Windows scripts not yet run; CI job `windows-scripts` will run them)
+- [x] `build.sh` (macOS/Linux) and `build.cmd`/`build.ps1` (vswhere, any VS edition); no `|| true`; Makefile becomes a thin wrapper (`build.sh` and `make check` verified on macOS; `build.cmd` and `build.ps1 -Config Debug` pass in CI job `windows-scripts`; a run on a real Windows PC is part of Phase 11)
 - [x] Docs: `BUILD_MACOS.md`, `BUILD_WINDOWS.md`, `TESTING.md`
 - **Done when:** a fresh clone passes `cmake --preset macos && cmake --build --preset macos && ctest --preset macos`
 
 ## Phase 2 — CI (macOS + Windows)
-> Note: the GitHub Actions workflow is written (`.github/workflows/ci.yml`: macOS `ci-macos` on `macos-latest`, Windows `ci-windows-msvc`, Linux `ci-linux`; configure, build, ctest, headless smoke run via `tools/ci/smoke_run.py`, since Phase 3 `--frames 300` with exit code 0 required) and the CI section of `TESTING.md` describes it. First run (commit `1b10a57`): Linux and `windows-scripts` passed, the Windows preset job failed on MSVC C4459 (fixed in Phase 3), the macOS job did not start (`macos-14` image retired; now `macos-latest`). The items below stay unticked until the jobs pass.
-- [ ] GitHub Actions on `macos-latest` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run
-- [ ] Later phases add the bot over all levels and package artifacts
-- [ ] Docs: CI section in `TESTING.md`, badge in README
-- **Done when:** both jobs pass (requires a push)
+> Status: CI is green. GitHub Actions run 43820751721 on commit `65c26b0` passed all four jobs: macOS (`ci-macos`, universal), Windows MSVC x64 (`ci-windows-msvc`), Linux (`ci-linux`) and `windows-scripts`. (History: on the first run, at `1b10a57`, the Windows preset job failed on MSVC C4459 and the macOS job did not start because the `macos-14` image is retired; both fixed in Phase 3.)
+- [x] GitHub Actions on `macos-latest` and `windows-latest`: configure, build, ctest, DevKit tests, `validate --strict`, headless smoke run (`.github/workflows/ci.yml`; the DevKit tests and `validate --strict` run as CTest tests; smoke run `--frames 300`, exit code 0)
+- [ ] Later phases add the bot over all levels and package artifacts (Phases 7 and 9)
+- [x] Docs: CI section in `TESTING.md`, badge in README
+- **Done when:** both jobs pass (requires a push). **Met:** run 43820751721 at `65c26b0`.
 
 ## Phase 3 — Runtime robustness
-> Status: implemented; ticked items are verified on macOS. Windows behaviour depends on CI (the `game_smoke_*` CTest tests and the `--frames 300` smoke run) and partly on a real Windows machine (KNOWN_ISSUES B14).
+> Status: implemented; ticked items are verified on macOS. Windows: the `game_smoke_*` CTest tests and the `--frames 300` smoke run pass in CI (run 43820751721 at `65c26b0`); the interactive parts still need a real Windows machine (KNOWN_ISSUES B14).
 - [x] One content-root resolver: `--data` / `NEOWOLF_DATA_DIR`, the executable's directory, `.app/Contents/Resources`, then the working directory (`engine/core/Paths.{h,cpp}`; explicit `--data`/`NEOWOLF_DATA_DIR` are exclusive; verified from `/`, from a copied folder whose path contains a space, and with temp-directory unit tests)
 - [x] Fatal error message box when content is missing (also when the first level fails to load; exit code 1; dialogs suppressed with `--frames`; with the dummy video driver SDL has no message box and the failure is only logged)
 - [x] Log file in the per-user preferences folder (`SDL_GetPrefPath`; fresh per launch, previous run kept as `neowolf.prev.log`)
@@ -57,18 +57,19 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - [x] CLI: `--level N`, `--data`, `--version`, `--frames N` (plus `--help`, `--windowed`, `--fullscreen`; `engine/core/CommandLine.{h,cpp}`; exit code 2 for bad options)
 - [x] CRLF-tolerant loaders
 - [x] Docs: `TROUBLESHOOTING.md`
-- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI (any directory and headless macOS: done; Finder needs the `.app` from Phase 9; Windows CI: pending)
+- **Done when:** the game launches from any directory and from Finder; headless smoke runs pass on macOS and in Windows CI (any directory and headless macOS: done; Windows CI: done at `65c26b0`; Finder needs the `.app` from Phase 9)
 
 ## Phase 4 — Data pipeline defects
-- [ ] JSON entity placements loaded properly (vendored MIT JSON library); JSON is canonical, CSV is an optional export
-- [ ] Decoration entity type fixed in the same change (no longer a trigger; sprite persists)
-- [ ] `gameplay.json` parsed per section and applied; hardcoded stats removed
-- [ ] Pickup kind and value come from data; HUD messages show real values
-- [ ] Hardcoded fallback level removed; load errors logged loudly
-- [ ] Dead definition files removed or wired in
-- [ ] Exact-value tests; a test proving that edited data changes the game
-- [ ] Docs: `CONTENT_DEFINITIONS.md`, `MAP_FORMAT.md` rewritten
-- **Done when:** changing level or gameplay files changes the game without recompiling, and a test proves it
+> Status: implemented; ticked items are verified on macOS (build with 0 warnings in our code, `ci-macos` with `-Werror`, 40 CTest tests, 24 DevKit tests, `validate --strict`, headless `--frames 300` run) and by a MinGW cross-compile. Windows (MSVC) and Linux: pending the CI run for this commit. Known issues C1–C5 are resolved.
+- [x] JSON entity placements loaded properly (vendored MIT JSON library); JSON is canonical, CSV is an optional export (nlohmann/json 3.12.0 in `third_party/`, SYSTEM include; `EntityPlacementLoader` picks the parser by extension; DevKit `sync-entities` now exports JSON → CSV by default)
+- [x] Decoration entity type fixed in the same change (no longer a trigger; sprite persists) (`EntityType::Decoration` appended; sprites are synced, not rebuilt)
+- [x] `gameplay.json` parsed per section and applied; hardcoded stats removed (validated: types, ranges, duplicate keys; invalid file = exit code 1; `player.maxHealth` and `weapon.maxAmmo` moved out of `pickups`)
+- [x] Pickup kind and value come from data; HUD messages show real values
+- [x] Hardcoded fallback level removed; load errors logged loudly (file, entity index and field in every message; placement wiring extracted to `BuildLevelFromPlacements`)
+- [x] Dead definition files removed or wired in (`textures.json`, `sprites.json`, `entities.json` deleted; DevKit references removed)
+- [x] Exact-value tests; a test proving that edited data changes the game (`gameplay_definitions_exact`, `gameplay_definitions_invalid`, `entity_placements_json_csv`, `decorations_and_sprite_sync`, `pickup_kind_from_data`, `edited_data_changes_game`, `level_load_failures`, CTest `game_smoke_invalid_gameplay`)
+- [x] Docs: `CONTENT_DEFINITIONS.md`, `MAP_FORMAT.md` rewritten (plus `THIRD_PARTY_LICENSES.md`, `third_party/README.md`)
+- **Done when:** changing level or gameplay files changes the game without recompiling, and a test proves it. **Met on macOS:** `edited_data_changes_game` writes a modified `gameplay.json` and entity file into a temporary content root and checks the new values through `Engine::LoadGameplay`, `Engine::LoadLevel` and `Engine::Update`.
 
 ## Phase 5 — Campaign & progression
 - [ ] `game/defs/campaign.json` with 10 entries

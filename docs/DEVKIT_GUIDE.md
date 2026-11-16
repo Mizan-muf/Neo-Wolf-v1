@@ -42,8 +42,8 @@ Performs multi-layer verification on all project content:
 - Enforces closed boundaries and consistent line lengths on all `.map` files.
 - Verifies Netpbm PPM (`P3`) syntax, headers, dimensions, and pixel counts.
 - Verifies RIFF WAVE (`.wav`) headers, bit depth, channel configuration, and PCM data.
-- Enforces consistency between entity placement files (`.csv` and `.json`) and map dimensions.
-- Cross-references all file paths in `.cfg` and `.json` definitions against disk.
+- Checks entity placement files (`.json` and `.csv`) with the engine's rules: valid types and fields, `kind` on every pickup, `mapX`/`mapY` on doors and triggers, exactly one player, positions inside the map.
+- Cross-references all file paths in the `.cfg` definitions against disk. (`gameplay.json` is not checked yet: Roadmap Phase 7.)
 
 ```bash
 # Validate entire repository content:
@@ -66,7 +66,7 @@ Renders an ASCII visualization of your map directly in the terminal, overlaying 
 
 ```bash
 # Render map with entity overlays:
-./tools/devkit/neo_devkit inspect-map game/maps/level01.map --entities game/defs/level01.entities.csv
+./tools/devkit/neo_devkit inspect-map game/maps/level01.map --entities game/defs/level01.entities.json
 
 # Print detailed tile statistics and reachability report:
 ./tools/devkit/neo_devkit inspect-map game/maps/level01.map --stats --reachability
@@ -121,10 +121,14 @@ Creates procedural test textures or test audio tones.
 ---
 
 ### 7. `sync-entities` — Entity Format Synchronizer
-Maintains bi-directional synchronization between `.entities.csv` and `.entities.json` files in `game/defs/`.
+Exports every canonical `<level>.entities.json` in `game/defs/` to `<level>.entities.csv`
+(JSON → CSV, overwriting the CSV). The game loads the JSON; the CSV is an optional export.
+`--from-csv` reverses the direction and overwrites the JSON files. Formats:
+[CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md).
 
 ```bash
-./tools/devkit/neo_devkit sync-entities
+./tools/devkit/neo_devkit sync-entities              # JSON -> CSV (default since Phase 4)
+./tools/devkit/neo_devkit sync-entities --from-csv   # CSV -> JSON
 ```
 
 ---
@@ -158,16 +162,20 @@ Runs the internal test suite verifying all DevKit validator, analysis, generatio
    ```bash
    ./tools/devkit/neo_devkit inspect-map game/maps/level02.map --stats --reachability
    ```
-3. **Create Entity Placements** (`game/defs/level02.entities.csv`):
-   ```csv
-   # type,x,y,mapX,mapY
-   player,2.5,2.5
-   enemy,7.5,3.5
-   pickup,12.5,8.5
-   door,8.5,5.5,8,5
-   trigger,13.5,8.5,13,8
+3. **Create Entity Placements** (`game/defs/level02.entities.json`; every pickup needs a `kind`):
+   ```json
+   {
+     "level": "level02",
+     "entities": [
+       { "type": "player", "x": 2.5, "y": 2.5 },
+       { "type": "enemy", "x": 7.5, "y": 3.5 },
+       { "type": "pickup", "x": 12.5, "y": 8.5, "kind": "health" },
+       { "type": "door", "x": 8.5, "y": 5.5, "mapX": 8, "mapY": 5 },
+       { "type": "trigger", "x": 13.5, "y": 8.5, "mapX": 13, "mapY": 8 }
+     ]
+   }
    ```
-4. **Sync JSON Placement Files**:
+4. **Export the CSV copy** (optional):
    ```bash
    ./tools/devkit/neo_devkit sync-entities
    ```

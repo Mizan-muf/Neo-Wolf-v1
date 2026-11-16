@@ -63,7 +63,24 @@ bool Engine::Init(const EngineOptions& options) {
     contentRoot_ = root.root;
     LogInfo("Content root: " + PathToUtf8(contentRoot_) + " (" + root.source + ")");
 
-    // 2. Window and renderer.
+    // 2. Gameplay values. An invalid gameplay.json is fatal (checked before any window opens):
+    //    playing with half-applied or default values would hide the mistake.
+    std::vector<std::string> gameplayErrors;
+    if (!LoadGameplay(options.gameplayPath, &gameplayErrors)) {
+        // The dialog shows the first problems; the log has all of them.
+        constexpr std::size_t kShownErrors = 3;
+        std::string message = "Invalid gameplay definitions in " + ResolveContentPath(options.gameplayPath) + ":";
+        for (std::size_t i = 0; i < gameplayErrors.size() && i < kShownErrors; ++i) {
+            message += "\n- " + gameplayErrors[i];
+        }
+        if (gameplayErrors.size() > kShownErrors) {
+            message += "\n(" + std::to_string(gameplayErrors.size() - kShownErrors) + " more in the log)";
+        }
+        ReportFatal(message, options.errorDialogs);
+        return false;
+    }
+
+    // 3. Window and renderer.
     platform_ = new PlatformSDL();
     PlatformConfig platformConfig{};
     platformConfig.title = "Neo-Wolf";
@@ -84,12 +101,13 @@ bool Engine::Init(const EngineOptions& options) {
         return false;
     }
 
-    // 3. Audio is optional.
+    // 4. Audio is optional.
     if (!audio_.Init()) {
         LogWarning("No audio device: the game runs without sound.");
     }
 
-    // 4. Definitions. Missing or broken files fall back to defaults with a warning.
+    // 5. Texture, sprite and audio definitions. Missing or broken files fall back to
+    //    defaults with a warning.
     std::vector<std::string> errors;
     WallTextureAssignments wallAssignments{};
     if (LoadWallTextureAssignments(ResolveContentPath("game/defs/wall_textures.cfg"), wallAssignments, errors)) {
@@ -110,7 +128,7 @@ bool Engine::Init(const EngineOptions& options) {
     }
     LogLoadErrors(errors);
 
-    // 5. Textures (a checkerboard stands in for any that fail).
+    // 6. Textures (a checkerboard stands in for any that fail).
     assets_.Clear();
     TextureLoader::BuildFallbackChecker(missingTexture_, 64, 64);
     assets_.SetTexture("__missing", missingTexture_);
@@ -145,7 +163,7 @@ bool Engine::Init(const EngineOptions& options) {
     pickupSpriteTexture_ = assets_.GetTexture("pickup");
     decorationSpriteTexture_ = assets_.GetTexture("decoration");
 
-    // 6. Sounds (skipped when there is no audio device).
+    // 7. Sounds (skipped when there is no audio device).
     if (audio_.IsAvailable()) {
         std::size_t soundsLoaded = 0;
         const auto loadSoundSafe = [&](const std::string& soundId, const std::string& relativePath) {
@@ -165,7 +183,7 @@ bool Engine::Init(const EngineOptions& options) {
         LogInfo("Sound effects loaded: " + std::to_string(soundsLoaded));
     }
 
-    // 7. The first level. Failing here is fatal: there would be nothing to play.
+    // 8. The first level. Failing here is fatal: there would be nothing to play.
     if (!LoadLevel(options.mapPath, options.entitiesPath)) {
         ReportFatal("Could not load the level " + options.mapPath + " from " + PathToUtf8(contentRoot_) +
                         " (see the log for details).",

@@ -4,13 +4,15 @@
 #include <vector>
 
 #include "engine/core/Vec2.h"
+#include "engine/world/GameplayDefinitions.h"
 
 enum class EntityType : std::uint8_t {
     Player = 0,
     Enemy,
     Pickup,
     Door,
-    Trigger
+    Trigger,
+    Decoration  // static billboard, no interaction (appended: the C API exposes these values)
 };
 
 enum class EnemyState : std::uint8_t {
@@ -39,20 +41,21 @@ struct Entity {
     bool triggerActivated = false;
     bool collected = false;
 
-    // Enemy AI & Combat stats
-    int health = 50;
-    int maxHealth = 50;
-    int damage = 10;
-    float alertRadius = 6.0f;
-    float attackRadius = 1.1f;
+    // Enemy AI & combat stats. Levels set them from gameplay.json (BuildLevelFromPlacements);
+    // these fallback defaults only reach entities created another way (C API, tests).
+    int health = kDefaultEnemyDefinition.health;
+    int maxHealth = kDefaultEnemyDefinition.health;
+    int damage = kDefaultEnemyDefinition.damage;
+    float alertRadius = kDefaultEnemyDefinition.alertRadius;
+    float attackRadius = kDefaultEnemyDefinition.attackRadius;
     float attackCooldown = 0.0f;
-    float attackRate = 1.0f;
-    float moveSpeed = 1.6f;
+    float attackRate = kDefaultEnemyDefinition.attackRate;
+    float moveSpeed = kDefaultEnemyDefinition.moveSpeed;
     EnemyState enemyState = EnemyState::Idle;
 
-    // Pickup stats
+    // Pickup kind and amount (from the entity file and gameplay.json for levels).
     PickupType pickupType = PickupType::Health;
-    int pickupValue = 25;
+    int pickupValue = kDefaultPickupDefinitions.health.value;
 };
 
 class EntityManager {

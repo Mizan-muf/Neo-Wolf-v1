@@ -149,7 +149,8 @@ def run_doctor(project_root: Path, color: bool = True) -> DoctorReport:
         "game/defs/wall_textures.cfg",
         "game/defs/sprites.cfg",
         "game/defs/audio.cfg",
-        "game/defs/entities.json",
+        "game/defs/gameplay.json",
+        "game/defs/level01.entities.json",
     ]
     missing_files = [f for f in required_files if not (project_root / f).is_file()]
     if not missing_files:

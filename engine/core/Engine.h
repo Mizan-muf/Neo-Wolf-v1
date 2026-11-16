@@ -14,6 +14,7 @@
 #include "engine/render/Framebuffer.h"
 #include "engine/render/Raycaster.h"
 #include "engine/world/Entity.h"
+#include "engine/world/GameplayDefinitions.h"
 #include "engine/world/Map.h"
 #include "engine/world/Player.h"
 #include "engine/world/Sprite.h"
@@ -25,6 +26,7 @@ struct EngineOptions {
     std::string dataDir{};  // --data (UTF-8); empty = automatic content-root search
     std::string mapPath{"game/maps/level01.map"};             // relative to the content root
     std::string entitiesPath{"game/defs/level01.entities.json"};
+    std::string gameplayPath{"game/defs/gameplay.json"};
     bool fullscreen = false;
     // Show a message box for fatal startup errors. Off for automated runs (--frames).
     bool errorDialogs = true;
@@ -39,7 +41,8 @@ public:
     Engine& operator=(const Engine&) = delete;
 
     // Returns false (after logging and, if enabled, showing an error box) when the game
-    // cannot start: no content root, no window/renderer, or the first level fails to load.
+    // cannot start: no content root, an invalid gameplay.json, no window/renderer, or the
+    // first level fails to load.
     bool Init(const EngineOptions& options = EngineOptions{});
     void Update(double deltaSeconds);
     void Render();
@@ -50,6 +53,13 @@ public:
     GameState GetState() const;
     void SetState(GameState state);
     void ResetLevel();
+    // Loads gameplay.json (content-relative path) into gameplay_; it applies from the next
+    // LoadLevel on. On any error the previous values stay and false is returned; the errors are
+    // logged and, if outErrors is given, also stored there.
+    bool LoadGameplay(const std::string& relativePath, std::vector<std::string>* outErrors = nullptr);
+    // Loads a map and its entity file (content-relative paths) and builds the level with the
+    // current gameplay_ values. On any error (missing/invalid map or entity file, invalid
+    // placement) the current level stays as it was and false is returned (errors logged).
     bool LoadLevel(const std::string& mapPath, const std::string& entitiesPath);
     void ShowMessage(const std::string& message, float duration = 2.0f);
     void PlayerAttack();
@@ -86,10 +96,11 @@ public:
     float ambientDustSpawnTimer_ = 0.0f;
     float enemyAlertCooldown_ = 0.0f;
     float playerAttackCooldown_ = 0.0f;
-    int playerHealth_ = 100;
-    int playerAmmo_ = 24;
-    int playerMaxHealth_ = 100;
-    int playerMaxAmmo_ = 99;
+    GameplayDefinitions gameplay_{};  // from gameplay.json (Init); defaults until then
+    int playerHealth_ = kDefaultPlayerDefinition.initialHealth;
+    int playerAmmo_ = kDefaultWeaponDefinition.initialAmmo;
+    int playerMaxHealth_ = kDefaultPlayerDefinition.maxHealth;
+    int playerMaxAmmo_ = kDefaultWeaponDefinition.maxAmmo;
     std::string hudMessage_{};
     float hudMessageTimer_ = 0.0f;
     std::filesystem::path contentRoot_{};
