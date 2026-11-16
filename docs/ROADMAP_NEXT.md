@@ -46,7 +46,7 @@ The owner's play test on macOS (2026-11-16) found sound and mechanics working. E
 
 ### Engine
 
-- [ ] Configurable internal render resolution: default 640×360 (16:9), `--render-size WxH`, the same vertical field of view at every aspect ratio, UI scaled by whole pixels, gameplay unchanged (the bot's report stays identical)
+- [x] Configurable internal render resolution: default 640×360 (16:9), `--render-size WxH`, the same vertical field of view at every aspect ratio, UI scaled by whole pixels, gameplay unchanged (the bot's report stays identical) (commit `60e3e38`; CI run 43927263488, all seven jobs green)
 - [ ] Test Chamber: a development level outside the campaign that grows with every feature (enemy gallery, pickups, keys and doors, props, weapon range, dark room)
 - [ ] Engine/game boundary inside this repository:
   - [ ] engine built as a library target with public headers
