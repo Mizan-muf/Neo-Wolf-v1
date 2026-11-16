@@ -47,7 +47,6 @@ import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 ARCHIVE_NAME = re.compile(r"^neo-wolf-(?P<version>\d+\.\d+\.\d+)-(?P<platform>[a-z0-9_-]+)\.(?P<ext>zip|tar\.gz)$")
 FORBIDDEN_EXECUTABLES = ("neo_wolf_tests", "neo_wolf_autoplay")
@@ -70,9 +69,20 @@ FORBIDDEN_DLLS = re.compile(
 )
 
 
+TOOL_TIMEOUT_SECONDS = 120  # plutil, codesign, lipo, otool, `--version`
+EXIT_COMMAND_NOT_FOUND = 127  # what a shell returns for a command it cannot run
+HASH_CHUNK_BYTES = 65536
+# PE/COFF values (Microsoft's "PE Format" specification).
+PE32_PLUS_MAGIC = 0x20B  # optional header of a 64-bit image
+IMAGE_FILE_MACHINE_AMD64 = 0x8664
+IMAGE_SUBSYSTEM_WINDOWS_GUI = 2
+RT_ICON, RT_GROUP_ICON, RT_VERSION = 3, 14, 16  # resource types
+RESOURCE_NAME_IS_STRING = 0x80000000  # a resource directory entry named by a string, not an id
+
+
 class Checker:
     def __init__(self) -> None:
-        self.failures: List[str] = []
+        self.failures: list[str] = []
 
     def ok(self, message: str) -> None:
         print(f"[smoke]   ok: {message}")
@@ -89,13 +99,13 @@ class Checker:
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
+        for chunk in iter(lambda: handle.read(HASH_CHUNK_BYTES), b""):
             h.update(chunk)
     return h.hexdigest()
 
 
-def read_sums(path: Path) -> Dict[str, str]:
-    sums: Dict[str, str] = {}
+def read_sums(path: Path) -> dict[str, str]:
+    sums: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         parts = line.split(None, 1)
         if len(parts) == 2:
@@ -144,20 +154,20 @@ def extract(archive: Path, dest: Path) -> None:
 
 
 # --- Windows PE checks (pure Python, so they also run on macOS/Linux) --------------------------
-def pe_summary(data: bytes) -> Dict[str, object]:
+def pe_summary(data: bytes) -> dict[str, object]:
     """Machine, subsystem, imported DLLs and top-level resource types of a PE32+ file."""
     if data[:2] != b"MZ":
         raise ValueError("not an MZ executable")
-    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    pe = struct.unpack_from("<I", data, 0x3C)[0]  # e_lfanew: where the PE header starts
     if data[pe : pe + 4] != b"PE\0\0":
         raise ValueError("no PE signature")
     machine, sections, _, _, _, opt_size, _ = struct.unpack_from("<HHIIIHH", data, pe + 4)
-    opt = pe + 24
+    opt = pe + 24  # the optional header follows the signature and the 20-byte COFF header
     magic = struct.unpack_from("<H", data, opt)[0]
-    if magic != 0x20B:
+    if magic != PE32_PLUS_MAGIC:
         raise ValueError(f"not a PE32+ (64-bit) image (magic {magic:#x})")
     subsystem = struct.unpack_from("<H", data, opt + 68)[0]
-    dirs = opt + 112
+    dirs = opt + 112  # PE32+ data directories (8 bytes each): 1 = imports, 2 = resources
     import_rva = struct.unpack_from("<I", data, dirs + 8)[0]
     resource_rva = struct.unpack_from("<I", data, dirs + 16)[0]
     table = opt + opt_size
@@ -176,7 +186,7 @@ def pe_summary(data: bytes) -> Dict[str, object]:
     def c_string(pos: int) -> str:
         return data[pos : data.index(b"\0", pos)].decode("ascii", "replace")
 
-    dlls: List[str] = []
+    dlls: list[str] = []
     if import_rva:
         pos = offset(import_rva)
         while True:
@@ -185,13 +195,13 @@ def pe_summary(data: bytes) -> Dict[str, object]:
                 break
             dlls.append(c_string(offset(name_rva)))
             pos += 20
-    resource_types: List[int] = []
+    resource_types: list[int] = []
     if resource_rva:
         root = offset(resource_rva)
         named, ids = struct.unpack_from("<HH", data, root + 12)
         for i in range(named + ids):
             name = struct.unpack_from("<I", data, root + 16 + 8 * i)[0]
-            if not name & 0x80000000:
+            if not name & RESOURCE_NAME_IS_STRING:
                 resource_types.append(name)
     return {"machine": machine, "subsystem": subsystem, "dlls": dlls, "resource_types": resource_types}
 
@@ -203,13 +213,15 @@ def check_windows_exe(exe: Path, version: str, c: Checker) -> None:
     except (ValueError, struct.error) as exc:
         c.check(False, f"{exe.name} is a valid PE32+ executable", str(exc))
         return
-    c.check(pe["machine"] == 0x8664, f"{exe.name} is x64", f"machine {pe['machine']:#x}")
+    c.check(pe["machine"] == IMAGE_FILE_MACHINE_AMD64, f"{exe.name} is x64", f"machine {pe['machine']:#x}")
     c.check(
-        pe["subsystem"] == 2, f"{exe.name} uses the GUI subsystem (no console window)", f"subsystem {pe['subsystem']}"
+        pe["subsystem"] == IMAGE_SUBSYSTEM_WINDOWS_GUI,
+        f"{exe.name} uses the GUI subsystem (no console window)",
+        f"subsystem {pe['subsystem']}",
     )
     types = pe["resource_types"]
-    c.check(3 in types and 14 in types, f"{exe.name} has an icon resource", f"resource types {types}")
-    c.check(16 in types, f"{exe.name} has a version resource", f"resource types {types}")
+    c.check(RT_ICON in types and RT_GROUP_ICON in types, f"{exe.name} has an icon resource", f"resource types {types}")
+    c.check(RT_VERSION in types, f"{exe.name} has a version resource", f"resource types {types}")
     c.check(
         version.encode("utf-16-le") in data and "ProductVersion".encode("utf-16-le") in data,
         f"the version resource says {version}",
@@ -222,12 +234,17 @@ def check_windows_exe(exe: Path, version: str, c: Checker) -> None:
 
 
 # --- macOS checks ----------------------------------------------------------------------------
-def run_tool(cmd: List[str]) -> Tuple[int, str]:
+def run_tool(cmd: list[str]) -> tuple[int, str]:
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        done = subprocess.run(cmd, capture_output=True, text=True, timeout=TOOL_TIMEOUT_SECONDS, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
-        return 127, str(exc)
+        return EXIT_COMMAND_NOT_FOUND, str(exc)
     return done.returncode, (done.stdout + done.stderr).strip()
+
+
+def _indented(output: str) -> str:
+    """A tool's output, indented under its [smoke] heading."""
+    return "\n".join("             " + line for line in output.splitlines())
 
 
 def check_macos_app(app: Path, exe: Path, version: str, universal: bool, c: Checker) -> None:
@@ -257,10 +274,10 @@ def check_macos_app(app: Path, exe: Path, version: str, universal: bool, c: Chec
     print(f"[smoke]   plutil -lint: {out}")
     c.check(code == 0, "plutil -lint Info.plist")
     code, out = run_tool(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)])
-    print("[smoke]   codesign --verify --deep --strict:\n" + "\n".join("             " + l for l in out.splitlines()))
+    print("[smoke]   codesign --verify --deep --strict:\n" + _indented(out))
     c.check(code == 0, "codesign --verify --deep --strict")
     code, out = run_tool(["codesign", "-dv", str(app)])
-    signature = [l for l in out.splitlines() if l.startswith(("Signature=", "Identifier=", "Format="))]
+    signature = [line for line in out.splitlines() if line.startswith(("Signature=", "Identifier=", "Format="))]
     print("[smoke]   codesign -dv: " + "; ".join(signature))
     code, out = run_tool(["lipo", "-info", str(exe)])
     print(f"[smoke]   lipo -info: {out}")
@@ -269,9 +286,9 @@ def check_macos_app(app: Path, exe: Path, version: str, universal: bool, c: Chec
     else:
         c.check(code == 0, "lipo -info")
     code, out = run_tool(["otool", "-L", str(exe)])
-    print("[smoke]   otool -L:\n" + "\n".join("             " + l for l in out.splitlines()))
-    libs = [l.strip().split(" (")[0] for l in out.splitlines() if l.startswith("\t")]
-    foreign = [l for l in libs if not l.startswith(("/usr/lib/", "/System/Library/"))]
+    print("[smoke]   otool -L:\n" + _indented(out))
+    libs = [line.strip().split(" (")[0] for line in out.splitlines() if line.startswith("\t")]
+    foreign = [lib for lib in libs if not lib.startswith(("/usr/lib/", "/System/Library/"))]
     c.check(code == 0 and bool(libs) and not foreign, "only system libraries are linked", ", ".join(foreign))
 
 
@@ -297,8 +314,10 @@ def run_game(
         print(f"[smoke] run ({label}): {cmd} in {cwd}")
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as out:
             try:
-                proc = subprocess.run(cmd, cwd=str(cwd), env=env, stdout=out, stderr=subprocess.STDOUT, timeout=timeout)
-                code: Optional[int] = proc.returncode
+                proc = subprocess.run(
+                    cmd, cwd=str(cwd), env=env, stdout=out, stderr=subprocess.STDOUT, timeout=timeout, check=False
+                )
+                code: int | None = proc.returncode
             except subprocess.TimeoutExpired:
                 code = None
             out.seek(0)
@@ -328,7 +347,85 @@ def check_version_option(exe: Path, version: str, c: Checker) -> None:
 
 
 # --- One archive -----------------------------------------------------------------------------
-def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: float, keep: bool) -> List[str]:
+def _check_checksum(archive: Path, c: Checker) -> None:
+    sums = archive.parent / "SHA256SUMS"
+    if not sums.is_file():
+        print("[smoke]   (no SHA256SUMS next to the archive: checksum not checked)")
+        return
+    expected = read_sums(sums).get(archive.name)
+    c.check(
+        expected == sha256(archive),
+        "SHA256SUMS matches the archive",
+        "no entry" if expected is None else "checksum differs",
+    )
+
+
+def _locate_game(top: Path, pkg_os: str, c: Checker) -> tuple[Path | None, Path, Path] | None:
+    """(the .app on macOS or None, the executable, the folder that must hold game/), or None
+    when a macOS package does not have exactly one app."""
+    if pkg_os == "macos":
+        apps = sorted(top.glob("*.app"))
+        if not c.check(len(apps) == 1, "one .app bundle", f"found {[a.name for a in apps]}"):
+            return None
+        app = apps[0]
+        with open(app / "Contents" / "Info.plist", "rb") as handle:
+            exe = app / "Contents" / "MacOS" / plistlib.load(handle).get("CFBundleExecutable", "")
+        return app, exe, app / "Contents" / "Resources"
+    return None, top / ("neo_wolf.exe" if pkg_os == "windows" else "neo_wolf"), top
+
+
+def _check_layout(top: Path, exe: Path, content_root: Path, version: str, pkg_os: str, c: Checker) -> None:
+    """The executable, the content, the required files (README and licence contents too), and
+    no test or autoplay executable."""
+    c.check(exe.is_file(), f"the executable is there: {exe.relative_to(top).as_posix()}")
+    if pkg_os != "windows" and exe.is_file():
+        c.check(os.access(exe, os.X_OK), "the executable kept its execute permission")
+    c.check(
+        (content_root / "game" / "maps").is_dir() and (content_root / "game" / "defs").is_dir(),
+        f"game/maps and game/defs in {content_root.relative_to(top).as_posix() or '.'}",
+    )
+    for rel in REQUIRED_FILES:
+        c.check((top / rel).is_file(), rel)
+    readme = top / "README.txt"
+    if readme.is_file():
+        text = readme.read_text(encoding="utf-8", errors="replace")
+        c.check(version in text, f"README.txt mentions version {version}")
+        c.check("LICENSE.md" in text and "noncommercial" in text.lower(), "README.txt summarises the licence")
+    licence = top / "LICENSE.md"
+    if licence.is_file():
+        text = licence.read_text(encoding="utf-8", errors="replace")
+        c.check(
+            text.startswith("Required Notice: Copyright") and "PolyForm Noncommercial License 1.0.0" in text,
+            "LICENSE.md has the Required Notice and the PolyForm Noncommercial 1.0.0 terms",
+        )
+    shipped = [p.relative_to(top).as_posix() for p in top.rglob("*") if p.is_file()]
+    bad = [p for p in shipped if p.rsplit("/", 1)[-1].split(".")[0] in FORBIDDEN_EXECUTABLES]
+    c.check(not bad, "no test or autoplay executable shipped", ", ".join(bad))
+    print(f"[smoke]   {len(shipped)} files")
+
+
+def _run_package(
+    top: Path,
+    exe: Path,
+    content_root: Path,
+    version: str,
+    pkg_os: str,
+    level: int,
+    frames: int,
+    timeout: float,
+    c: Checker,
+) -> None:
+    """--version, then the game from the package folder and from the file-system root."""
+    if pkg_os != host_os():
+        print(f"[smoke]   (a {pkg_os} package cannot run on {host_os()}: runs skipped)")
+        return
+    check_version_option(exe, version, c)
+    run_game(exe, top, version, content_root, level, frames, timeout, "cwd = package folder", c)
+    fs_root = Path(os.path.abspath(os.sep))
+    run_game(exe, fs_root, version, content_root, level, frames, timeout, f"cwd = {fs_root}", c)
+
+
+def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: float, keep: bool) -> list[str]:
     c = Checker()
     match = ARCHIVE_NAME.match(archive.name)
     print(f"[smoke] === {archive}")
@@ -338,16 +435,7 @@ def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: fl
     version, platform_label = match.group("version"), match.group("platform")
     package = archive.name[: -len("." + match.group("ext"))]
     pkg_os = package_os(platform_label)
-    sums = archive.parent / "SHA256SUMS"
-    if sums.is_file():
-        expected = read_sums(sums).get(archive.name)
-        c.check(
-            expected == sha256(archive),
-            "SHA256SUMS matches the archive",
-            "no entry" if expected is None else "checksum differs",
-        )
-    else:
-        print("[smoke]   (no SHA256SUMS next to the archive: checksum not checked)")
+    _check_checksum(archive, c)
 
     work = Path(tempfile.mkdtemp(prefix="nw package smoke "))
     try:
@@ -359,61 +447,18 @@ def smoke_archive(archive: Path, run: bool, level: int, frames: int, timeout: fl
         top = dest / package
         print(f"[smoke]   extracted to: {top}")
 
-        if pkg_os == "macos":
-            apps = sorted(top.glob("*.app"))
-            if not c.check(len(apps) == 1, "one .app bundle", f"found {[a.name for a in apps]}"):
-                return c.failures
-            app = apps[0]
-            with open(app / "Contents" / "Info.plist", "rb") as handle:
-                exe = app / "Contents" / "MacOS" / plistlib.load(handle).get("CFBundleExecutable", "")
-            expected_root = app / "Contents" / "Resources"
-        elif pkg_os == "windows":
-            exe = top / "neo_wolf.exe"
-            expected_root = top
-        else:
-            exe = top / "neo_wolf"
-            expected_root = top
-
-        c.check(exe.is_file(), f"the executable is there: {exe.relative_to(top).as_posix()}")
-        if pkg_os != "windows" and exe.is_file():
-            c.check(os.access(exe, os.X_OK), "the executable kept its execute permission")
-        c.check(
-            (expected_root / "game" / "maps").is_dir() and (expected_root / "game" / "defs").is_dir(),
-            f"game/maps and game/defs in {expected_root.relative_to(top).as_posix() or '.'}",
-        )
-        for rel in REQUIRED_FILES:
-            c.check((top / rel).is_file(), rel)
-        readme = top / "README.txt"
-        if readme.is_file():
-            text = readme.read_text(encoding="utf-8", errors="replace")
-            c.check(version in text, f"README.txt mentions version {version}")
-            c.check("LICENSE.md" in text and "noncommercial" in text.lower(), "README.txt summarises the licence")
-        licence = top / "LICENSE.md"
-        if licence.is_file():
-            text = licence.read_text(encoding="utf-8", errors="replace")
-            c.check(
-                text.startswith("Required Notice: Copyright") and "PolyForm Noncommercial License 1.0.0" in text,
-                "LICENSE.md has the Required Notice and the PolyForm Noncommercial 1.0.0 terms",
-            )
-        shipped = [p.relative_to(top).as_posix() for p in top.rglob("*") if p.is_file()]
-        bad = [p for p in shipped if p.rsplit("/", 1)[-1].split(".")[0] in FORBIDDEN_EXECUTABLES]
-        c.check(not bad, "no test or autoplay executable shipped", ", ".join(bad))
-        print(f"[smoke]   {len(shipped)} files")
-
+        located = _locate_game(top, pkg_os, c)
+        if located is None:
+            return c.failures
+        app, exe, content_root = located
+        _check_layout(top, exe, content_root, version, pkg_os, c)
         if exe.is_file():
-            if pkg_os == "macos":
+            if app is not None:
                 check_macos_app(app, exe, version, platform_label == "macos-universal", c)
             elif pkg_os == "windows":
                 check_windows_exe(exe, version, c)
-
         if run and exe.is_file():
-            if pkg_os != host_os():
-                print(f"[smoke]   (a {pkg_os} package cannot run on {host_os()}: runs skipped)")
-            else:
-                check_version_option(exe, version, c)
-                run_game(exe, top, version, expected_root, level, frames, timeout, "cwd = package folder", c)
-                fs_root = Path(os.path.abspath(os.sep))
-                run_game(exe, fs_root, version, expected_root, level, frames, timeout, f"cwd = {fs_root}", c)
+            _run_package(top, exe, content_root, version, pkg_os, level, frames, timeout, c)
     except (OSError, ValueError, zipfile.BadZipFile, tarfile.TarError) as exc:
         c.check(False, "archive can be extracted and read", str(exc))
     finally:
@@ -435,8 +480,8 @@ def main() -> int:
     args = parser.parse_args()
 
     target = Path(args.target).resolve()
-    archives: List[Path] = []
-    failures: List[str] = []
+    archives: list[Path] = []
+    failures: list[str] = []
     if target.is_dir():
         sums = target / "SHA256SUMS"
         if not sums.is_file():

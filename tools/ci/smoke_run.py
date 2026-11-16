@@ -35,6 +35,10 @@ import tempfile
 import time
 from pathlib import Path
 
+LOG_LINES_SHOWN = 60  # the game's output printed after the run (the rest is counted)
+TERMINATE_GRACE_SECONDS = 10  # after terminate(), before kill()
+POLL_SECONDS = 0.1  # stay-up mode: how often to check that the game still runs
+
 
 def run(cmd: list[str], cwd: str, env: dict[str, str], frames_mode: bool, seconds: float, timeout: float) -> int:
     # Output goes to a temporary file, not a pipe: a full pipe buffer would block the game
@@ -56,12 +60,12 @@ def run(cmd: list[str], cwd: str, env: dict[str, str], frames_mode: bool, second
                 if proc.poll() is not None:
                     failure = f"game exited early with code {proc.returncode}"
                     break
-                time.sleep(0.1)
+                time.sleep(POLL_SECONDS)
 
         if proc.poll() is None:
             proc.terminate()
             try:
-                proc.wait(timeout=10)
+                proc.wait(timeout=TERMINATE_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
@@ -69,9 +73,9 @@ def run(cmd: list[str], cwd: str, env: dict[str, str], frames_mode: bool, second
         log.seek(0)
         lines = log.read().splitlines()
 
-    print("\n".join(lines[:60]))
-    if len(lines) > 60:
-        print(f"[smoke] ... ({len(lines) - 60} more lines)")
+    print("\n".join(lines[:LOG_LINES_SHOWN]))
+    if len(lines) > LOG_LINES_SHOWN:
+        print(f"[smoke] ... ({len(lines) - LOG_LINES_SHOWN} more lines)")
     if failure:
         print(f"[smoke] FAIL: {failure}", file=sys.stderr)
         return 1
