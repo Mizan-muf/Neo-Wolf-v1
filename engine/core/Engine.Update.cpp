@@ -126,7 +126,9 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
         const float invLen = 1.0f / std::sqrt(lengthSq);
         wishDir = wishDir * invLen;
         const Vec2 moveDelta = wishDir * (player_.moveSpeed * dt);
-        player_.position = MoveWithSliding(map_, player_.position, moveDelta, player_.collisionRadius);
+        // Walls, closed doors and living enemies stop the player (C15); corpses do not.
+        player_.position = MoveWithSlidingAndBodies(map_, player_.position, moveDelta, player_.collisionRadius,
+                                                    LivingEnemyBodies(entityManager_));
     }
 
     SyncPlayerEntity(entityManager_, player_);
@@ -209,7 +211,9 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
     }
 
     // Enemy AI & Combat (the last shot is heard once, then forgotten).
+    const int healthBeforeAttacks = playerHealth_;
     UpdateEnemyAi(entityManager_, map_, player_, playerHealth_, dt, events, &pendingNoise_);
+    levelDamageTaken_ += std::max(0, healthBeforeAttacks - playerHealth_);
     pendingNoise_ = NoiseEvent{};
 
     if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {

@@ -205,6 +205,8 @@ LevelResults Engine::CurrentLevelResults() const {
     results.totalEnemies = levelEnemyTotal_;
     results.totalPickups = levelPickupTotal_;
     results.seconds = levelTimeSeconds_;
+    results.shotsFired = levelShotsFired_;
+    results.damageTaken = levelDamageTaken_;
     for (const Entity& entity : entityManager_.Entities()) {
         if (entity.type == EntityType::Enemy && entity.enemyState == EnemyState::Dead) {
             ++results.kills;
@@ -323,7 +325,11 @@ void Engine::SetupShowcase(bool enemies) {
     std::vector<int> removed;
     Entity* door = nullptr;
     for (Entity& entity : entityManager_.Entities()) {
-        if (entity.type == EntityType::Enemy || entity.type == EntityType::Pickup) {
+        // Level 1's own enemies, pickups and decorations make way for the line-up. (The
+        // decoration, a blue vase at (4.2, 8.8), used to show as a light-blue shape cut off at
+        // the right edge of both previews: known issue C18.)
+        if (entity.type == EntityType::Enemy || entity.type == EntityType::Pickup ||
+            entity.type == EntityType::Decoration) {
             removed.push_back(entity.id);
         } else if (entity.type == EntityType::Door && door == nullptr) {
             door = &entity;

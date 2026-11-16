@@ -94,13 +94,13 @@ the average colour and how many pixels are the magenta colour key (transparent).
 ### Generating Procedural Assets
 ```bash
 # Generate a 64x64 checkerboard texture (one-off assets; the theme textures come from gen_textures.py, section 4)
-./tools/devkit/neo_devkit create-asset --type checker --out game/assets/wall_test.ppm --width 64 --height 64
+./tools/devkit/neo_devkit create-asset game/assets/wall_test.ppm --type checker --width 64 --height 64
 
 # Generate a 64x64 brick texture
-./tools/devkit/neo_devkit create-asset --type brick --out game/assets/wall_brick.ppm --width 64 --height 64
+./tools/devkit/neo_devkit create-asset game/assets/wall_brick.ppm --type brick --width 64 --height 64
 
 # Generate a 440 Hz test tone WAV audio file
-./tools/devkit/neo_devkit create-asset --type beep --out game/assets/sfx_test.wav
+./tools/devkit/neo_devkit create-asset game/assets/sfx_test.wav --type beep
 ```
 
 ---

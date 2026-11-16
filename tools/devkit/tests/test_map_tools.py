@@ -63,8 +63,10 @@ class TestMapTools(unittest.TestCase):
         map_file.write_text(map_content, encoding="utf-8")
 
         res = analyze_reachability(map_file, spawn_x=1.5, spawn_y=1.5)
-        self.assertTrue(res["success"])
+        self.assertTrue(res["all_reachable"])  # without entities every 'D' counts as a door
         self.assertEqual(res["unreachable_count"], 0)
+        self.assertFalse(res["success"])  # but there is no exit switch: the level cannot be completed
+        self.assertEqual(res["exits"], 0)
 
     def test_reachability_isolated_region(self) -> None:
         map_content = (
@@ -79,6 +81,7 @@ class TestMapTools(unittest.TestCase):
 
         res = analyze_reachability(map_file, spawn_x=1.5, spawn_y=1.5)
         self.assertFalse(res["success"])
+        self.assertFalse(res["all_reachable"])
         self.assertGreater(res["unreachable_count"], 0)
 
     def test_create_template_map(self) -> None:

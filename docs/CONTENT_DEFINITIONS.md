@@ -153,7 +153,7 @@ walls; this file defines everything else.
   "level": "level01",
   "entities": [
     { "type": "player", "x": 2.5, "y": 2.5, "angle": 0 },
-    { "type": "enemy", "x": 6.5, "y": 2.8, "variant": "guard" },
+    { "type": "enemy", "x": 6.5, "y": 2.7, "variant": "guard" },
     { "type": "pickup", "x": 11.8, "y": 6.6, "kind": "health" },
     { "type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7 },
     { "type": "trigger", "x": 13.5, "y": 8.5, "mapX": 13, "mapY": 8 },
@@ -253,7 +253,7 @@ rules and messages as for JSON. The game itself always loads the `.json` file.
 ```text
 # type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
 player,2.5,2.5,,,,,0
-enemy,6.5,2.8,,,,,,guard
+enemy,6.5,2.7,,,,,,guard
 pickup,11.8,6.6,,,health
 door,8.5,7.5,8,7
 pickup,7.5,5.3,,,key,,,,blue
@@ -357,9 +357,10 @@ weapon_fire=game/assets/sfx_weapon_fire.wav
 the engine read them. `textures.json` and `sprites.json` duplicated the `.cfg` files above.
 `entities.json` was a level registry with its own copy of the player spawn; only the DevKit
 used it (`validate` checked that its paths existed, `doctor` listed it as a required file).
-Those two checks were removed, and `doctor` now requires `gameplay.json` and
-`level01.entities.json` instead. The level list returned in Phase 5 as `game/defs/campaign.json`
-(below), which the engine reads.
+Those two checks were removed, and `doctor` then required `gameplay.json` and
+`level01.entities.json` instead (since Phase 7 it checks `campaign.json`, `gameplay.json` and
+the whole content through `validate`: [DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#doctor--can-this-machine-build-and-run-neo-wolf)).
+The level list returned in Phase 5 as `game/defs/campaign.json` (below), which the engine reads.
 
 ## Changed in Phase 6
 

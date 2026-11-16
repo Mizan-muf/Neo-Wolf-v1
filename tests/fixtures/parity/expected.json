@@ -1,0 +1,130 @@
+{
+  "_about": "Line-ending and parser parity fixtures. Each file is loaded by the engine (native test content_parity_fixtures) and by the DevKit (tools/devkit/tests/test_parity.py); both must agree with the result recorded here. ok = the loader accepts the file; maps also give the grid size, entity files the entity types in order. Files are kept byte for byte (.gitattributes: -text).",
+  "maps": {
+    "lf.map": {
+      "ok": true,
+      "width": 5,
+      "height": 3
+    },
+    "crlf.map": {
+      "ok": true,
+      "width": 5,
+      "height": 3
+    },
+    "crlf_comments_blank.map": {
+      "ok": true,
+      "width": 5,
+      "height": 3
+    },
+    "mixed_endings.map": {
+      "ok": true,
+      "width": 5,
+      "height": 3
+    },
+    "no_final_newline.map": {
+      "ok": true,
+      "width": 5,
+      "height": 3
+    },
+    "comment_only.map": {
+      "ok": false
+    },
+    "whitespace_line.map": {
+      "ok": false
+    },
+    "tab_line.map": {
+      "ok": false
+    },
+    "indented_comment.map": {
+      "ok": false
+    },
+    "trailing_spaces.map": {
+      "ok": false
+    },
+    "bom.map": {
+      "ok": false
+    },
+    "cr_only.map": {
+      "ok": false
+    },
+    "form_feed.map": {
+      "ok": false
+    }
+  },
+  "entities": {
+    "lf.entities.csv": {
+      "ok": true,
+      "types": [
+        "player",
+        "pickup"
+      ]
+    },
+    "crlf.entities.csv": {
+      "ok": true,
+      "types": [
+        "player",
+        "pickup"
+      ]
+    },
+    "whitespace.entities.csv": {
+      "ok": true,
+      "types": [
+        "player"
+      ]
+    },
+    "bom.entities.csv": {
+      "ok": true,
+      "types": [
+        "player"
+      ]
+    },
+    "cr_only.entities.csv": {
+      "ok": false
+    },
+    "nbsp.entities.csv": {
+      "ok": false
+    },
+    "underscore_number.entities.csv": {
+      "ok": false
+    },
+    "exponent_number.entities.csv": {
+      "ok": true,
+      "types": [
+        "player"
+      ]
+    },
+    "lf.entities.json": {
+      "ok": true,
+      "types": [
+        "player",
+        "door"
+      ]
+    },
+    "crlf.entities.json": {
+      "ok": true,
+      "types": [
+        "player",
+        "door"
+      ]
+    },
+    "bom.entities.json": {
+      "ok": true,
+      "types": [
+        "player",
+        "door"
+      ]
+    },
+    "duplicate_key.entities.json": {
+      "ok": false
+    },
+    "nan.entities.json": {
+      "ok": false
+    },
+    "float_cell.entities.json": {
+      "ok": false
+    },
+    "comment.entities.json": {
+      "ok": false
+    }
+  }
+}

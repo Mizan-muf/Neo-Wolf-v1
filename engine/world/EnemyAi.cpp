@@ -221,6 +221,7 @@ void UpdateEnemyAi(
         }
     }
     SeparateEnemies(entityManager, map);
+    SeparateEnemiesFromPlayer(entityManager, map, player);
 }
 
 bool AlertEnemyByDamage(Entity& enemy, const Vec2& playerPosition) {
@@ -266,4 +267,31 @@ void SeparateEnemies(EntityManager& entityManager, const Map& map) {
             b.position = MoveWithSliding(map, b.position, offset, kEnemyRadius);
         }
     }
+}
+
+void SeparateEnemiesFromPlayer(EntityManager& entityManager, const Map& map, const Player& player) {
+    const float minDistance = player.collisionRadius + kEnemyRadius;
+    for (Entity& enemy : entityManager.Entities()) {
+        if (!IsEnemyAlive(enemy)) {
+            continue;
+        }
+        const Vec2 delta = enemy.position - player.position;
+        const float distance = Length(delta);
+        if (distance >= minDistance) {
+            continue;
+        }
+        // Exactly on the player: push along +x (deterministic), like SeparateEnemies.
+        const Vec2 direction = distance < 1e-4f ? Vec2{1.0f, 0.0f} : Vec2{delta.x / distance, delta.y / distance};
+        enemy.position = MoveWithSliding(map, enemy.position, direction * (minDistance - distance), kEnemyRadius);
+    }
+}
+
+std::vector<BodyObstacle> LivingEnemyBodies(const EntityManager& entityManager) {
+    std::vector<BodyObstacle> bodies;
+    for (const Entity& entity : entityManager.Entities()) {
+        if (IsEnemyAlive(entity)) {
+            bodies.push_back(BodyObstacle{entity.position, kEnemyRadius});
+        }
+    }
+    return bodies;
 }

@@ -101,15 +101,19 @@ The DevKit CLI provides developer tools for map inspection, asset validation, le
 # Validate all project maps, assets, and definitions
 ./tools/devkit/neo_devkit validate
 
-# Inspect and preview a map with ANSI colors & reachability analysis
-./tools/devkit/neo_devkit inspect-map game/maps/level01.map --entities game/defs/level01.entities.csv
+# Inspect a campaign level: map, entities, statistics, reachability (non-zero exit if not finishable)
+./tools/devkit/neo_devkit inspect-map --level level01
 
 # Inspect texture or audio asset metadata
 ./tools/devkit/neo_devkit inspect-asset game/assets/sprites/guard.ppm
 ./tools/devkit/neo_devkit inspect-asset game/assets/sfx_door_open.wav
 
-# Create a new starter map template (with an exit switch X in the east wall)
-./tools/devkit/neo_devkit create-map game/maps/level04.map --width 20 --height 15 --style dungeon
+# Create a new level: map (exit switch X in the east wall) + entity stub + campaign entry
+# (step-by-step checklist: docs/LEVEL_AUTHORING.md)
+./tools/devkit/neo_devkit create-map --level-id level04 --width 20 --height 15 --style dungeon --register
+
+# Prove every campaign level can be finished: the headless autoplay bot (after building)
+build/macos/neo_wolf_autoplay --all --json /tmp/autoplay-report.json
 
 # Regenerate the per-level theme textures (deterministic; --check verifies them)
 python3 tools/devkit/gen_textures.py
@@ -128,12 +132,14 @@ python3 tools/devkit/gen_textures.py
 
 ## Automated Test Suites
 
-Neo-Wolf maintains two complementary automated test suites:
+Neo-Wolf has native, DevKit and game-level automated tests, all registered with CTest
+(`ctest --preset macos`; details in [docs/TESTING.md](docs/TESTING.md)):
 
 | Test Suite | Implementation | Target | Coverage |
 | :--- | :--- | :--- | :--- |
 | **Native Engine Tests** | C++17 (`tests/LogicTests.cpp`) | `build/macos/neo_wolf_tests` (Windows: `build\windows-msvc\Release\neo_wolf_tests.exe`) | Math helpers, raycaster DDA, collision sliding, entity interactions, PPM/WAV asset loaders, map perimeter enclosure, reachability flood-fill |
-| **DevKit Test Suite** | Python 3 (`tools/devkit/tests/`) | `neo_devkit test` | Map parser, reachability BFS, PPM token parser, WAV RIFF headers, CSV/JSON synchronizer, release packager |
+| **DevKit Test Suite** | Python 3 (`tools/devkit/tests/`) | `neo_devkit test` | Map parser, reachability BFS, PPM token parser, WAV RIFF headers, CSV/JSON synchronizer, release packager, campaign validation rules on multi-level fixtures, engine/DevKit parsing parity, CLI commands |
+| **Autoplay Bot** | C++17 (`engine/autoplay/`, `neo_wolf_autoplay`) | `build/macos/neo_wolf_autoplay --all` | Plays every campaign level headless through simulated input (keys, doors, enemies) and reports per level: result, time, damage, kills, pickups, keys, shots |
 
 Run both test suites with one command:
 ```bash

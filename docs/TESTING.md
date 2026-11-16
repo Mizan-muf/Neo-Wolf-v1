@@ -15,17 +15,20 @@ this. Any failing test makes them exit non-zero.
 
 | CTest name | Label | What it runs | What it covers |
 |---|---|---|---|
-| `native.<id>` (58 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, CRLF content files, and the data pipeline: exact `gameplay.json` values and its validation errors, JSON/CSV entity placements and their error messages, decorations and sprite sync, pickup kind from data, failing level loads, and `edited_data_changes_game`. Phase 5 adds: `game_flow_menu`, `game_flow_progression`, `game_flow_death_pause` (every `GameFlow` transition, the death snapshot, carry-over clamping, Continue), `campaign_manifest_validation`, `exit_switch_activation` (in reach and facing activates; behind, sideways, too far or behind a wall does not), `progress_file_roundtrip` (round trip, atomic save, 11 corrupt files, the engine ignoring a corrupt save), `pref_dir_resolution`, `theme_loading_and_swap`, `ui_layout_bounds` (every screen stays inside 320×240 with a 4-pixel margin and nothing is clipped), `campaign_playthrough` (a waypoint bot drives `Engine::Update` through injected input from the main menu through level01 → level02 → level03 → CampaignComplete, then Continue), `new_game_resets_world` (C7), `key_bindings` (B13, minimap toggle) and `wall_texture_orientation` (wall textures are no longer mirrored). Phase 6 adds: `line_of_sight` (walls and closed doors block, open doors do not), `enemy_ai_behavior` (rewritten: Idle → Alert → Chase → Attack with the reaction time and attack rate, no waking through walls, Chase → Search → Idle when the player is lost), `enemy_hearing` (shots heard through open cells only, path length counts; in the engine a shot wakes level 3's brute but not the guard behind a closed door), `enemy_pathfinding` (round a wall, no corner cutting, closed doors stop enemies), `enemy_archetypes_from_data`, `entity_variant_validation`, `locked_doors_and_keys`, `door_close_blocked`, `corpse_and_hit_flash`, `enemy_separation`, `hud_key_icons_layout`, and `ai_stress_20_enemies` (20 enemies chasing in a 48×48 map for 600 frames of `Update` + `Render`: no enemy ends up in a wall; it prints the average and worst time per frame and fails if the average exceeds 8 ms in an optimised build, 100 ms in a Debug build). Source: `tests/LogicTests.cpp`. |
+| `native.<id>` (64 tests) | `native` | `neo_wolf_tests <id>` | C++ engine logic: math, input, map queries, raycasting, texture/asset loading, entities, collision, interaction rules, game state, combat, AI, pickups, command bridge, logging and log-file rotation, level reset, a scripted vertical-slice run, map reachability, the C interop API, content-root resolution (with temporary directories, including a non-ASCII path), command-line parsing, CRLF content files, and the data pipeline: exact `gameplay.json` values and its validation errors, JSON/CSV entity placements and their error messages, decorations and sprite sync, pickup kind from data, failing level loads, and `edited_data_changes_game`. Phase 5 adds: `game_flow_menu`, `game_flow_progression`, `game_flow_death_pause` (every `GameFlow` transition, the death snapshot, carry-over clamping, Continue), `campaign_manifest_validation`, `exit_switch_activation` (in reach and facing activates; behind, sideways, too far or behind a wall does not), `progress_file_roundtrip` (round trip, atomic save, 11 corrupt files, the engine ignoring a corrupt save), `pref_dir_resolution`, `theme_loading_and_swap`, `ui_layout_bounds` (every screen stays inside 320×240 with a 4-pixel margin and nothing is clipped), `campaign_playthrough` (since Phase 7 a thin test on the autoplay bot: `RunAutoplaySession` plays from the main menu through level01 → level02 → level03 → CampaignComplete with carry-over, the test checks the engine state, the blue key used on level 2 and the saved progress, then uses Continue), `new_game_resets_world` (C7), `key_bindings` (B13, minimap toggle) and `wall_texture_orientation` (wall textures are no longer mirrored). Phase 6 adds: `line_of_sight` (walls and closed doors block, open doors do not), `enemy_ai_behavior` (rewritten: Idle → Alert → Chase → Attack with the reaction time and attack rate, no waking through walls, Chase → Search → Idle when the player is lost), `enemy_hearing` (shots heard through open cells only, path length counts; in the engine a shot wakes level 3's brute but not the guard behind a closed door), `enemy_pathfinding` (round a wall, no corner cutting, closed doors stop enemies), `enemy_archetypes_from_data`, `entity_variant_validation`, `locked_doors_and_keys`, `door_close_blocked`, `corpse_and_hit_flash`, `enemy_separation`, `hud_key_icons_layout`, and `ai_stress_20_enemies` (20 enemies chasing in a 48×48 map for 600 frames of `Update` + `Render`: no enemy ends up in a wall; it prints the average and worst time per frame and fails if the average exceeds 8 ms in an optimised build, 100 ms in a Debug build). Phase 7 adds: `autoplay_fixture_level` (the bot on a generated level with a health detour, an unlocked and a blue locked door, the blue key and a guard: complete, the report's numbers, the same JSON on a second run, `timeout` with a 1 s limit), `autoplay_unwinnable_levels` (`stuck` with a reason for the walled-off fixture and for a red door without a key, `--all` stops and marks later levels `not-played`, a content root that does not start), `autoplay_command_line` (options, usage errors, the JSON fields), `player_enemy_collision` (C15: living enemies block the player, an overlapping player can back away, corpses do not block, enemies are pushed out of the player; in the engine, walking at level 1's guard), `sprite_vertical_crop` (a sprite taller than the screen is cropped, not squeezed) and `content_parity_fixtures` (the engine's loaders against `tests/fixtures/parity/expected.json`, see below). Source: `tests/LogicTests.cpp`. |
 | `native_test_registry` | `native` | `cmake -P cmake/CheckTestRegistry.cmake` | Checks that every test case compiled into `neo_wolf_tests` has a CTest entry and the reverse. Catches a test that was added but never registered. |
 | `game_smoke_frames` | `game` | `cmake -P cmake/RunGame.cmake` → `neo_wolf --frames 120 --pref-dir <build>/test-pref/<test>` | Starts the real game headless (`SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`, set with the `ENVIRONMENT_MODIFICATION` test property, which also **removes** `SDL_RENDER_DRIVER`, `NEOWOLF_DATA_DIR` and `NEOWOLF_PREF_DIR`). Runs from the build directory, so content must be found relative to the executable. Passes if the game exits with 0 and logs the `--pref-dir` folder, its content root, the campaign, its renderer and 120 frames. Proves the software-renderer fallback (B11) and the content-root search. Takes about 2 s (60 FPS cap). |
-| `game_smoke_level_1` … `_3` | `game` | `neo_wolf --level N --frames 120 --pref-dir …` | Each campaign level starts directly, loads its theme and runs 120 frames; exit code 0. |
-| `game_smoke_level_out_of_range` | `game` | `neo_wolf --level 4 --frames 10 --pref-dir …` | Exit code 1 and `the campaign has 3 level(s)`. |
+| `game_smoke_level_1` … `_N` | `game` | `neo_wolf --level N --frames 120 --pref-dir …` | Each campaign level starts directly, loads its theme and runs 120 frames; exit code 0. One test per level of `campaign.json` (read at configure time). |
+| `game_smoke_level_out_of_range` | `game` | `neo_wolf --level N+1 --frames 10 --pref-dir …` | Exit code 1 and `the campaign has N level(s)`. |
 | `game_preview_<screen>` (10 tests) | `game` | `neo_wolf --preview <screen> --frames 5 --screenshot <build>/test-shots/<screen>.bmp --pref-dir …` | Each preview screen renders and is saved as a BMP; exit code 0. |
 | `game_smoke_missing_data` | `game` | `neo_wolf --data <build>/test-empty-data --frames 10 --pref-dir …` | Passes if the game exits with code 1 and reports `Game content not found` (fail-fast startup). |
 | `game_smoke_invalid_gameplay` | `game` | `neo_wolf --data <build>/test-bad-gameplay --frames 10 --pref-dir …` | The content root's `gameplay.json` (written at configure time) has a string where an integer belongs. Passes if the game exits with code 1 and names the key (`weapon.damage must be an integer`). |
 | `game_smoke_invalid_campaign` | `game` | `neo_wolf --data <build>/test-bad-campaign --frames 10 --pref-dir …` | The content root's `campaign.json` has no levels. Exit code 1 and `Invalid campaign manifest`. |
-| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 39 Python unit tests (`tools/devkit/tests/test_*.py`): map tools (including the `X` exit tile in templates), asset tools, definitions (CSV/JSON export), validator (including campaign exit reachability, enemy variants, key and lock colours, and key-before-lock reachability), the theme texture generator (deterministic, committed files up to date, locked doors), the sprite generator (deterministic, magenta background, distinct enemy silhouettes, committed files up to date), packager. |
-| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates the maps, PPM/WAV assets (including `game/assets/themes/`), the theme files and `sprites.cfg`/`audio.cfg`, the entity placement files (`*.entities.json` and `*.entities.csv`, with the engine's rules) and `campaign.json` (fields, unique ids, files, themes, and a reachable exit switch `X` in every campaign level, with locked doors passable only once their key can be collected first, and every lock colour matched by a key) in `game/`. Warnings count as failures. It does **not** check `gameplay.json` yet (the engine does, at startup; DevKit check: Roadmap Phase 7). |
+| `autoplay.level.1` … `.N` | `autoplay` | `neo_wolf_autoplay --level N --data <repo> --json <build>/autoplay/level-N.json --pref-dir …` | The [autoplay bot](#autoplay-bot) plays campaign level N from its start (initial health and ammo); passes when the level is `complete` (exit 0). One test per level of `campaign.json`, generated at configure time. |
+| `autoplay.campaign` | `autoplay` | `neo_wolf_autoplay --all --data <repo> --json <build>/autoplay/campaign.json --pref-dir …` | The whole campaign from New Game with health and ammo carried over; passes when every level is complete, the carry-over check is OK and the progress file unlocks the last level. |
+| `autoplay.fixture_unwinnable` | `autoplay` | `neo_wolf_autoplay --level 1 --data tests/fixtures/unwinnable …` | A level whose exit is walled off: passes when the bot exits with 1 and reports `stuck` with `no route to an exit switch`. The DevKit test `test_committed_unwinnable_fixture` checks that `validate` fails on the same level. |
+| `devkit_tests` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color test` | The DevKit's 88 Python unit tests (`tools/devkit/tests/test_*.py`): map tools, asset tools, definitions (CSV/JSON export), the validator (`test_validator.py`), **multi-level fixture campaigns** with one good campaign and one broken variant per rule (`test_campaign_rules.py`: campaign schema, `--require-levels`, orphans, players, doors/`D`, triggers/`T`, entities in walls, exits and key-before-lock, unreachable pickups and enemies, the `gameplay.json` schema, theme files), **engine parity** (`test_parity.py`, below), the command line (`test_cli.py`: `create-map --level-id` for every template style, `--register`, no overwrite without `--force`; `inspect-map` on every shipped level, the spawn in a wall, an unreachable exit and the exit codes; `doctor` for macOS, Linux and Windows with a simulated environment, the SDL2 cache/network cases and a real smoke run; root resolution from another directory; the launchers; colours), the texture and sprite generators (deterministic, committed files up to date) and the packager. `fixture_builder.py` builds the fixture campaigns. |
+| `content_validation` | `devkit` | `<Python3_EXECUTABLE> tools/devkit/devkit.py --no-color validate --strict` | Validates everything in `game/` with the engine's rules and the DevKit's level rules ([DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#validate--content-and-campaign-validation)): maps, PPM/WAV assets, theme files, `sprites.cfg`, `audio.cfg`, `gameplay.json`, the entity files, `campaign.json`, and per level one player on floor, door/`D` and trigger/`T` pairing, nothing in walls, an exit reachable with keys before locks, every pickup and enemy reachable, no orphan files. Warnings count as failures. |
 
 Every game run gets its own `--pref-dir` folder under `<build>/test-pref/`, so the tests never
 read or replace the player's real log or `progress.json` (known issue B15). The headless
@@ -52,7 +55,8 @@ ctest --preset macos -R native.map_queries      # one test
 ctest --preset macos -R 'native\.(map|raycast)' # several
 ctest --preset macos -L native                  # all C++ tests
 ctest --preset macos -L devkit                  # DevKit tests + content validation
-ctest --preset macos -L game                    # the 18 headless game runs
+ctest --preset macos -L game                    # the headless game runs
+ctest --preset macos -L autoplay                # the autoplay bot: every level, the campaign, the unwinnable fixture
 ctest --preset macos --rerun-failed             # only the tests that failed last time
 ctest --preset macos -N                         # list tests without running them
 ```
@@ -157,9 +161,101 @@ if anything lies within 4 pixels of an edge or was clipped.
 platform's events were read and before anything uses them. It sets actions with
 `InputState::SetActionState`; edges (`WasPressed`) follow from the previous frame, exactly as
 for keyboard input. Together with `EngineOptions::headless` (no window, renderer or audio) this
-lets a test play the game: `campaign_playthrough` plays the whole campaign this way, fetching
-level 2's blue key card before the blue locked door and fighting level 3's brute and runner. The
-Phase 7 autoplay bot builds on the same seam.
+lets code play the game: the autoplay bot below does exactly that, and `campaign_playthrough`
+uses it to play the whole campaign, fetching level 2's blue key card before the blue locked door
+and fighting level 3's brute and runner.
+
+## Autoplay bot
+
+`neo_wolf_autoplay` (Roadmap Phase 7) proves that levels can be finished: a bot plays the **real
+engine** headless (`EngineOptions::headless`), `Engine::Update` at a fixed step of 1/60 s, using
+**only simulated input** through `Engine::SetInputInjector`, the same actions a keyboard sets. It
+never moves the player, opens a door or changes game state itself; it only reads the state to
+decide which keys to hold. The bot is `engine/autoplay/AutoplayBot.{h,cpp}` (static library
+`neowolf_autoplay`); the command-line front end is `src/autoplay_main.cpp`.
+
+```bash
+build/macos/neo_wolf_autoplay --level 2                       # one level, initial health/ammo
+build/macos/neo_wolf_autoplay --all --json /tmp/report.json   # the campaign with carry-over
+build/macos/neo_wolf_autoplay --all --data tests/fixtures/unwinnable   # a level that must fail
+```
+
+| Option | Meaning |
+|---|---|
+| `--level N` | Play campaign level N (1-based) once, from its start with the `gameplay.json` initial health and ammo. |
+| `--all` | Play the whole campaign from the main menu (New Game) in order, health and ammo carried over like a player; stop at the first level that is not completed. |
+| `--data DIR` | Content root (default: the game's automatic search from the executable's folder). |
+| `--pref-dir DIR` | Folder for `progress.json` (default: a temporary folder, removed afterwards). |
+| `--time-limit SECONDS` | Game time allowed per level (default 300). |
+| `--json FILE` | Also write the machine-readable report. |
+| `--verbose` | Print the engine's log (default: only warnings and errors). |
+| `--help`, `--version` | |
+
+Exactly one of `--level` and `--all` is required. Exit codes: **0** every requested level was
+completed (and, with `--all`, the carry-over check passed); **1** otherwise, or the game could not
+start, or the JSON could not be written; **2** usage error.
+
+**What it does, every frame** (re-planning whenever a key, door or pickup changes, health or ammo
+crosses a threshold, or no progress is made):
+
+1. A living enemy in line of sight (the engine's `HasLineOfSight`, the same test the enemies use)
+   and within weapon range: stop, turn to it and fire when the shot will hit (aim within 0.32
+   cells of its centre, no wall in front), until it is dead. Out of ammo, it does not fight.
+2. Health at or below 40 % of the maximum: walk to the nearest reachable health pickup, if any;
+   ammo at or below 6: the same for ammo.
+3. Otherwise walk to the nearest reachable floor cell beside an exit switch, face the switch and
+   press Interact.
+4. If no exit switch can be reached yet: walk to the nearest reachable key card that opens a
+   locked door of the level and is not held yet, then plan again. This collects keys in
+   dependency order.
+5. Nothing reachable: give up at once with the reason (result `stuck`, e.g. `no route to an exit
+   switch: ...; locked without a reachable key: red door at (3, 1)`).
+
+Paths are breadth-first searches over cells (4-connected); closed doors are passable when they
+can be opened. The bot walks a path by turning and moving forward, cutting corners where a body
+fits (`HasClearCorridor`), walks up to a closed door and presses Interact. Without progress for
+8 s (getting closer to the goal, a hit, a pickup, a key, a door) it backs off, sidesteps and
+plans again; after 3 such attempts it gives up (`stuck`, with where it stopped). Each level has a
+time limit of game time (`timeout`). Health 0 is `died`.
+
+**Report**, per level: result (`complete`, `died`, `timeout`, `stuck`, or `not-played` after an
+earlier failure with `--all`) and reason, game time and frames, damage taken, health and ammo at
+the start and at the exit, kills/total, pickups/total, keys collected and keys used (locked doors
+opened), shots fired, doors opened and re-plans. Damage and shots come from the engine
+(`LevelResults::damageTaken`, `shotsFired`). With `--all` the tool also checks, independently of
+the game flow, that level 1 started with the initial values and every later level with the
+previous level's exit health and ammo (clamped to the maxima, health at least 1), and that the
+saved progress unlocks the last level. stdout gets a table, `--json` the same as JSON.
+
+**Deterministic.** A run depends only on the content and the build: a fixed time step, no wall
+clock, no randomness in the simulation (the engine's `std::rand` only places dust particles). Two
+runs give byte-identical JSON (checked by `autoplay_fixture_level` and in the Phase 7 report).
+Different compilers or CPUs may round differently, so frame counts can differ between platforms.
+
+**Limits** (it is a straightforward player, not a skilled one):
+
+- It does not dodge, strafe in fights or retreat; it fights where it stands. Several enemies at
+  once, or too little health or ammo for the enemies on its way, can kill it where a person
+  would back off. Failing such a level is deliberate signal, not a bot bug.
+- It ignores enemies it cannot see; it does not plan around living enemies (they block the
+  player since C15), it shoots them when they are in the way.
+- It only fetches pickups when it is low on health or ammo, and keys only when they open a door
+  of the level; the report's pickup count is not a "100 %" run.
+- Pressing Interact toggles **every** door within reach (a game rule), so two doors next to the
+  same cell can close each other; the no-progress check catches a resulting loop.
+- It does not use triggers, the minimap, pausing or restarting; with `--level` it skips the menu.
+- Exits are used from the four orthogonal neighbours of an `X` (as the validator assumes).
+
+## Engine/DevKit parity fixtures
+
+`tests/fixtures/parity/` holds small maps and entity files with tricky bytes: CRLF and mixed
+line endings, blank CRLF lines, whitespace-only lines, indented `;` comments, trailing spaces,
+tabs, byte order marks, a lone CR, a form feed, a no-break space, `1_5` and exponent numbers,
+`NaN`, a repeated key, a JSON comment, a float where an integer belongs. `expected.json` records
+whether the engine accepts each file (and the grid size or entity types). The native test
+`content_parity_fixtures` loads them with the engine's loaders, the DevKit test `test_parity.py`
+with the DevKit's readers; both must match `expected.json`. `.gitattributes` keeps the files
+byte for byte (`-text`).
 
 ## Warnings as errors
 
@@ -213,5 +309,13 @@ A separate job, `windows-scripts`, runs the user-facing Windows entry points tha
 job bypasses: `build.cmd` from Command Prompt (Release) and `.\build.ps1 -Config Debug` from
 Windows PowerShell 5.1. Each script configures, builds and runs the full test suite.
 
-On failure the job uploads `LastTest.log` and `CMakeConfigureLog.yaml` as an artifact. Later
-phases add a scripted "bot" play-through and packaging checks.
+Since Phase 7 each job also runs the autoplay bot on the whole campaign and uploads its report:
+
+```bash
+<build dir>/neo_wolf_autoplay --all --json autoplay-report-<preset>.json   # shell: bash on every OS
+```
+
+The step runs even when the tests failed (as long as the build succeeded), and the report is
+uploaded as the artifact `autoplay-report-<preset>` (macOS, Windows MSVC, Linux); a level the bot
+cannot finish fails the job. On failure the job uploads `LastTest.log`, `CMakeConfigureLog.yaml`
+and the CTest autoplay reports (`build/<preset>/autoplay/*.json`) as `logs-<preset>`.

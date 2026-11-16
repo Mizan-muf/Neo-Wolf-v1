@@ -1,0 +1,3 @@
+# type,x,y,mapX,mapY,kind
+player,1.5,1.5
+pickup,2.5,1.5,,,health

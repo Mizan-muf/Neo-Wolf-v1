@@ -1,0 +1,12 @@
+{
+  "title": "Unwinnable fixture",
+  "levels": [
+    {
+      "id": "unwinnable",
+      "name": "Walled-off exit",
+      "map": "game/maps/unwinnable.map",
+      "entities": "game/defs/unwinnable.entities.json",
+      "theme": "fixture"
+    }
+  ]
+}

@@ -28,6 +28,8 @@ struct LevelResults {
     int totalPickups = 0;
     double seconds = 0.0;
     int score = 0;  // sum of the killed enemies' gameplay.json "score" (logged; not shown yet)
+    int shotsFired = 0;   // shots the player fired on this level (Phase 7 autoplay report)
+    int damageTaken = 0;  // health the player lost to enemy attacks on this level
 };
 
 // What the simulation reported this frame.

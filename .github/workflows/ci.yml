@@ -22,14 +22,17 @@ jobs:
             os: macos-latest
             preset: ci-macos
             exe: build/ci-macos/neo_wolf
+            autoplay: build/ci-macos/neo_wolf_autoplay
           - name: Windows (MSVC x64)
             os: windows-latest
             preset: ci-windows-msvc
             exe: build/ci-windows-msvc/Release/neo_wolf.exe
+            autoplay: build/ci-windows-msvc/Release/neo_wolf_autoplay.exe
           - name: Linux (gcc)
             os: ubuntu-latest
             preset: ci-linux
             exe: build/ci-linux/neo_wolf
+            autoplay: build/ci-linux/neo_wolf_autoplay
 
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +53,7 @@ jobs:
         run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
+        id: build
         run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test (native + DevKit + content validation)
@@ -57,6 +61,22 @@ jobs:
 
       - name: Headless smoke run
         run: python tools/ci/smoke_run.py ${{ matrix.exe }} --frames 300
+
+      # Roadmap Phase 7: the autoplay bot plays the whole campaign (real engine, simulated
+      # input, carry-over checked). Runs even when an earlier step failed, so the report is
+      # always uploaded; a level the bot cannot finish fails the job.
+      - name: Autoplay bot (whole campaign)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: ${{ matrix.autoplay }} --all --json autoplay-report-${{ matrix.preset }}.json
+
+      - name: Upload autoplay report
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoplay-report-${{ matrix.preset }}
+          path: autoplay-report-${{ matrix.preset }}.json
+          if-no-files-found: warn
 
       - name: Upload test logs on failure
         if: failure()
@@ -66,6 +86,7 @@ jobs:
           path: |
             build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
             build/${{ matrix.preset }}/CMakeFiles/CMakeConfigureLog.yaml
+            build/${{ matrix.preset }}/autoplay/*.json
           if-no-files-found: ignore
 
   windows-scripts:

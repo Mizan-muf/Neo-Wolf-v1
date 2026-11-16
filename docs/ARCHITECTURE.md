@@ -45,7 +45,7 @@ Neo-Wolf is a modern, modular **2.5D software-rendered raycasting engine** writt
 - **`Engine`**: The central coordinator owning the lifecycle (`Init`, `Update`, `Render`, `Shutdown`).
 - **`App`**: Application shell managing timing, target framerate pacing (60 FPS default), and main loop dispatch.
 - **`TimeState`**: High-precision frame timing holding `deltaSeconds`, `totalSeconds`, and `frameIndex`.
-- **`InputState`**: Digital input action mapping supporting edge triggers (`WasPressed`, `WasReleased`) and continuous state (`IsDown`). `Engine::SetInputInjector` lets tests (and the Phase 7 bot) feed it instead of the keyboard.
+- **`InputState`**: Digital input action mapping supporting edge triggers (`WasPressed`, `WasReleased`) and continuous state (`IsDown`). `Engine::SetInputInjector` lets tests and the autoplay bot (`engine/autoplay/AutoplayBot.h`, `neo_wolf_autoplay`, [TESTING.md](TESTING.md#autoplay-bot)) feed it instead of the keyboard.
 - **`GameFlow`** (Phase 5): SDL-free state machine for menus, level progression, death/restart, pause and the end screens. Input snapshot + simulation events in, requests (load level, restart, save progress, quit) out; the engine carries them out ([GAMEPLAY.md](GAMEPLAY.md)).
 - **`Progress`** (Phase 5): `progress.json` read/atomic write. **`CampaignConfig`** (`engine/assets/`): the `campaign.json` loader.
 - **`MathUtils` & `Vec2`**: Vector operations (`Add`, `Subtract`, `Scale`, `Dot`, `Length`, `Normalize`), distance calculations, angle normalization (`NormalizeAngleRadians`), and scalar clamp utilities.

@@ -14,6 +14,11 @@ void LogInfo(std::string_view message);
 void LogWarning(std::string_view message);
 void LogError(std::string_view message);
 
+// Messages below `minimum` are not printed to the console (stdout/stderr); the log file, if
+// any, still receives every message. Default: LogLevel::Info (everything is printed). Used by
+// neo_wolf_autoplay to keep its report readable.
+void SetConsoleLogLevel(LogLevel minimum);
+
 // Appends every later message to `path` (UTF-8). An empty path turns file output off.
 void SetLogFilePath(std::string_view path);
 std::string GetLogFilePath();

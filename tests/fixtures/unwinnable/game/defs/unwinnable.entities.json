@@ -1,0 +1,7 @@
+{
+  "level": "unwinnable",
+  "entities": [
+    { "type": "player", "x": 1.5, "y": 2.5, "angle": 0 },
+    { "type": "pickup", "x": 2.5, "y": 1.5, "kind": "health" }
+  ]
+}

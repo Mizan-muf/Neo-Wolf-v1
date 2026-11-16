@@ -1,0 +1,8 @@
+; Deliberately unwinnable test level (tests/fixtures/unwinnable): the exit switch X at (7, 2)
+; is walled off from the player's room. `validate` must fail on it and the autoplay bot must
+; report "stuck" with a reason (CTest autoplay.fixture_unwinnable, DevKit test_validator).
+#########
+#...#...#
+#...#..X#
+#...#...#
+#########

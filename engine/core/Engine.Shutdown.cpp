@@ -64,6 +64,8 @@ void Engine::Shutdown() {
     levelTimeSeconds_ = 0.0;
     levelEnemyTotal_ = 0;
     levelPickupTotal_ = 0;
+    levelShotsFired_ = 0;
+    levelDamageTaken_ = 0;
     simulationFrozen_ = false;
     inputInjector_ = nullptr;
     reportedState_ = GameState::Menu;

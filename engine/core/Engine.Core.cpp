@@ -156,6 +156,8 @@ bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPa
     levelTimeSeconds_ = 0.0;
     levelEnemyTotal_ = 0;
     levelPickupTotal_ = 0;
+    levelShotsFired_ = 0;
+    levelDamageTaken_ = 0;
     for (const Entity& entity : entityManager_.Entities()) {
         levelEnemyTotal_ += entity.type == EntityType::Enemy ? 1 : 0;
         levelPickupTotal_ += entity.type == EntityType::Pickup ? 1 : 0;
@@ -193,6 +195,7 @@ void Engine::PlayerAttack() {
         return;
     }
 
+    ++levelShotsFired_;
     audio_.PlayEffect("weapon_fire");
     pendingNoise_ = NoiseEvent{true, player_.position, gameplay_.weapon.noiseRadius};
     if (events.enemyAlerted && enemyAlertCooldown_ <= 0.0f) {

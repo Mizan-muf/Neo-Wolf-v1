@@ -128,8 +128,11 @@ shape) as well as colour, so they read at 320×240 without relying on colour alo
 - **Corpses:** a killed enemy stays where it fell, drawn with its type's corpse sprite on the
   floor. A corpse blocks nothing: not the player, not other enemies, not shots, and not a door
   closing over it. Test `corpse_and_hit_flash`.
-- Enemies do not block the player's movement (as before Phase 6); living enemies keep apart
-  from **each other** (below).
+- **Living enemies block the player** (since Phase 7, known issue C15): the player cannot walk
+  closer to a living enemy than the two bodies' radii (0.22 + 0.25 cells), and an enemy that
+  ends up closer is pushed back out (the player is never pushed). A player who already overlaps
+  an enemy can always step back. Living enemies also keep apart from **each other** (below);
+  corpses block nothing. Test `player_enemy_collision`.
 
 ### Enemy AI
 
@@ -165,7 +168,7 @@ known issue C10).
 | **Losing the player** | After 3 s in Chase without seeing the player the enemy searches: it walks to the last known position and waits there. Seeing or hearing the player again resumes the chase; after 4 s of Search without contact it gives up (Idle) where it stands. |
 | **Shot** | A hit alerts an idle, alerted or searching enemy at once (no reaction delay). |
 | **Doors** | Enemies **never open doors**. A closed door is a wall for their paths, sight and hearing; an enemy whose path is shut stops, and after the lose timer searches and gives up. An enemy standing in an open doorway stops the door from closing (see [Doors](#doors)). |
-| **Separation** | After moving, every pair of living enemies closer than 0.5 cells (two radii) is pushed apart by half the overlap each, sliding along walls. Corpses are ignored. |
+| **Separation** | After moving, every pair of living enemies closer than 0.5 cells (two radii) is pushed apart by half the overlap each, sliding along walls; then every living enemy closer to the player than 0.47 cells (the player's radius plus its own) is pushed out of the player by the whole overlap (`SeparateEnemiesFromPlayer`). Corpses are ignored. |
 
 The constants are in `engine/world/EnemyAi.h`. Tests: `line_of_sight`, `enemy_ai_behavior`
 (every transition, no waking through walls, losing the player), `enemy_hearing` (open versus
@@ -207,7 +210,8 @@ the key cards and the red-locked door (preview `--preview items`).*
   reachable at the end ([DEVKIT_GUIDE.md](DEVKIT_GUIDE.md)).
 
 Tests: `locked_doors_and_keys`, `hud_key_icons_layout`, `entity_variant_validation`, and
-`campaign_playthrough`, whose bot fetches level 2's blue key before it can reach the exit.
+`campaign_playthrough` and the autoplay bot (`autoplay.level.2`), which fetches level 2's blue key
+before it can reach the exit ([TESTING.md](TESTING.md#autoplay-bot)).
 
 ![Level complete](images/screens/levelcomplete.png)
 

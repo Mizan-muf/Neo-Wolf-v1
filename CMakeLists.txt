@@ -185,6 +185,23 @@ target_link_libraries(neowolf_engine
 # `neo_wolf --version` prints this (engine/core/CommandLine.cpp).
 target_compile_definitions(neowolf_engine PRIVATE NEOWOLF_VERSION="${PROJECT_VERSION}")
 
+# --- Autoplay bot (Roadmap Phase 7) --------------------------------------------------------
+# A headless bot that plays the real engine through the input-injection seam
+# (engine/autoplay/AutoplayBot.h), and its command-line front end neo_wolf_autoplay.
+add_library(neowolf_autoplay STATIC
+    engine/autoplay/AutoplayBot.cpp
+    engine/autoplay/AutoplayReport.cpp
+)
+target_link_libraries(neowolf_autoplay
+    PUBLIC  neowolf_engine
+    PRIVATE neowolf_json neowolf_warnings)
+
+add_executable(neo_wolf_autoplay src/autoplay_main.cpp)
+target_link_libraries(neo_wolf_autoplay PRIVATE neowolf_autoplay neowolf_warnings)
+if(WIN32)
+    target_link_libraries(neo_wolf_autoplay PRIVATE shell32)  # CommandLineToArgvW
+endif()
+
 # --- Game executable -----------------------------------------------------------------------
 add_executable(neo_wolf src/main.cpp)
 target_link_libraries(neo_wolf PRIVATE neowolf_engine neowolf_warnings)
@@ -205,7 +222,7 @@ if(NEOWOLF_BUILD_TESTS)
     enable_testing()
 
     add_executable(neo_wolf_tests tests/LogicTests.cpp)
-    target_link_libraries(neo_wolf_tests PRIVATE neowolf_engine neowolf_warnings)
+    target_link_libraries(neo_wolf_tests PRIVATE neowolf_autoplay neowolf_json neowolf_warnings)  # + neowolf_engine (PUBLIC)
     target_compile_definitions(neo_wolf_tests PRIVATE
         NW_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
         NW_EXPECTED_VERSION="${PROJECT_VERSION}")
@@ -271,6 +288,12 @@ if(NEOWOLF_BUILD_TESTS)
         enemy_separation
         hud_key_icons_layout
         ai_stress_20_enemies
+        autoplay_fixture_level
+        autoplay_unwinnable_levels
+        autoplay_command_line
+        player_enemy_collision
+        sprite_vertical_crop
+        content_parity_fixtures
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -292,6 +315,17 @@ if(NEOWOLF_BUILD_TESTS)
     # SDL_RENDER_DRIVER is removed from the environment: the renderer must fall back to
     # software on its own (known issue B11). Every run passes --pref-dir with a folder in the
     # build tree, so tests never touch the player's real log or progress.json (known issue B15).
+    # The campaign's level count, read from campaign.json at configure time (editing the file
+    # re-runs configure): the per-level game and autoplay tests below are generated from it.
+    set(NEOWOLF_CAMPAIGN_FILE "${PROJECT_SOURCE_DIR}/game/defs/campaign.json")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NEOWOLF_CAMPAIGN_FILE}")
+    file(READ "${NEOWOLF_CAMPAIGN_FILE}" neowolf_campaign_json)
+    string(JSON neowolf_campaign_levels ERROR_VARIABLE neowolf_campaign_error LENGTH "${neowolf_campaign_json}" levels)
+    if(neowolf_campaign_error)
+        message(WARNING "Cannot read the level list from ${NEOWOLF_CAMPAIGN_FILE} (${neowolf_campaign_error}): "
+                        "no per-level game_smoke_level_N or autoplay.level.N tests are registered.")
+        set(neowolf_campaign_levels 0)
+    endif()
     set(NEOWOLF_HEADLESS_ENV
         "SDL_VIDEODRIVER=set:dummy"
         "SDL_AUDIODRIVER=set:dummy"
@@ -315,7 +349,7 @@ if(NEOWOLF_BUILD_TESTS)
     endfunction()
 
     neowolf_add_game_test(game_smoke_frames 0
-        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* 3 level\\(s\\).*Renderer: .*Level entities: 7 entities.*Ran 120 frame"
+        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* ${neowolf_campaign_levels} level\\(s\\).*Renderer: .*Level entities: 7 entities.*Ran 120 frame"
         --frames 120)
     set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
     file(MAKE_DIRECTORY "${NEOWOLF_EMPTY_DATA_DIR}")
@@ -337,13 +371,17 @@ if(NEOWOLF_BUILD_TESTS)
     neowolf_add_game_test(game_smoke_invalid_campaign 1 "Invalid campaign manifest.*needs at least one level"
         --data "${NEOWOLF_BAD_CAMPAIGN_DIR}" --frames 10)
     # Every campaign level starts directly with --level N (development/test option).
-    foreach(level 1 2 3)
-        neowolf_add_game_test(game_smoke_level_${level} 0
-            "Starting level ${level} .*Texture theme .* applied.*GameState changed to: Gameplay.*Ran 120 frame"
-            --level ${level} --frames 120)
-    endforeach()
-    neowolf_add_game_test(game_smoke_level_out_of_range 1 "--level 4: the campaign has 3 level"
-        --level 4 --frames 10)
+    if(neowolf_campaign_levels GREATER 0)
+        foreach(level RANGE 1 ${neowolf_campaign_levels})
+            neowolf_add_game_test(game_smoke_level_${level} 0
+                "Starting level ${level} .*Texture theme .* applied.*GameState changed to: Gameplay.*Ran 120 frame"
+                --level ${level} --frames 120)
+        endforeach()
+    endif()
+    math(EXPR neowolf_level_past_end "${neowolf_campaign_levels} + 1")
+    neowolf_add_game_test(game_smoke_level_out_of_range 1
+        "--level ${neowolf_level_past_end}: the campaign has ${neowolf_campaign_levels} level"
+        --level ${neowolf_level_past_end} --frames 10)
     # Screen previews (developer tool): each renders and saves a screenshot.
     foreach(screen menu levelselect hud minimap pause levelcomplete gameover campaigncomplete enemies items)
         neowolf_add_game_test(game_preview_${screen} 0 "Preview: ${screen} .*Screenshot saved"
@@ -353,6 +391,48 @@ if(NEOWOLF_BUILD_TESTS)
     set_tests_properties(${NEOWOLF_GAME_TESTS} PROPERTIES
         LABELS game
         TIMEOUT 120
+        ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")
+
+    # Autoplay (Roadmap Phase 7): one test per campaign level, the whole campaign with
+    # carry-over, and a deliberately unwinnable fixture level that must fail with a reason.
+    set(NEOWOLF_AUTOPLAY_REPORTS "${CMAKE_BINARY_DIR}/autoplay")
+    set(NEOWOLF_AUTOPLAY_TESTS "")
+    # neowolf_add_autoplay_test(<name> <expected exit code> <regex> <autoplay args...>)
+    function(neowolf_add_autoplay_test name expect_exit regex)
+        set(autoplay_args ${ARGN} --pref-dir "${NEOWOLF_TEST_PREF_ROOT}/${name}")
+        add_test(NAME ${name}
+                 COMMAND ${CMAKE_COMMAND}
+                         -DGAME_EXE=$<TARGET_FILE:neo_wolf_autoplay>
+                         "-DGAME_ARGS=${autoplay_args}"
+                         -DEXPECT_EXIT=${expect_exit}
+                         "-DEXPECT_REGEX=${regex}"
+                         -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        set(NEOWOLF_AUTOPLAY_TESTS ${NEOWOLF_AUTOPLAY_TESTS} ${name} PARENT_SCOPE)
+    endfunction()
+    if(neowolf_campaign_levels GREATER 0)
+        foreach(level RANGE 1 ${neowolf_campaign_levels})
+            math(EXPR level_index "${level} - 1")
+            string(JSON level_id ERROR_VARIABLE level_error GET "${neowolf_campaign_json}" levels ${level_index} id)
+            if(level_error)
+                set(level_id "level ${level}")
+            endif()
+            neowolf_add_autoplay_test(autoplay.level.${level} 0
+                "${level_id} +complete.*Result: PASS"
+                --level ${level} --data "${PROJECT_SOURCE_DIR}"
+                --json "${NEOWOLF_AUTOPLAY_REPORTS}/level-${level}.json")
+        endforeach()
+    endif()
+    neowolf_add_autoplay_test(autoplay.campaign 0
+        "Carry-over: OK.*Result: PASS \\(${neowolf_campaign_levels} of ${neowolf_campaign_levels} level\\(s\\) completed, campaign complete\\)"
+        --all --data "${PROJECT_SOURCE_DIR}" --json "${NEOWOLF_AUTOPLAY_REPORTS}/campaign.json")
+    neowolf_add_autoplay_test(autoplay.fixture_unwinnable 1
+        "unwinnable +stuck.*no route to an exit switch.*Result: FAIL"
+        --level 1 --data "${PROJECT_SOURCE_DIR}/tests/fixtures/unwinnable"
+        --json "${NEOWOLF_AUTOPLAY_REPORTS}/fixture-unwinnable.json")
+    set_tests_properties(${NEOWOLF_AUTOPLAY_TESTS} PROPERTIES
+        LABELS autoplay
+        TIMEOUT 300
         ENVIRONMENT_MODIFICATION "${NEOWOLF_HEADLESS_ENV}")
 
     find_package(Python3 COMPONENTS Interpreter)

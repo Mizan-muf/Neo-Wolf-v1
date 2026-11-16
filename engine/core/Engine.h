@@ -161,6 +161,8 @@ public:
     double levelTimeSeconds_ = 0.0;        // time spent in Gameplay on this level
     int levelEnemyTotal_ = 0;
     int levelPickupTotal_ = 0;
+    int levelShotsFired_ = 0;              // shots fired on this level (LevelResults)
+    int levelDamageTaken_ = 0;             // health lost to enemy attacks on this level
     bool simulationFrozen_ = false;        // previews: Update only reads input
     InputInjector inputInjector_{};
     GameState reportedState_ = GameState::Menu;  // last state announced with a StateChanged event

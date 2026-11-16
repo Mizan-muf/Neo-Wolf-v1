@@ -18,6 +18,8 @@
 #include <system_error>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "engine/assets/AssetManager.h"
 #include "engine/assets/AudioConfig.h"
 #include "engine/assets/CampaignConfig.h"
@@ -25,6 +27,8 @@
 #include "engine/assets/GameplayConfig.h"
 #include "engine/assets/Texture.h"
 #include "engine/assets/TextureLoader.h"
+#include "engine/autoplay/AutoplayBot.h"
+#include "engine/autoplay/AutoplayReport.h"
 #include "engine/core/Color.h"
 #include "engine/core/CommandLine.h"
 #include "engine/core/Engine.h"
@@ -2660,237 +2664,11 @@ void TestUiLayoutBounds() {
 }
 
 // --- Scripted play-through ------------------------------------------------------------------
-// A minimal waypoint bot (the Phase 7 bot will replace it): it plans a path over map cells to
-// the cell in front of an exit switch (doors count as passable; locked doors only once it holds
-// their key). When the exit cannot be reached yet, it walks to the nearest key card it can
-// reach first and plans again once the key is collected. It walks the path by turning and
-// moving forward, opens doors, shoots visible enemies and uses the switch. On result screens it
-// presses Enter. Input goes through Engine::SetInputInjector, exactly like keyboard input.
-class WalkerBot {
-public:
-    explicit WalkerBot(Engine& engine) : engine_(engine) {}
-
-    void Fill(InputState& input) {
-        ++frame_;
-        for (InputAction action : {InputAction::MoveForward, InputAction::TurnLeft, InputAction::TurnRight,
-                                   InputAction::Interact, InputAction::Attack, InputAction::Confirm, InputAction::Select}) {
-            input.SetActionState(action, false);
-        }
-        const GameState state = engine_.GetState();
-        if (state == GameState::LevelComplete || state == GameState::Menu) {
-            if (state == GameState::LevelComplete) {
-                levelsCompleted_ += plannedFor_ >= 0 ? 1 : 0;
-            }
-            plannedFor_ = -1;
-            if (frame_ % 2 == 0) {
-                input.SetActionState(InputAction::Confirm, true);
-                input.SetActionState(InputAction::Select, true);
-            }
-            return;
-        }
-        if (state != GameState::Gameplay) {
-            return;
-        }
-        const int keyCount = CountKeys();
-        if (plannedFor_ == engine_.currentLevelIndex_ && keyCount > plannedKeys_) {
-            keysCollected_ += keyCount - plannedKeys_;
-        }
-        if (plannedFor_ != engine_.currentLevelIndex_ || keyCount != plannedKeys_) {
-            Plan();
-        }
-        Steer(input);
-    }
-
-    int levelsCompleted_ = 0;
-    int keysCollected_ = 0;
-    int lockedDoorsOpened_ = 0;
-
-private:
-    using Cell = std::pair<int, int>;
-
-    int CountKeys() const {
-        int count = 0;
-        for (const KeyColor color : kKeyColors) {
-            count += engine_.keys_.Has(color) ? 1 : 0;
-        }
-        return count;
-    }
-
-    // Breadth-first search from the player's cell; `isGoal` decides where to stop.
-    template <typename Goal>
-    int Search(const Goal& isGoal, std::vector<int>& parent) const {
-        const Map& map = engine_.map_;
-        const Cell start{static_cast<int>(std::floor(engine_.player_.position.x)),
-                         static_cast<int>(std::floor(engine_.player_.position.y))};
-        const auto passable = [&](int x, int y) {
-            const TileType tile = map.GetCell(x, y);
-            if (!map.IsInsideMap(x, y)) {
-                return false;
-            }
-            if (tile == TileType::Door) {
-                const KeyColor lock = map.GetDoorLock(x, y);
-                return lock == KeyColor::None || engine_.keys_.Has(lock);
-            }
-            return tile == TileType::Empty || tile == TileType::Trigger;
-        };
-        parent.assign(static_cast<std::size_t>(map.Width() * map.Height()), -2);
-        std::vector<Cell> queue{start};
-        parent[static_cast<std::size_t>(start.second * map.Width() + start.first)] = -1;
-        const int dx[] = {1, -1, 0, 0};
-        const int dy[] = {0, 0, 1, -1};
-        for (std::size_t head = 0; head < queue.size(); ++head) {
-            const Cell c = queue[head];
-            if (isGoal(c.first, c.second)) {
-                return c.second * map.Width() + c.first;
-            }
-            for (int d = 0; d < 4; ++d) {
-                const int nx = c.first + dx[d];
-                const int ny = c.second + dy[d];
-                if (passable(nx, ny) && parent[static_cast<std::size_t>(ny * map.Width() + nx)] == -2) {
-                    parent[static_cast<std::size_t>(ny * map.Width() + nx)] = c.second * map.Width() + c.first;
-                    queue.emplace_back(nx, ny);
-                }
-            }
-        }
-        return -1;
-    }
-
-    void Plan() {
-        plannedFor_ = engine_.currentLevelIndex_;
-        plannedKeys_ = CountKeys();
-        path_.clear();
-        next_ = 0;
-        const Map& map = engine_.map_;
-        std::vector<int> parent;
-        const int dx[] = {1, -1, 0, 0};
-        const int dy[] = {0, 0, 1, -1};
-        // The exit first; when it cannot be reached yet, the nearest key card not yet held.
-        int goal = Search(
-            [&](int x, int y) {
-                for (int d = 0; d < 4; ++d) {
-                    if (map.GetCell(x + dx[d], y + dy[d]) == TileType::Exit) {
-                        exitCell_ = {x + dx[d], y + dy[d]};
-                        return true;
-                    }
-                }
-                return false;
-            },
-            parent);
-        goingForKey_ = goal < 0;
-        if (goingForKey_) {
-            goal = Search(
-                [&](int x, int y) {
-                    for (const Entity& entity : engine_.entityManager_.Entities()) {
-                        if (entity.type == EntityType::Pickup && entity.pickupType == PickupType::Key && entity.active &&
-                            !engine_.keys_.Has(entity.keyColor) && static_cast<int>(std::floor(entity.position.x)) == x &&
-                            static_cast<int>(std::floor(entity.position.y)) == y) {
-                            return true;
-                        }
-                    }
-                    return false;
-                },
-                parent);
-        }
-        for (int at = goal; at >= 0; at = parent[static_cast<std::size_t>(at)]) {
-            path_.insert(path_.begin(), Cell{at % map.Width(), at / map.Width()});
-        }
-    }
-
-    // Turns towards `target`; returns the remaining angle (radians, absolute).
-    float TurnTowards(InputState& input, const Vec2& target) {
-        const Vec2 to = target - engine_.player_.position;
-        const float wanted = std::atan2(to.y, to.x);
-        float diff = wanted - engine_.player_.directionAngleRadians;
-        while (diff > kPi) {
-            diff -= 2.0f * kPi;
-        }
-        while (diff < -kPi) {
-            diff += 2.0f * kPi;
-        }
-        if (std::fabs(diff) > 0.03f) {
-            input.SetActionState(diff < 0.0f ? InputAction::TurnLeft : InputAction::TurnRight, true);
-        }
-        return std::fabs(diff);
-    }
-
-    void Pulse(InputState& input, InputAction action) {
-        if (frame_ % 2 == 0) {
-            input.SetActionState(action, true);
-        }
-    }
-
-    void Steer(InputState& input) {
-        // Shoot the nearest visible enemy within range first.
-        const Player& player = engine_.player_;
-        const Entity* enemy = nullptr;
-        float nearest = 6.0f;
-        for (const Entity& entity : engine_.entityManager_.Entities()) {
-            if (!IsEnemyAlive(entity)) {
-                continue;
-            }
-            const float distance = Length(entity.position - player.position);
-            if (distance < nearest && distance > 1e-3f && HasLineOfSight(engine_.map_, player.position, entity.position)) {
-                nearest = distance;
-                enemy = &entity;
-            }
-        }
-        if (enemy != nullptr) {
-            if (TurnTowards(input, enemy->position) < 0.06f) {
-                Pulse(input, InputAction::Attack);
-            }
-            return;
-        }
-
-        if (path_.empty()) {
-            return;
-        }
-        if (next_ >= path_.size() && goingForKey_) {
-            return;  // on the key's cell: it is collected within 0.6 cells, then the bot plans again
-        }
-        if (next_ >= path_.size()) {
-            // At the end of the path: face the exit switch and use it.
-            const Vec2 exitCenter{static_cast<float>(exitCell_.first) + 0.5f, static_cast<float>(exitCell_.second) + 0.5f};
-            if (TurnTowards(input, exitCenter) < 0.05f) {
-                Pulse(input, InputAction::Interact);
-            }
-            return;
-        }
-        const Cell cell = path_[next_];
-        const Vec2 target{static_cast<float>(cell.first) + 0.5f, static_cast<float>(cell.second) + 0.5f};
-        const Vec2 to = target - player.position;
-        if (engine_.map_.GetCell(cell.first, cell.second) == TileType::Door) {
-            // Walk up to the closed door (doors open within 1.05 cells of their centre), open
-            // it, then walk through.
-            const bool aligned = TurnTowards(input, target) < 0.05f;
-            if (to.x * to.x + to.y * to.y > 0.9f * 0.9f) {
-                input.SetActionState(InputAction::MoveForward, aligned);
-            } else if (aligned) {
-                Pulse(input, InputAction::Interact);
-                if (engine_.map_.GetDoorLock(cell.first, cell.second) != KeyColor::None && frame_ % 2 == 0) {
-                    ++lockedDoorsOpened_;  // counted per press; the test only checks > 0
-                }
-            }
-            return;
-        }
-        if (to.x * to.x + to.y * to.y < 0.12f * 0.12f) {
-            ++next_;
-            return;
-        }
-        if (TurnTowards(input, target) < 0.35f) {
-            input.SetActionState(InputAction::MoveForward, true);
-        }
-    }
-
-    Engine& engine_;
-    std::uint64_t frame_ = 0;
-    int plannedFor_ = -1;
-    int plannedKeys_ = 0;
-    bool goingForKey_ = false;
-    std::vector<Cell> path_;
-    std::size_t next_ = 0;
-    Cell exitCell_{-1, -1};
-};
-
+// The Phase 7 autoplay bot (engine/autoplay/AutoplayBot.h) plays the shipped campaign through
+// Engine::Update with injected input, from the main menu: New Game, level01 -> level02 ->
+// level03 -> CampaignComplete, health and ammo carried over. The per-level runs are CTest
+// autoplay.level.N and autoplay.campaign (neo_wolf_autoplay); this test checks the engine state
+// they cannot see, then uses Continue on the main menu.
 void TestCampaignPlaythrough() {
     ScratchDir prefs("playthrough-prefs");
     Engine engine;
@@ -2902,52 +2680,26 @@ void TestCampaignPlaythrough() {
     TEST_ASSERT(engine.Init(options));
     TEST_ASSERT(engine.GetState() == GameState::Menu && !engine.flow_.HasProgress());
 
-    WalkerBot bot(engine);
-    engine.SetInputInjector([&bot](InputState& input) { bot.Fill(input); });
-
-    // Record what each level started with and ended with.
-    std::vector<PlayerStats> entered;
-    std::vector<PlayerStats> completed;
-    std::vector<GameState> states{engine.GetState()};
-    int lastLevel = -1;
-    constexpr double kDt = 1.0 / 60.0;
-    constexpr int kMaxFrames = 60 * 60 * 3;  // 3 simulated minutes
-    int frame = 0;
-    for (; frame < kMaxFrames && engine.GetState() != GameState::CampaignComplete; ++frame) {
-        engine.Update(kDt);
-        TEST_ASSERT(engine.GetState() != GameState::GameOver);  // the bot must survive
-        if (engine.GetState() != states.back()) {
-            states.push_back(engine.GetState());
-            if (engine.GetState() == GameState::LevelComplete) {
-                completed.push_back(engine.CurrentStats());
-            }
-        }
-        if (engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ != lastLevel) {
-            lastLevel = engine.currentLevelIndex_;
-            entered.push_back(engine.CurrentStats());
-        }
+    const AutoplayRunReport report = RunAutoplaySession(engine, AutoplayConfig{}, true);
+    if (!report.Success()) {
+        FailTest(__FILE__, __LINE__, "the bot did not finish the campaign:\n" + FormatAutoplayTable(report));
     }
-    if (engine.GetState() != GameState::CampaignComplete) {
-        std::ostringstream out;
-        out << "the bot did not finish the campaign: state " << GameStateToString(engine.GetState()) << ", level "
-            << engine.currentLevelIndex_ + 1 << ", position (" << engine.player_.position.x << ", "
-            << engine.player_.position.y << "), angle " << engine.player_.directionAngleRadians << ", health "
-            << engine.playerHealth_ << ", frames " << frame;
-        FailTest(__FILE__, __LINE__, out.str());
-    }
-    TEST_ASSERT(entered.size() == 3 && completed.size() == 3);
+    TEST_ASSERT(engine.GetState() == GameState::CampaignComplete);
+    TEST_ASSERT(report.levels.size() == 3 && report.carryOverChecked && report.carryOverProblems.empty());
     // New Game starts with the gameplay.json values; later levels start with what the
     // previous one ended with (clamped to the maxima).
-    TEST_ASSERT(entered[0].health == engine.gameplay_.player.initialHealth);
-    TEST_ASSERT(entered[0].ammo == engine.gameplay_.weapon.initialAmmo);
-    for (std::size_t i = 1; i < entered.size(); ++i) {
-        TEST_ASSERT(entered[i].health == std::min(completed[i - 1].health, engine.gameplay_.player.maxHealth));
-        TEST_ASSERT(entered[i].ammo == std::min(completed[i - 1].ammo, engine.gameplay_.weapon.maxAmmo));
+    TEST_ASSERT(report.levels[0].healthStart == engine.gameplay_.player.initialHealth);
+    TEST_ASSERT(report.levels[0].ammoStart == engine.gameplay_.weapon.initialAmmo);
+    for (std::size_t i = 1; i < report.levels.size(); ++i) {
+        TEST_ASSERT(report.levels[i].healthStart == std::min(report.levels[i - 1].healthEnd, engine.gameplay_.player.maxHealth));
+        TEST_ASSERT(report.levels[i].ammoStart == std::min(report.levels[i - 1].ammoEnd, engine.gameplay_.weapon.maxAmmo));
     }
-    // Level 3 has a guard, a brute and a runner; level 2's exit is behind a blue locked door,
-    // so the bot had to fetch the key first.
+    // Level 2's exit is behind a blue locked door: the bot fetched the key and used it. Level 3
+    // has a guard, a brute and a runner.
+    TEST_ASSERT(report.levels[1].keysCollected == std::vector<std::string>{"blue"});
+    TEST_ASSERT(report.levels[1].keysUsed == std::vector<std::string>{"blue"});
     TEST_ASSERT(engine.flow_.LastResults().totalEnemies == 3);
-    TEST_ASSERT(bot.keysCollected_ == 1 && bot.lockedDoorsOpened_ > 0);
+    TEST_ASSERT(engine.flow_.LastResults().shotsFired == report.levels[2].shotsFired);
 
     // Progress was saved: all three levels unlocked.
     ProgressData saved{};
@@ -2956,6 +2708,7 @@ void TestCampaignPlaythrough() {
     TEST_ASSERT(saved.highestUnlocked == 3);
 
     // Credits -> Enter -> menu, where Continue is offered and starts level 3 with fresh stats.
+    constexpr double kDt = 1.0 / 60.0;
     InputAction pressed = InputAction::Count;
     engine.SetInputInjector([&pressed](InputState& input) {
         for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
@@ -3885,6 +3638,345 @@ void TestAiStress20Enemies() {
 #endif
 }
 
+// --- Phase 7: autoplay bot, C15, C18, loader parity -------------------------------------------
+
+struct FixtureLevel {
+    std::string id;
+    std::string map;
+    std::string entities;
+};
+
+// A small content root: gameplay.json, an empty theme (textures fall back to the checkerboard)
+// and the given campaign levels.
+void WriteAutoplayFixture(const std::filesystem::path& root, const std::vector<FixtureLevel>& levels,
+                          const std::string& gameplayJson = "{}") {
+    MakeContentRoot(root);
+    WriteTextFile(root / "game" / "defs" / "gameplay.json", gameplayJson);
+    WriteTextFile(root / "game" / "defs" / "themes" / "fixture.cfg", "# no textures: checkerboards\n");
+    std::string campaign = "{ \"title\": \"Fixture\", \"levels\": [";
+    for (std::size_t i = 0; i < levels.size(); ++i) {
+        const FixtureLevel& level = levels[i];
+        WriteTextFile(root / "game" / "maps" / (level.id + ".map"), level.map);
+        WriteTextFile(root / "game" / "defs" / (level.id + ".entities.json"), level.entities);
+        campaign += std::string(i == 0 ? "" : ",") + "{ \"id\": \"" + level.id + "\", \"name\": \"" + level.id +
+                    "\", \"map\": \"game/maps/" + level.id + ".map\", \"entities\": \"game/defs/" + level.id +
+                    ".entities.json\", \"theme\": \"fixture\" }";
+    }
+    WriteTextFile(root / "game" / "defs" / "campaign.json", campaign + "] }\n");
+}
+
+// Spawn room | unlocked door | room with the blue key and a guard; a blue locked door leads
+// down to the corridor with the exit switch. A health pickup by the spawn: the bot starts with
+// 30 health, at or below its low-health threshold, so it fetches the pickup first.
+const char* const kAutoplayFixtureMap =
+    "##########\n"
+    "#....#...#\n"
+    "#....D...#\n"
+    "#....#...#\n"
+    "###D######\n"
+    "#........X\n"
+    "##########\n";
+const char* const kAutoplayFixtureEntities = R"({ "entities": [
+  { "type": "player", "x": 1.5, "y": 1.5, "angle": 0 },
+  { "type": "door", "x": 5.5, "y": 2.5, "mapX": 5, "mapY": 2 },
+  { "type": "door", "x": 3.5, "y": 4.5, "mapX": 3, "mapY": 4, "lock": "blue" },
+  { "type": "pickup", "x": 7.5, "y": 1.5, "kind": "key", "key": "blue" },
+  { "type": "enemy", "x": 7.5, "y": 3.5, "variant": "guard" },
+  { "type": "pickup", "x": 2.5, "y": 3.5, "kind": "health" }
+] })";
+
+void TestAutoplayFixtureLevel() {
+    ScratchDir scratch("autoplay-fixture");
+    const std::filesystem::path root = scratch.Path() / "content";
+    WriteAutoplayFixture(root, {{"keys", kAutoplayFixtureMap, kAutoplayFixtureEntities}},
+                         R"({ "player": { "initialHealth": 30 } })");
+    AutoplayRunOptions options{};
+    options.dataDir = PathToUtf8(root);
+    options.prefDir = scratch.Path() / "prefs";
+    options.level = 1;
+    const AutoplayRunReport first = RunAutoplay(options);
+    if (!first.Success()) {
+        FailTest(__FILE__, __LINE__, "the bot did not complete the fixture level:\n" + FormatAutoplayTable(first));
+    }
+    TEST_ASSERT(first.levels.size() == 1 && !first.wholeCampaign && !first.carryOverChecked);
+    const AutoplayLevelReport& level = first.levels[0];
+    TEST_ASSERT(level.result == AutoplayResult::Complete && level.reason.empty());
+    TEST_ASSERT(level.id == "keys" && level.levelNumber == 1);
+    TEST_ASSERT(level.healthStart == 30);
+    TEST_ASSERT(level.keysCollected == std::vector<std::string>{"blue"});
+    TEST_ASSERT(level.keysUsed == std::vector<std::string>{"blue"});
+    TEST_ASSERT(level.kills == 1 && level.totalEnemies == 1);
+    TEST_ASSERT(level.pickups == 2 && level.totalPickups == 2);  // the health detour and the key
+    TEST_ASSERT(level.doorsOpened >= 2);
+    TEST_ASSERT(level.shotsFired >= 2 && level.shotsFired == 24 - level.ammoEnd);  // a guard takes 2 hits
+    TEST_ASSERT(level.healthEnd == std::min(100, 30 + 25) - level.damageTaken);
+    TEST_ASSERT(level.frames > 0 && level.gameSeconds > 1.0);
+    TEST_ASSERT_NEAR(level.gameSeconds, static_cast<double>(level.frames) / 60.0, 1e-6);
+
+    // Deterministic: the same content gives the same run, frame for frame, and the same JSON.
+    const AutoplayRunReport second = RunAutoplay(options);
+    TEST_ASSERT(FormatAutoplayJson(first) == FormatAutoplayJson(second));
+    TEST_ASSERT(second.levels[0].frames == level.frames);
+
+    // A time limit shorter than the walk: result "timeout".
+    options.config.timeLimitSeconds = 1.0;
+    const AutoplayRunReport timedOut = RunAutoplay(options);
+    TEST_ASSERT(!timedOut.Success() && timedOut.levels.size() == 1);
+    TEST_ASSERT(timedOut.levels[0].result == AutoplayResult::Timeout);
+    TEST_ASSERT(timedOut.levels[0].reason.find("time limit of 1.0 s") != std::string::npos);
+}
+
+void TestAutoplayUnwinnableLevels() {
+    // The committed fixture (also checked by the DevKit validator): the exit is walled off.
+    AutoplayRunOptions options{};
+    ScratchDir scratch("autoplay-unwinnable");
+    options.dataDir = PathToUtf8(RepoRoot() / "tests" / "fixtures" / "unwinnable");
+    options.prefDir = scratch.Path() / "prefs";
+    options.level = 1;
+    const AutoplayRunReport walled = RunAutoplay(options);
+    TEST_ASSERT(walled.error.empty() && !walled.Success() && walled.levels.size() == 1);
+    TEST_ASSERT(walled.levels[0].result == AutoplayResult::Stuck);
+    TEST_ASSERT(walled.levels[0].reason.find("no route to an exit switch") != std::string::npos);
+    TEST_ASSERT(walled.levels[0].frames < 10);  // it gives up at once, not after the time limit
+
+    // The exit behind a red locked door and no red key: the reason names the door.
+    const std::filesystem::path root = scratch.Path() / "content";
+    WriteAutoplayFixture(root, {{"locked", "#######\n#..D..X\n#######\n",
+                                 R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 },
+                                     { "type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "red" } ] })"}});
+    options.dataDir = PathToUtf8(root);
+    const AutoplayRunReport locked = RunAutoplay(options);
+    TEST_ASSERT(locked.levels.size() == 1 && locked.levels[0].result == AutoplayResult::Stuck);
+    TEST_ASSERT(locked.levels[0].reason.find("red door at (3, 1)") != std::string::npos);
+
+    // --all stops at the first failure; the later levels are reported as not played.
+    WriteAutoplayFixture(root, {{"locked", "#######\n#..D..X\n#######\n",
+                                 R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 },
+                                     { "type": "door", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "lock": "red" } ] })"},
+                                {"open", "#####\n#..X#\n#####\n", R"({ "entities": [ { "type": "player", "x": 1.5, "y": 1.5 } ] })"}});
+    options.level = 0;
+    const AutoplayRunReport campaign = RunAutoplay(options);
+    TEST_ASSERT(!campaign.Success() && campaign.levels.size() == 2 && !campaign.campaignCompleted);
+    TEST_ASSERT(campaign.levels[0].result == AutoplayResult::Stuck);
+    TEST_ASSERT(campaign.levels[1].result == AutoplayResult::NotPlayed && campaign.levels[1].id == "open");
+
+    // A content root the engine cannot start with: an error, not a crash.
+    options.dataDir = PathToUtf8(scratch.Path() / "nothing-here");
+    const AutoplayRunReport broken = RunAutoplay(options);
+    TEST_ASSERT(!broken.Success() && !broken.error.empty() && broken.levels.empty());
+    TEST_ASSERT(FormatAutoplayTable(broken).find("ERROR: the engine did not start") != std::string::npos);
+}
+
+void TestAutoplayCommandLine() {
+    using Action = AutoplayCommandLine::Action;
+    const AutoplayCommandLine level = ParseAutoplayCommandLine({"--level", "2", "--data", "/tmp/x"});
+    TEST_ASSERT(level.action == Action::Run && level.level == 2 && !level.all && level.dataDir == "/tmp/x");
+    TEST_ASSERT_NEAR(level.timeLimitSeconds, AutoplayConfig{}.timeLimitSeconds, 1e-9);
+    const AutoplayCommandLine all = ParseAutoplayCommandLine(
+        {"--all", "--json", "out/report.json", "--time-limit", "60.5", "--pref-dir", "p", "--verbose"});
+    TEST_ASSERT(all.action == Action::Run && all.all && all.level == 0 && all.jsonPath == "out/report.json");
+    TEST_ASSERT(all.prefDir == "p" && all.verbose);
+    TEST_ASSERT_NEAR(all.timeLimitSeconds, 60.5, 1e-9);
+    TEST_ASSERT(ParseAutoplayCommandLine({"--help"}).action == Action::ShowHelp);
+    TEST_ASSERT(ParseAutoplayCommandLine({"--all", "--version"}).action == Action::ShowVersion);
+    const std::vector<std::vector<std::string>> bad = {
+        {},
+        {"--level"},
+        {"--level", "0"},
+        {"--level", "100"},
+        {"--level", "two"},
+        {"--level", "1", "--level", "2"},
+        {"--all", "--level", "1"},
+        {"--all", "--time-limit", "0"},
+        {"--all", "--time-limit", "-5"},
+        {"--all", "--time-limit", "soon"},
+        {"--all", "--json", ""},
+        {"--all", "--frobnicate"},
+    };
+    for (const std::vector<std::string>& args : bad) {
+        const AutoplayCommandLine parsed = ParseAutoplayCommandLine(args);
+        TEST_ASSERT(parsed.action == Action::Error && !parsed.error.empty());
+    }
+    TEST_ASSERT(AutoplayUsage("neo_wolf_autoplay").find("Exit codes: 0") != std::string::npos);
+
+    // The JSON report has the documented fields.
+    AutoplayRunReport report{};
+    report.campaignTitle = "T";
+    report.campaignLevels = 1;
+    report.fixedStepSeconds = 1.0 / 60.0;
+    report.timeLimitSeconds = 300.0;
+    AutoplayLevelReport entry{};
+    entry.levelNumber = 1;
+    entry.id = "level01";
+    entry.result = AutoplayResult::Complete;
+    entry.gameSeconds = 6.8833333;
+    entry.keysUsed = {"blue"};
+    report.levels.push_back(entry);
+    const nlohmann::json json = nlohmann::json::parse(FormatAutoplayJson(report));
+    TEST_ASSERT(json["success"] == true && json["mode"] == "level");
+    TEST_ASSERT(json["levels"][0]["result"] == "complete" && json["levels"][0]["gameSeconds"] == 6.883);
+    TEST_ASSERT(json["levels"][0]["keysUsed"][0] == "blue" && json["carryOver"]["checked"] == false);
+    for (const char* key : {"frames", "damageTaken", "healthEnd", "ammoEnd", "kills", "totalEnemies", "pickups",
+                            "totalPickups", "keysCollected", "shotsFired", "doorsOpened", "replans", "reason"}) {
+        TEST_ASSERT(json["levels"][0].contains(key));
+    }
+    TEST_ASSERT(FormatAutoplayTable(report).find("Result: PASS (1 of 1 level(s) completed)") != std::string::npos);
+}
+
+void TestPlayerEnemyCollision() {
+    // Known issue C15: living enemies block the player; corpses do not.
+    Map map(12, 6);
+    BuildBorderWalls(map);
+    const float radius = kDefaultPlayerDefinition.collisionRadius;
+    const float contact = radius + kEnemyRadius;
+    const std::vector<BodyObstacle> body{{Vec2{6.0f, 2.5f}, kEnemyRadius}};
+
+    // Walking into an enemy stops at contact distance.
+    Vec2 position = MoveWithSlidingAndBodies(map, {2.5f, 2.5f}, {5.0f, 0.0f}, radius, body);
+    TEST_ASSERT(position.x < 6.0f - contact + 1e-3f && position.x > 6.0f - contact - 0.06f);
+    // Without bodies (or past a corpse) the same move goes all the way.
+    TEST_ASSERT(MoveWithSlidingAndBodies(map, {2.5f, 2.5f}, {5.0f, 0.0f}, radius, {}).x > 7.4f);
+    // Already overlapping (an enemy placed too close): backing away works, pushing in does not.
+    const Vec2 overlapping{5.8f, 2.5f};
+    TEST_ASSERT(MoveWithSlidingAndBodies(map, overlapping, {-0.5f, 0.0f}, radius, body).x < 5.35f);
+    TEST_ASSERT_NEAR(MoveWithSlidingAndBodies(map, overlapping, {0.3f, 0.0f}, radius, body).x, 5.8f, 1e-6f);
+    // A diagonal push slides past the body (the axis that is not blocked still moves).
+    const Vec2 slid = MoveWithSlidingAndBodies(map, {5.5f, 2.5f}, {0.4f, 0.4f}, radius, body);
+    TEST_ASSERT(slid.y > 2.85f && Length(slid - body[0].position) >= contact - 1e-3f);
+
+    // The enemy side: an enemy pushed into the player is moved back out (the player stays).
+    EntityManager manager{};
+    Entity& guard = manager.CreateEntity(EntityType::Enemy, Vec2{3.0f, 2.5f});
+    Entity& corpse = manager.CreateEntity(EntityType::Enemy, Vec2{2.6f, 2.5f});
+    corpse.enemyState = EnemyState::Dead;
+    corpse.active = false;
+    Player player{};
+    player.position = {2.5f, 2.5f};
+    player.collisionRadius = radius;
+    SeparateEnemiesFromPlayer(manager, map, player);
+    TEST_ASSERT(Length(guard.position - player.position) >= contact - 1e-4f);
+    TEST_ASSERT_NEAR(corpse.position.x, 2.6f, 1e-6f);  // corpses are left alone
+    TEST_ASSERT(LivingEnemyBodies(manager).size() == 1);
+
+    // In the engine: walk level 1's hall straight at its guard. The player never gets closer
+    // than the two radii, the guard attacks; once it is dead the player walks over its corpse.
+    ScratchDir prefs("c15-prefs");
+    Engine engine;
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(RepoRoot());
+    options.prefDir = prefs.Path();
+    options.startLevel = 1;
+    options.headless = true;
+    options.errorDialogs = false;
+    TEST_ASSERT(engine.Init(options));
+    Entity* enemy = nullptr;
+    for (Entity& entity : engine.entityManager_.Entities()) {
+        enemy = entity.type == EntityType::Enemy ? &entity : enemy;
+    }
+    TEST_ASSERT(enemy != nullptr);
+    const int enemyId = enemy->id;
+    engine.player_.directionAngleRadians = 0.0f;  // east, along row 2 towards the guard at (6.5, 2.7)
+    engine.SetInputInjector([](InputState& input) { input.SetActionState(InputAction::MoveForward, true); });
+    float closest = 100.0f;
+    for (int frame = 0; frame < 240; ++frame) {
+        engine.Update(1.0 / 60.0);
+        closest = std::min(closest, Length(engine.entityManager_.GetEntityById(enemyId)->position - engine.player_.position));
+    }
+    TEST_ASSERT(closest >= contact - 0.01f);
+    TEST_ASSERT(engine.player_.position.x < 6.5f);
+    // Kill it the way a shot does; its corpse no longer blocks.
+    Entity* dead = engine.entityManager_.GetEntityById(enemyId);
+    dead->enemyState = EnemyState::Dead;
+    dead->active = false;
+    const float corpseX = dead->position.x;
+    TEST_ASSERT(std::fabs(dead->position.y - engine.player_.position.y) < contact);  // still in the way
+    for (int frame = 0; frame < 120 && engine.GetState() == GameState::Gameplay; ++frame) {
+        engine.Update(1.0 / 60.0);
+    }
+    if (!(engine.player_.position.x > corpseX + 0.3f)) {
+        std::ostringstream out;
+        out << "the player did not walk past the corpse at (" << corpseX << ", " << dead->position.y << "): player at ("
+            << engine.player_.position.x << ", " << engine.player_.position.y << ")";
+        FailTest(__FILE__, __LINE__, out.str());
+    }
+}
+
+void TestSpriteVerticalCrop() {
+    // A sprite taller than the screen (very close) is cropped at the top and bottom, not
+    // squeezed (found while investigating known issue C18). Texture rows: red, green, blue, white.
+    Texture texture(1, 4);
+    texture.SetPixel(0, 0, Framebuffer::PackRGBA(255, 0, 0));
+    texture.SetPixel(0, 1, Framebuffer::PackRGBA(0, 255, 0));
+    texture.SetPixel(0, 2, Framebuffer::PackRGBA(0, 0, 255));
+    texture.SetPixel(0, 3, Framebuffer::PackRGBA(255, 255, 255));
+    SpriteTextureSet textures{};
+    textures.Set(SpriteTextureId::Decoration, &texture);
+    textures.missing = &texture;
+    Map map(8, 8);
+    Player player{};
+    player.position = {2.0f, 4.0f};
+    player.directionAngleRadians = 0.0f;
+    Framebuffer framebuffer(320, 240);
+    const std::vector<float> depth(320, 100.0f);
+    const auto channel = [&](int x, int y, int shift) {
+        return static_cast<int>((framebuffer.Data()[static_cast<std::size_t>(y) * 320u + static_cast<std::size_t>(x)] >> shift) & 0xFFu);
+    };
+    const auto render = [&](float distance) {
+        framebuffer.Clear(0);
+        SpriteEntity sprite{};
+        sprite.position = {2.0f + distance, 4.0f};
+        sprite.textureId = static_cast<int>(SpriteTextureId::Decoration);
+        SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures, 1.04719755f);
+    };
+    // 960 pixels tall: the screen shows texture rows 0.37..0.62, i.e. green at the top and blue
+    // at the bottom (the old code squeezed the whole texture in: red at the top, white below).
+    render(0.25f);
+    TEST_ASSERT(channel(160, 0, 8) > 150 && channel(160, 0, 16) < 60);   // green
+    TEST_ASSERT(channel(160, 239, 0) > 150 && channel(160, 239, 8) < 60);  // blue
+    // A sprite that fits on screen still shows the whole texture, red on top and white below.
+    render(2.0f);
+    TEST_ASSERT(channel(160, 120 - 58, 16) > 150 && channel(160, 120 - 58, 8) < 60);
+    TEST_ASSERT(channel(160, 120 + 58, 0) > 150 && channel(160, 120 + 58, 8) > 150);
+}
+
+void TestContentParityFixtures() {
+    // tests/fixtures/parity/: the same files go through the DevKit (tools/devkit/tests/
+    // test_parity.py); both must match expected.json, so the two parsers agree.
+    const std::filesystem::path dir = PathFromUtf8(ResolveRepoPath("tests/fixtures/parity"));
+    const nlohmann::json expected = nlohmann::json::parse(ReadWholeFile(PathToUtf8(dir / "expected.json")));
+    int checked = 0;
+    for (const auto& [name, want] : expected["maps"].items()) {
+        Map map{};
+        std::vector<std::string> errors;
+        const bool ok = LoadMapFromFile(PathToUtf8(dir / name), map, errors);
+        if (ok != want["ok"].get<bool>()) {
+            FailTest(__FILE__, __LINE__, name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
+        }
+        if (ok) {
+            TEST_ASSERT(map.Width() == want["width"].get<int>() && map.Height() == want["height"].get<int>());
+        }
+        ++checked;
+    }
+    for (const auto& [name, want] : expected["entities"].items()) {
+        std::vector<EntityPlacement> placements;
+        std::vector<std::string> errors;
+        std::vector<std::string> warnings;
+        const bool ok = LoadEntityPlacementsFromFile(PathToUtf8(dir / name), placements, errors, warnings);
+        if (ok != want["ok"].get<bool>()) {
+            FailTest(__FILE__, __LINE__, name + ": the engine " + (ok ? "accepts" : "rejects") + " it, expected.json says otherwise");
+        }
+        if (ok) {
+            std::vector<std::string> types;
+            for (const EntityPlacement& placement : placements) {
+                types.emplace_back(PlacementTypeName(placement.type));
+            }
+            TEST_ASSERT(types == want["types"].get<std::vector<std::string>>());
+        }
+        ++checked;
+    }
+    TEST_ASSERT(checked >= 25);
+}
+
 struct TestCase {
     const char* id;    // used on the command line and as the CTest name (native.<id>)
     const char* name;  // human-readable description
@@ -3953,6 +4045,12 @@ const TestCase kTests[] = {
     {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
     {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
     {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
+    {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic", &TestAutoplayFixtureLevel},
+    {"autoplay_unwinnable_levels", "Autoplay bot reports unwinnable levels with a reason", &TestAutoplayUnwinnableLevels},
+    {"autoplay_command_line", "neo_wolf_autoplay command line and report formats", &TestAutoplayCommandLine},
+    {"player_enemy_collision", "Living enemies block the player, corpses do not (C15)", &TestPlayerEnemyCollision},
+    {"sprite_vertical_crop", "Close sprites are cropped, not squeezed", &TestSpriteVerticalCrop},
+    {"content_parity_fixtures", "Engine loaders match tests/fixtures/parity/expected.json", &TestContentParityFixtures},
 };
 
 void PrintUsage(const char* program) {

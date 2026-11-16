@@ -15,10 +15,13 @@
 // player's last known position, steering for cell centres and sliding along walls; they never
 // open doors. Living enemies keep apart from each other.
 
+#include <vector>
+
 #include "engine/core/Vec2.h"
 #include "engine/world/Entity.h"
 #include "engine/world/InteractionRules.h"
 #include "engine/world/Map.h"
+#include "engine/world/MovementRules.h"
 #include "engine/world/Player.h"
 
 inline constexpr float kEnemyRadius = 0.25f;               // map cells (collision with walls and other enemies)
@@ -61,3 +64,13 @@ bool AlertEnemyByDamage(Entity& enemy, const Vec2& playerPosition);
 // Pushes overlapping living enemies apart (each by half the overlap, sliding along walls).
 // Part of UpdateEnemyAi; public for tests.
 void SeparateEnemies(EntityManager& entityManager, const Map& map);
+
+// Player-vs-enemy bodies (known issue C15), the counterpart of SeparateEnemies: a living enemy
+// closer to the player than player.collisionRadius + kEnemyRadius is pushed back out by the
+// whole overlap (sliding along walls). The player is never pushed; the player's own movement
+// is stopped by living enemies instead (MoveWithSlidingAndBodies, LivingEnemyBodies). Part of
+// UpdateEnemyAi; public for tests.
+void SeparateEnemiesFromPlayer(EntityManager& entityManager, const Map& map, const Player& player);
+
+// The bodies of every living enemy (radius kEnemyRadius), for the player's movement.
+std::vector<BodyObstacle> LivingEnemyBodies(const EntityManager& entityManager);

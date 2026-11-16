@@ -94,12 +94,15 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 - **Done when:** AI behaviour is covered by tests and the enemy types are distinct in play. **Partly met:** the AI is covered by tests and the three types differ in stats, silhouette and colour in screenshots and in the bot's play-through; they have not yet been seen in play by a person (C13).
 
 ## Phase 7 — Verification tooling
-- [ ] Headless autoplay bot: real engine, simulated input, plans a path to the exit, opens doors and unlocks them with keys, shoots enemies; reports win/loss, time and damage per level
-- [ ] Validator campaign checks: 10 levels, orphans, one player, exit reachable, D/T/K tile ↔ entity pairing, entities not in walls, `gameplay.json` schema
-- [ ] DevKit line-ending handling matches the engine; `create-map --level-id`; `inspect-map` fixes; `doctor` checks SDL, CMake and VS; `neo_devkit.cmd` fixes
-- [ ] Tests: multi-level fixtures; packager fails when there is no executable
-- [ ] Docs: `DEVKIT_GUIDE.md`, `LEVEL_AUTHORING.md`
-- **Done when:** the bot completes level 1 on macOS and in Windows CI
+- [x] Headless autoplay bot: real engine, simulated input, plans a path to the exit, opens doors and unlocks them with keys, shoots enemies; reports win/loss, time and damage per level (`engine/autoplay/`, `neo_wolf_autoplay`, CTest `autoplay.level.N` / `autoplay.campaign`; verified on macOS: levels 1–3 and the campaign complete, deterministic JSON)
+- [x] Validator campaign checks: level count (`--require-levels 10`), orphans, one player, exit reachable, D/T tile ↔ entity pairing, keys before locks, entities not in walls, `gameplay.json` schema
+- [x] DevKit line-ending handling matches the engine (shared parity fixtures); `create-map --level-id`; `inspect-map` fixes; `doctor` checks SDL, CMake, Ninja, compilers and VS (vswhere)
+- [ ] `neo_devkit.cmd` fixes (`setlocal`, `py -3` fallback, exit code): written and checked by a DevKit test, **not yet run on Windows**
+- [x] Tests: multi-level fixtures (DevKit), autoplay fixture levels and C15 collision (native)
+- [ ] Tests: packager fails when there is no executable (known issue D1; moved with the packager rework to Phase 9)
+- [x] Docs: `DEVKIT_GUIDE.md`, `LEVEL_AUTHORING.md`
+- [x] Gameplay fixes before level authoring: C15 (enemies block the player), C18 (preview screenshots)
+- **Done when:** the bot completes level 1 on macOS (**done**) and in Windows CI (pending: the CI step runs `neo_wolf_autoplay --all --json` on every OS and uploads the report)
 
 ## Phase 8 — The 10 levels
 - [ ] Design table in `docs/levels/README.md` (theme, size, enemies, pickups, new mechanic, difficulty)

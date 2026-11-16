@@ -13,3 +13,6 @@ game/** text eol=lf
 *.png binary
 *.ico binary
 *.icns binary
+
+# Line-ending parity fixtures (engine vs DevKit loaders): kept byte for byte, CRLF included.
+tests/fixtures/parity/** -text

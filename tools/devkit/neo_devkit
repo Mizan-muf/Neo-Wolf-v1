@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
-# Neo-Wolf DevKit CLI Unix Launcher
+# Neo-Wolf DevKit launcher for macOS and Linux (docs/DEVKIT_GUIDE.md):
+#   ./tools/devkit/neo_devkit <command> [options]
+# Works from any directory; the DevKit's exit code is passed on.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
-exec python3 "$SCRIPT_DIR/devkit.py" "$@"
+# No trailing ':' when PYTHONPATH was unset (an empty entry would add the working directory).
+export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif command -v python >/dev/null 2>&1; then
+    PYTHON=python
+else
+    echo "neo_devkit: Python 3.8 or newer was not found (python3 or python)." >&2
+    exit 127
+fi
+exec "$PYTHON" "$SCRIPT_DIR/devkit.py" "$@"

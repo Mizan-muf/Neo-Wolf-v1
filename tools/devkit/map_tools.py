@@ -1,13 +1,15 @@
 """Map inspection, visualization, reachability analysis, and generation tools for Neo-Wolf."""
 
+import json
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from tools.devkit.engine_formats import FLOOR_TILES, SOLID_TILES, WALKABLE_TILES, map_rows_from_bytes
+
 # 'X' is the exit switch (Phase 5): a solid wall cell the player activates with E.
-SOLID_TILES = {"#", "A", "B", "X"}
-WALKABLE_TILES = {".", "D", "T"}
 
 
 
@@ -34,15 +36,9 @@ class MapData:
 
 
 def load_map(file_path: Path) -> MapData:
-    """Load a .map file into MapData."""
+    """Load a .map file into MapData, reading lines exactly like the engine (engine_formats)."""
     file_path = Path(file_path)
-    content = file_path.read_text(encoding="utf-8")
-    rows: List[List[str]] = []
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or line.startswith(";"):
-            continue
-        rows.append(list(line))
+    rows: List[List[str]] = [list(row) for row in map_rows_from_bytes(file_path.read_bytes())]
 
     if not rows:
         raise ValueError(f"Map {file_path} contains no valid rows.")
@@ -99,60 +95,86 @@ def analyze_reachability(
     spawn_y: float = 2.5,
     entities: Optional[List[dict]] = None,
 ) -> Dict[str, Any]:
-    """Perform BFS reachability analysis starting from the spawn point."""
+    """Reachability from the spawn as the player experiences it.
+
+    With `entities`, door entities open their cells (a locked door once its key can be reached
+    first) and a 'D' without a door entity is a wall; without entities, every 'D' counts as an
+    openable door. The result always has the same keys:
+
+    success            spawn on a floor cell, an exit switch usable, no key/lock problem and
+                       every pickup and enemy reachable (the level can be completed)
+    all_reachable      spawn on a floor cell and every walkable cell reachable (connectivity)
+    spawn, spawn_cell  the spawn position and its cell
+    error              why the analysis could not start (spawn outside the map or in a wall), or ""
+    total_walkable, reachable_count, unreachable_count, unreachable_cells
+    exits, usable_exits, key_order, problems, unreachable_entities
+    """
+    from tools.devkit.validator import analyse_level_progress  # avoids an import cycle
+
     m = load_map(map_path)
-    start_ix = int(spawn_x)
-    start_iy = int(spawn_y)
-
-    if not m.is_walkable(start_ix, start_iy):
-        return {
-            "success": False,
-            "error": f"Spawn location ({spawn_x:.2f}, {spawn_y:.2f}) cell ({start_ix},{start_iy}) is inside solid tile '{m.get_tile(start_ix, start_iy)}'",
-            "reachable_cells": 0,
-            "unreachable_cells": [],
-            "unreachable_entities": [],
-        }
-
-    visited: Set[Tuple[int, int]] = set()
-    queue: deque = deque([(start_ix, start_iy)])
-    visited.add((start_ix, start_iy))
-
-    directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-
-    while queue:
-        cx, cy = queue.popleft()
-        for dx, dy in directions:
-            nx, ny = cx + dx, cy + dy
-            if 0 <= nx < m.width and 0 <= ny < m.height:
-                if (nx, ny) not in visited and m.is_walkable(nx, ny):
-                    visited.add((nx, ny))
-                    queue.append((nx, ny))
-
-    all_walkable: Set[Tuple[int, int]] = set()
-    for y in range(m.height):
-        for x in range(m.width):
-            if m.is_walkable(x, y):
-                all_walkable.add((x, y))
-
-    unreachable = all_walkable - visited
-    unreachable_list = sorted(list(unreachable))
-
-    unreachable_entities = []
-    if entities:
-        for ent in entities:
-            ex, ey = int(ent["x"]), int(ent["y"])
-            if (ex, ey) not in visited:
-                unreachable_entities.append(ent)
-
-    return {
-        "success": len(unreachable) == 0 and len(unreachable_entities) == 0,
+    rows = ["".join(row) for row in m.grid]
+    spawn_cell = (int(math.floor(spawn_x)), int(math.floor(spawn_y)))
+    result: Dict[str, Any] = {
+        "success": False,
+        "all_reachable": False,
         "spawn": (spawn_x, spawn_y),
-        "total_walkable": len(all_walkable),
-        "reachable_count": len(visited),
-        "unreachable_count": len(unreachable),
-        "unreachable_cells": unreachable_list,
-        "unreachable_entities": unreachable_entities,
+        "spawn_cell": spawn_cell,
+        "error": "",
+        "total_walkable": 0,
+        "reachable_count": 0,
+        "unreachable_count": 0,
+        "unreachable_cells": [],
+        "exits": 0,
+        "usable_exits": 0,
+        "key_order": [],
+        "problems": [],
+        "unreachable_entities": [],
     }
+    placed = [e for e in (entities or []) if isinstance(e, dict)]
+    if entities is None:
+        placed = [{"type": "door", "mapX": x, "mapY": y}
+                  for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"]
+    door_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "door"}
+    trigger_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "trigger"}
+
+    def standable(x: int, y: int) -> bool:
+        if not (0 <= x < m.width and 0 <= y < m.height) or (x, y) in door_cells:
+            return False
+        return m.get_tile(x, y) in FLOOR_TILES or (x, y) in trigger_cells
+
+    walkable = {(x, y) for y in range(m.height) for x in range(m.width)
+                if m.get_tile(x, y) in FLOOR_TILES or (x, y) in door_cells or (x, y) in trigger_cells}
+    result["total_walkable"] = len(walkable)
+    if not (0 <= spawn_cell[0] < m.width and 0 <= spawn_cell[1] < m.height):
+        result["error"] = f"Spawn ({spawn_x:.2f}, {spawn_y:.2f}) is outside the {m.width}x{m.height} map"
+        return result
+    if not standable(*spawn_cell):
+        tile = m.get_tile(*spawn_cell)
+        what = "a door cell" if spawn_cell in door_cells or tile == "D" else f"the solid tile '{tile}'"
+        result["error"] = f"Spawn ({spawn_x:.2f}, {spawn_y:.2f}) is in cell {spawn_cell}, inside {what}"
+        return result
+
+    progress = analyse_level_progress(rows, placed, spawn_x, spawn_y)
+    reached = progress.reached
+    unreachable = sorted(walkable - reached, key=lambda c: (c[1], c[0]))
+    result.update(
+        reachable_count=len(reached & walkable),
+        unreachable_count=len(unreachable),
+        unreachable_cells=unreachable,
+        exits=progress.total_exits,
+        usable_exits=progress.usable_exits,
+        key_order=progress.key_order,
+        problems=list(progress.problems),
+    )
+    for ent in placed:
+        if ent.get("type") in ("pickup", "enemy") and isinstance(ent.get("x"), (int, float)) \
+                and isinstance(ent.get("y"), (int, float)):
+            if (int(math.floor(ent["x"])), int(math.floor(ent["y"]))) not in reached:
+                result["unreachable_entities"].append(ent)
+    result["success"] = (progress.usable_exits > 0 and not progress.problems
+                         and not result["unreachable_entities"])
+    result["all_reachable"] = not unreachable
+    return result
 
 
 def render_ascii_preview(
@@ -183,8 +205,11 @@ def render_ascii_preview(
 
     if entity_placements:
         for ent in entity_placements:
-            ex = int(ent["x"])
-            ey = int(ent["y"])
+            if not isinstance(ent, dict) or not isinstance(ent.get("x"), (int, float)) \
+                    or not isinstance(ent.get("y"), (int, float)):
+                continue
+            ex = int(math.floor(ent["x"]))
+            ey = int(math.floor(ent["y"]))
             if 0 <= ex < m.width and 0 <= ey < m.height:
                 etype = ent.get("type")
                 if etype == "player":
@@ -308,3 +333,38 @@ def create_template_map(
     map_data = MapData(width=width, height=height, grid=grid)
     save_map(map_data, file_path, header_comment=f"Neo-Wolf map template (style: {style})")
     return map_data
+
+
+def create_level_stub_entities(map_data: MapData, level_id: str) -> Dict[str, Any]:
+    """Entity placements that make a template map a valid campaign level: the player on the
+    first floor cell (row by row) from which an exit switch can be reached, a door entity on
+    every 'D' and a trigger entity on every 'T'."""
+    from tools.devkit.validator import analyse_level_progress  # avoids an import cycle
+
+    rows = ["".join(row) for row in map_data.grid]
+    doors = [{"type": "door", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
+             for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"]
+    triggers = [{"type": "trigger", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
+                for y, row in enumerate(rows) for x, c in enumerate(row) if c == "T"]
+    player: Optional[Dict[str, Any]] = None
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c != "." or player is not None:
+                continue
+            progress = analyse_level_progress(rows, doors + triggers, x + 0.5, y + 0.5)
+            if progress.usable_exits > 0:
+                player = {"type": "player", "x": x + 0.5, "y": y + 0.5, "angle": 0}
+    if player is None:
+        raise ValueError("the map has no floor cell from which an exit switch can be reached")
+    return {"level": level_id, "entities": [player] + doors + triggers}
+
+
+def save_entities_json(document: Dict[str, Any], file_path: Path) -> None:
+    """Writes an entity file in the shipped layout: one placement per line."""
+    lines = ["{", f'  "level": {json.dumps(document["level"])},', '  "entities": [']
+    entities = document["entities"]
+    for index, ent in enumerate(entities):
+        body = ", ".join(f"{json.dumps(k)}: {json.dumps(v)}" for k, v in ent.items())
+        lines.append(f"    {{ {body} }}" + ("," if index + 1 < len(entities) else ""))
+    lines += ["  ]", "}"]
+    Path(file_path).write_text("\n".join(lines) + "\n", encoding="utf-8")

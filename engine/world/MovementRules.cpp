@@ -37,7 +37,24 @@ void ResolveCollisionAgainstWalls(const Map& map, Player& player, Vec2 displacem
     player.position = MoveWithSliding(map, player.position, displacement, player.collisionRadius);
 }
 
-Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacement, float radius) {
+namespace {
+// True when moving from `from` to `to` pushes a circle of `radius` deeper into one of `bodies`.
+bool IsBlockedByBody(const Vec2& from, const Vec2& to, float radius, const std::vector<BodyObstacle>* bodies) {
+    if (bodies == nullptr) {
+        return false;
+    }
+    for (const BodyObstacle& body : *bodies) {
+        const float minDistance = radius + body.radius;
+        const float after = DistanceSquared(to, body.position);
+        if (after < minDistance * minDistance && after < DistanceSquared(from, body.position)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Vec2 MoveAxisSeparated(const Map& map, const Vec2& position, const Vec2& displacement, float radius,
+                       const std::vector<BodyObstacle>* bodies) {
     Vec2 nextPosition = position;
 
     constexpr float kStepSize = 0.05f;
@@ -49,7 +66,7 @@ Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacem
         while (remaining > 0.0f) {
             const float step = std::min(remaining, kStepSize);
             const Vec2 candidate{nextPosition.x + sign * step, nextPosition.y};
-            if (IsBlockedByWall(map, candidate, radius)) {
+            if (IsBlockedByWall(map, candidate, radius) || IsBlockedByBody(nextPosition, candidate, radius, bodies)) {
                 break;
             }
             nextPosition.x = candidate.x;
@@ -64,7 +81,7 @@ Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacem
         while (remaining > 0.0f) {
             const float step = std::min(remaining, kStepSize);
             const Vec2 candidate{nextPosition.x, nextPosition.y + sign * step};
-            if (IsBlockedByWall(map, candidate, radius)) {
+            if (IsBlockedByWall(map, candidate, radius) || IsBlockedByBody(nextPosition, candidate, radius, bodies)) {
                 break;
             }
             nextPosition.y = candidate.y;
@@ -73,6 +90,16 @@ Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacem
     }
 
     return nextPosition;
+}
+} // namespace
+
+Vec2 MoveWithSliding(const Map& map, const Vec2& position, const Vec2& displacement, float radius) {
+    return MoveAxisSeparated(map, position, displacement, radius, nullptr);
+}
+
+Vec2 MoveWithSlidingAndBodies(const Map& map, const Vec2& position, const Vec2& displacement, float radius,
+                              const std::vector<BodyObstacle>& bodies) {
+    return MoveAxisSeparated(map, position, displacement, radius, &bodies);
 }
 
 float DistanceSquared(const Vec2& a, const Vec2& b) {

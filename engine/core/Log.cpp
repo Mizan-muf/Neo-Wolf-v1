@@ -15,6 +15,11 @@
 namespace {
 std::string g_logFilePath{};
 std::mutex g_logMutex{};
+LogLevel g_consoleMinimum = LogLevel::Info;
+
+int Severity(LogLevel level) {
+    return level == LogLevel::Error ? 2 : (level == LogLevel::Warning ? 1 : 0);
+}
 
 const char* LevelToText(LogLevel level) {
     switch (level) {
@@ -29,6 +34,11 @@ const char* LevelToText(LogLevel level) {
     }
 }
 } // namespace
+
+void SetConsoleLogLevel(LogLevel minimum) {
+    std::lock_guard<std::mutex> lock(g_logMutex);
+    g_consoleMinimum = minimum;
+}
 
 void SetLogFilePath(std::string_view path) {
     std::lock_guard<std::mutex> lock(g_logMutex);
@@ -72,10 +82,12 @@ void LogMessage(LogLevel level, std::string_view message) {
 
     std::lock_guard<std::mutex> lock(g_logMutex);
 
-    std::ostream& stream = (level == LogLevel::Error) ? std::cerr : std::cout;
-    stream << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
-           << "[" << LevelToText(level) << "] "
-           << message << '\n';
+    if (Severity(level) >= Severity(g_consoleMinimum)) {
+        std::ostream& stream = (level == LogLevel::Error) ? std::cerr : std::cout;
+        stream << "[" << std::put_time(&localTime, "%H:%M:%S") << "] "
+               << "[" << LevelToText(level) << "] "
+               << message << '\n';
+    }
 
     if (!g_logFilePath.empty()) {
         std::ofstream file(PathFromUtf8(g_logFilePath), std::ios::out | std::ios::app);

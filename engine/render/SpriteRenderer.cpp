@@ -121,8 +121,13 @@ void SpriteRenderer::Render(
         const int spriteHeight = std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / transformY)));
         const int spriteWidth = spriteHeight;
 
-        const int drawStartY = std::max(0, (-spriteHeight / 2) + (screenHeight / 2));
-        const int drawEndY = std::min(screenHeight - 1, (spriteHeight / 2) + (screenHeight / 2));
+        // The unclamped top edge: texture rows are measured from it, so a sprite taller than the
+        // screen is cropped at the top and bottom, not squeezed to fit.
+        const int spriteTopY = (-spriteHeight / 2) + (screenHeight / 2);
+        const int spriteBottomY = (spriteHeight / 2) + (screenHeight / 2);
+        const int spriteRows = spriteBottomY - spriteTopY + 1;
+        const int drawStartY = std::max(0, spriteTopY);
+        const int drawEndY = std::min(screenHeight - 1, spriteBottomY);
         const int drawStartX = std::max(0, (-spriteWidth / 2) + spriteScreenX);
         const int drawEndX = std::min(screenWidth - 1, (spriteWidth / 2) + spriteScreenX);
 
@@ -137,7 +142,7 @@ void SpriteRenderer::Render(
             }
 
             for (int y = drawStartY; y <= drawEndY; ++y) {
-                const float texV = static_cast<float>(y - drawStartY) / static_cast<float>(std::max(1, drawEndY - drawStartY + 1));
+                const float texV = static_cast<float>(y - spriteTopY) / static_cast<float>(spriteRows);
                 const std::uint32_t color = texture->SampleNearest(texU, texV);
                 if (IsSpritePixelTransparent(color)) {
                     continue;

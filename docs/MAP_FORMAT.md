@@ -107,28 +107,33 @@ these as **errors** even though the engine would load the map:
 - an outer cell (first or last row or column) is not a solid wall (`#`, `A`, `B` or `X`); a `D`
   or `T` on the edge counts as a leak;
 - the map has no walkable cell (`.`, `D` or `T`);
-- a **campaign level** (listed in `campaign.json`) has no exit switch `X`, or none of its exit
-  switches has a walkable neighbour cell that the player can reach from the spawn (doors count
-  as passable, a locked door only once its key can be collected first);
-- a campaign level has a door `lock` colour without a key card of that colour, or a key that
-  cannot be collected before the door it opens (Phase 6). Phase 7 extends these checks.
+- in a **campaign level** (listed in `campaign.json`): a `D` without exactly one door entity, a
+  door or trigger entity that is not on a `D` / `T` cell, the player or anything else inside a
+  solid cell, no exit switch `X`, or no exit switch with a floor cell beside it that the player
+  can reach from the spawn (a door entity's cell counts as passable, a locked door only once its
+  key can be collected first), a lock colour without a key, or a key that cannot be collected
+  before the door it opens.
 
-The DevKit also handles lines differently: it strips spaces from every line, so it skips
-whitespace-only lines and indented `;` comments that the engine rejects (Roadmap Phase 7 aligns
-the two).
+Warnings: a `T` without a trigger entity, an enemy whose body overlaps a wall, a pickup or enemy
+that cannot be reached, a map that no campaign level uses. The full list:
+[DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#validate--content-and-campaign-validation).
+
+The DevKit reads map lines **exactly like the engine** (since Phase 7, `tools/devkit/engine_formats.py`):
+LF and CRLF, `;` comments in column 1 only, whitespace-only lines and indented comments are
+invalid rows. The fixtures in `tests/fixtures/parity/` prove that the two agree.
 
 ## DevKit commands
 
 ```bash
-# Preview the map with the entities on top
-python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --entities game/defs/level01.entities.json
+# Preview a campaign level with its entities, statistics and reachability from the spawn
+python3 tools/devkit/devkit.py inspect-map --level level01
 
-# Walkable-cell statistics and reachability from a spawn cell
-python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --stats --reachability
+# A map file with an entity file of your choice
+python3 tools/devkit/devkit.py inspect-map game/maps/level01.map --entities game/defs/level01.entities.csv
 
-# A new map from a template (styles: box, arena, dungeon, crossroads); every template gets an
-# exit switch X in the middle of the east wall
-python3 tools/devkit/devkit.py create-map game/maps/level02.map --width 16 --height 12 --style arena
+# A new level from a template (styles: box, arena, dungeon, crossroads): the map with an exit
+# switch X in the middle of the east wall, a stub entity file, and an entry in campaign.json
+python3 tools/devkit/devkit.py create-map --level-id level04 --width 16 --height 12 --style arena --register
 
 # Validate all content (maps, assets, definitions, entity files)
 python3 tools/devkit/devkit.py validate --strict

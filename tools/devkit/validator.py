@@ -1,11 +1,43 @@
-"""Comprehensive validator for Neo-Wolf maps, assets, definitions, and configurations."""
+"""Validator for Neo-Wolf content (``neo_devkit validate``).
 
-import json
-import os
+Two layers:
+
+* **The engine's rules**, implemented to behave exactly like the C++ loaders (shared readers in
+  ``engine_formats.py``): map grids, entity placements (JSON and CSV), key/value files,
+  ``campaign.json`` and ``gameplay.json``. A file that fails here fails to load in the game.
+* **The DevKit's level rules**, stricter than the engine, so that a level that validates can be
+  played to the end (Roadmap Phase 7, docs/LEVEL_AUTHORING.md): a closed outer wall, exactly one
+  player on a floor cell, every door on a 'D' cell and every 'D' with exactly one door,
+  triggers on 'T', nothing inside a solid cell, at least one exit switch 'X' reachable from the
+  spawn with every key collected before the door it opens, every pickup and enemy reachable,
+  and no map or entity file left out of the campaign.
+
+Errors make ``validate`` fail; warnings fail it only with ``--strict``.
+"""
+
+import math
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from tools.devkit.engine_formats import (
+    ENEMY_VARIANTS,
+    ENTITY_FIELDS,
+    ENTITY_TYPES,
+    FLOOR_TILES,
+    KEY_COLORS,
+    MAP_TILES,
+    PICKUP_KINDS,
+    SOLID_TILES,
+    WALKABLE_TILES,
+    load_json_strict,
+    parse_entities,
+    parse_entities_csv,
+    parse_entities_json,
+    parse_key_value,
+    parse_map,
+)
 
 
 @dataclass
@@ -42,10 +74,6 @@ VALID_TILE_CHARS = {
     "T": "Trigger",
     "X": "Exit",
 }
-
-# 'X' (Phase 5) is the exit switch: a solid wall cell, so it also closes the perimeter.
-SOLID_TILES = {"#", "A", "B", "X"}
-WALKABLE_TILES = {".", "D", "T"}
 THEME_KEYS = {"wall", "wall_alt_a", "wall_alt_b", "door", "floor", "ceiling", "exit", "door_red", "door_blue", "door_gold"}
 # sprites.cfg (engine: kSpriteTextureKeys in engine/assets/ContentConfig.h).
 SPRITE_KEYS = {
@@ -53,103 +81,78 @@ SPRITE_KEYS = {
     "health", "ammo", "key_red", "key_blue", "key_gold", "decoration",
 }
 RENAMED_SPRITE_KEYS = {"enemy": "guard", "pickup": "health"}  # Phase 6
+AUDIO_REQUIRED_KEYS = {"door_open", "pickup", "enemy_alert"}
+AUDIO_OPTIONAL_KEYS = {"weapon_fire", "master_volume"}
 CAMPAIGN_LEVEL_FIELDS = ("id", "name", "map", "entities", "theme")
-VALID_ENTITY_TYPES = {"player", "enemy", "pickup", "door", "trigger", "decoration"}
+VALID_ENTITY_TYPES = set(ENTITY_TYPES)
+MAX_PICKUP_VALUE = 10000  # engine: kMaxGameplayStat
+MAX_CAMPAIGN_NAME_BYTES = 32  # engine: kMaxCampaignNameLength (bytes of UTF-8)
+ENEMY_RADIUS = 0.25  # engine: kEnemyRadius
+DEFAULT_PLAYER_RADIUS = 0.22  # gameplay.json player.collisionRadius default
 
 
 def validate_map(file_path: Path) -> Tuple[ValidationReport, Optional[List[str]]]:
     """Validate a .map grid file.
-    
-    Checks:
-    - File exists and is readable
-    - Comments ';' and empty lines ignored
-    - Rectangular grid (uniform row widths)
-    - Valid tile characters (., #, A, B, D, T, X)
-    - Perimeter is closed with solid walls (#, A, B, X)
-    - Minimum dimensions (>= 3x3)
-    - Has at least one walkable tile
-    """
+
+    Engine rules (MapLoader, read exactly like the engine: lines split on LF, one trailing CR
+    removed, empty lines and lines starting with ';' in column 1 skipped, every other line a grid
+    row as is): at least one row, equal row widths, only the tiles . # A B D T X.
+    DevKit rules: at least 3x3, a closed outer wall (# A B X), at least one walkable cell.
+    Returns the rows when the map is valid."""
     report = ValidationReport()
     file_path = Path(file_path)
-
     if not file_path.exists():
         report.add_error(f"Map file not found: {file_path}")
         return report, None
 
-    try:
-        content = file_path.read_text(encoding="utf-8")
-    except Exception as exc:
-        report.add_error(f"Failed to read map file {file_path}: {exc}")
+    parsed = parse_map(file_path)
+    if not parsed.rows:
+        report.add_error(f"Map {file_path} is empty or contains only comments.")
         return report, None
-
-    raw_lines = content.splitlines()
-    rows: List[str] = []
-    for idx, line in enumerate(raw_lines):
-        line = line.strip()
-        if not line or line.startswith(";"):
-            continue
-        rows.append(line)
-
-    if not rows:
-        report.add_error(f"Map file {file_path} is empty or contains only comments.")
-        return report, None
-
-    height = len(rows)
+    rows = parsed.rows
     width = len(rows[0])
+    height = len(rows)
+    for y, row in enumerate(rows):
+        if len(row) != width:
+            report.add_error(f"Map {file_path}: Inconsistent row width at row {y} (expected {width}, got {len(row)})")
+            continue
+        for x, char in enumerate(row):
+            if char not in MAP_TILES:
+                report.add_error(f"Map {file_path}: Invalid tile character {char!r} at ({x}, {y})")
+    if not report.is_valid:
+        return report, None
 
     if width < 3 or height < 3:
         report.add_error(f"Map {file_path} dimensions ({width}x{height}) must be at least 3x3.")
-
-    # Check row consistency and valid characters
-    for y, row in enumerate(rows):
-        if len(row) != width:
-            report.add_error(
-                f"Map {file_path}: Inconsistent row width at row {y} (expected {width}, got {len(row)})"
-            )
-        for x, char in enumerate(row):
-            if char not in VALID_TILE_CHARS:
-                report.add_error(
-                    f"Map {file_path}: Invalid tile character '{char}' at ({x}, {y})"
-                )
-
-    # Perimeter closure check (top, bottom, left, right must be solid walls)
-    # Top and bottom rows
-    for x in range(min(width, len(rows[0]))):
+    for x in range(width):
         if rows[0][x] not in SOLID_TILES:
             report.add_error(
                 f"Map {file_path}: North perimeter leak at ({x}, 0) — found '{rows[0][x]}', expected solid wall (#, A, B, X)"
             )
-        if len(rows) > 1 and len(rows[-1]) > x and rows[-1][x] not in SOLID_TILES:
+        if height > 1 and rows[-1][x] not in SOLID_TILES:
             report.add_error(
                 f"Map {file_path}: South perimeter leak at ({x}, {height - 1}) — found '{rows[-1][x]}', expected solid wall"
             )
-
-    # Left and right edges
-    for y in range(len(rows)):
-        if rows[y] and rows[y][0] not in SOLID_TILES:
-            report.add_error(
-                f"Map {file_path}: West perimeter leak at (0, {y}) — found '{rows[y][0]}', expected solid wall"
-            )
-        if len(rows[y]) == width and rows[y][-1] not in SOLID_TILES:
+    for y in range(height):
+        if rows[y][0] not in SOLID_TILES:
+            report.add_error(f"Map {file_path}: West perimeter leak at (0, {y}) — found '{rows[y][0]}', expected solid wall")
+        if rows[y][-1] not in SOLID_TILES:
             report.add_error(
                 f"Map {file_path}: East perimeter leak at ({width - 1}, {y}) — found '{rows[y][-1]}', expected solid wall"
             )
-
-    # Check walkable tiles count
-    walkable_count = sum(row.count(".") + row.count("D") + row.count("T") for row in rows)
+    walkable_count = sum(1 for row in rows for c in row if c in WALKABLE_TILES)
     if walkable_count == 0:
         report.add_error(f"Map {file_path} has no walkable interior tiles.")
     else:
         report.add_info(
-            f"Map {file_path.name}: {width}x{height} grid ({walkable_count} walkable cells, {width*height - walkable_count} solid cells)"
+            f"Map {file_path.name}: {width}x{height} grid ({walkable_count} walkable cells, {width * height - walkable_count} solid cells)"
         )
-
     return report, rows if report.is_valid else None
 
 
 def validate_ppm(file_path: Path, expected_dim: Optional[int] = None) -> ValidationReport:
     """Validate a Netpbm PPM image file (P3 ASCII format as expected by engine).
-    
+
     Checks:
     - Magic identifier is P3 (plain text PPM)
     - Valid positive width and height
@@ -248,7 +251,7 @@ def validate_ppm(file_path: Path, expected_dim: Optional[int] = None) -> Validat
 
 def validate_wav(file_path: Path) -> ValidationReport:
     """Validate a RIFF WAVE audio file.
-    
+
     Checks:
     - RIFF header format
     - Format code is PCM (1)
@@ -343,151 +346,39 @@ def validate_wav(file_path: Path) -> ValidationReport:
 
 
 def validate_cfg(file_path: Path, required_keys: Optional[Set[str]] = None) -> Tuple[ValidationReport, Dict[str, str]]:
-    """Validate a .cfg key=value configuration file."""
+    """Validate a key=value file (theme, sprites.cfg, audio.cfg) like the engine reads it."""
     report = ValidationReport()
-    values: Dict[str, str] = {}
     file_path = Path(file_path)
-
     if not file_path.exists():
         report.add_error(f"Config file not found: {file_path}")
-        return report, values
-
-    try:
-        content = file_path.read_text(encoding="utf-8")
-    except Exception as exc:
-        report.add_error(f"Failed to read config file {file_path}: {exc}")
-        return report, values
-
-    for line_num, line in enumerate(content.splitlines(), start=1):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        if "=" not in line:
-            report.add_error(f"CFG {file_path}:{line_num}: Missing '=' delimiter in '{line}'")
-            continue
-
-        key, val = line.split("=", 1)
-        key = key.strip()
-        val = val.strip()
-
-        if not key:
-            report.add_error(f"CFG {file_path}:{line_num}: Empty key name.")
-            continue
-
-        values[key] = val
-
+        return report, {}
+    parsed = parse_key_value(file_path)
+    for error in parsed.errors:
+        report.add_error(error + " (the engine ignores every entry of this file)")
     if required_keys:
-        missing = required_keys - set(values.keys())
-        if missing:
-            for k in sorted(missing):
-                report.add_error(f"CFG {file_path}: Missing required key '{k}'")
-
-    report.add_info(f"CFG {file_path.name}: Loaded {len(values)} key-value entries.")
-    return report, values
+        for key in sorted(required_keys - set(parsed.values)):
+            report.add_error(f"CFG {file_path}: Missing required key '{key}'")
+    report.add_info(f"CFG {file_path.name}: Loaded {len(parsed.values)} key-value entries.")
+    return report, parsed.values
 
 
-PICKUP_KINDS = {"health", "ammo", "key"}
-KEY_COLORS = ("red", "blue", "gold")
-ENEMY_VARIANTS = ("guard", "brute", "runner")
-MAX_PICKUP_VALUE = 10000  # engine: kMaxGameplayStat
-# Fields each entity type reads; any other field is ignored by the engine (warning there and here).
-ENTITY_FIELDS = {
-    "player": {"type", "x", "y", "angle"},
-    "enemy": {"type", "x", "y", "variant"},
-    "pickup": {"type", "x", "y", "kind", "value", "key"},
-    "door": {"type", "x", "y", "mapX", "mapY", "lock"},
-    "trigger": {"type", "x", "y", "mapX", "mapY"},
-    "decoration": {"type", "x", "y"},
-}
+# --- Entity files ------------------------------------------------------------------------------
 
 
-def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _is_int(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _check_entity(
-    item: dict, label: str, map_dimensions: Optional[Tuple[int, int]], report: ValidationReport
-) -> bool:
-    """Checks one placement (the engine's rules, docs/CONTENT_DEFINITIONS.md). False on an error."""
-    etype = item.get("type")
-    if etype not in VALID_ENTITY_TYPES:
-        report.add_error(
-            f"{label}: invalid type {etype!r}. Valid types: {', '.join(sorted(VALID_ENTITY_TYPES))}"
-        )
-        return False
-
-    ok = True
-    x = item.get("x")
-    y = item.get("y")
-    if not _is_number(x) or not _is_number(y):
-        report.add_error(f"{label} ({etype}): x and y must be numbers, got {x!r}, {y!r}")
-        return False
-
-    for key in sorted(set(item) - ENTITY_FIELDS[etype]):
-        report.add_warning(f"{label} ({etype}): field '{key}' is not used by a {etype}; ignored")
-
-    map_x = item.get("mapX")
-    map_y = item.get("mapY")
-    if etype in ("door", "trigger"):
-        if not _is_int(map_x) or not _is_int(map_y) or map_x < 0 or map_y < 0:
-            report.add_error(
-                f"{label} ({etype}): mapX and mapY are required non-negative integers, got {map_x!r}, {map_y!r}"
-            )
-            ok = False
-            map_x = map_y = None
-
-    if etype == "pickup":
-        kind = item.get("kind")
-        if kind not in PICKUP_KINDS:
-            report.add_error(f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}")
-            ok = False
-        if kind == "key":
-            if item.get("key") not in KEY_COLORS:
-                report.add_error(
-                    f"{label} (pickup): a key pickup needs 'key': 'red', 'blue' or 'gold', got {item.get('key')!r}"
-                )
-                ok = False
-            if "value" in item:
-                report.add_warning(f"{label} (pickup): field 'value' is not used by a key pickup; ignored")
-        elif "key" in item:
-            report.add_warning(f"{label} (pickup): field 'key' only applies to pickups of kind 'key'; ignored")
-        if "value" in item and kind != "key":
-            value = item["value"]
-            if not _is_int(value) or not (1 <= value <= MAX_PICKUP_VALUE):
-                report.add_error(
-                    f"{label} (pickup): value must be an integer from 1 to {MAX_PICKUP_VALUE}, got {value!r}"
-                )
-                ok = False
-
-    if etype == "player" and "angle" in item and not _is_number(item["angle"]):
-        report.add_error(f"{label} (player): angle must be a number (degrees), got {item['angle']!r}")
-        ok = False
-
-    if etype == "enemy" and "variant" in item:
-        variant = item["variant"]
-        if variant not in ENEMY_VARIANTS:
-            report.add_error(f"{label} (enemy): variant must be 'guard', 'brute' or 'runner', got {variant!r}")
-            ok = False
-
-    if etype == "door" and "lock" in item and item["lock"] not in KEY_COLORS:
-        report.add_error(f"{label} (door): lock must be 'red', 'blue' or 'gold', got {item['lock']!r}")
-        ok = False
-
-    if map_dimensions:
-        mw, mh = map_dimensions
+def _check_bounds(entities: List[dict], label: str, map_dimensions: Optional[Tuple[int, int]],
+                  report: ValidationReport) -> None:
+    if not map_dimensions:
+        return
+    mw, mh = map_dimensions
+    for index, ent in enumerate(entities):
+        x, y = ent["x"], ent["y"]
         if not (0 <= x < mw and 0 <= y < mh):
-            report.add_error(f"{label}: position ({x}, {y}) is outside map bounds ({mw}x{mh})")
-            ok = False
-        if map_x is not None and map_y is not None and _is_int(map_x) and _is_int(map_y):
-            if not (0 <= map_x < mw and 0 <= map_y < mh):
-                report.add_error(f"{label}: map cell ({map_x}, {map_y}) is outside map bounds ({mw}x{mh})")
-                ok = False
-    return ok
+            report.add_error(f"{label} entity {index} ({ent['type']}): position ({x}, {y}) is outside map bounds ({mw}x{mh})")
+        if ent["type"] in ("door", "trigger"):
+            if not (0 <= ent["mapX"] < mw and 0 <= ent["mapY"] < mh):
+                report.add_error(
+                    f"{label} entity {index} ({ent['type']}): map cell ({ent['mapX']}, {ent['mapY']}) is outside map bounds ({mw}x{mh})"
+                )
 
 
 def _check_player_count(entities: List[dict], label: str, report: ValidationReport) -> None:
@@ -498,277 +389,312 @@ def _check_player_count(entities: List[dict], label: str, report: ValidationRepo
         )
 
 
-def validate_entity_csv(
-    file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
-) -> Tuple[ValidationReport, List[dict]]:
-    """Validate an entity CSV file (type,x,y[,mapX,mapY[,kind[,value[,angle[,variant]]]]])."""
-    from tools.devkit.def_tools import CSV_COLUMNS
-
+def _validate_entity_file(file_path: Path, kind: str, map_dimensions: Optional[Tuple[int, int]]
+                          ) -> Tuple[ValidationReport, List[dict]]:
     report = ValidationReport()
-    entities: List[dict] = []
     file_path = Path(file_path)
-
     if not file_path.exists():
-        report.add_error(f"Entity CSV file not found: {file_path}")
-        return report, entities
-
-    try:
-        content = file_path.read_text(encoding="utf-8-sig")
-    except Exception as exc:
-        report.add_error(f"Failed to read entity CSV {file_path}: {exc}")
-        return report, entities
-
-    index = 0
-    for line_num, line in enumerate(content.splitlines(), start=1):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        label = f"CSV {file_path}:{line_num} (entity {index})"
-        index += 1
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
-            report.add_error(f"{label}: Expected at least 3 fields (type,x,y), got {len(parts)}")
-            continue
-        if len(parts) > len(CSV_COLUMNS):
-            report.add_warning(f"{label}: {len(parts) - len(CSV_COLUMNS)} extra column(s) ignored")
-
-        item: dict = {}
-        converted = True
-        for (name, kind), cell in zip(CSV_COLUMNS, parts):
-            if cell == "":
-                continue
-            try:
-                item[name] = kind(cell)
-            except ValueError:
-                report.add_error(f"{label}: column '{name}' has an invalid value {cell!r}")
-                converted = False
-        if not converted:
-            continue
-
-        if _check_entity(item, label, map_dimensions, report):
-            entities.append(item)
-
-    _check_player_count(entities, f"CSV {file_path}", report)
-    report.add_info(f"CSV {file_path.name}: Found {len(entities)} entity placements.")
-    return report, entities
+        report.add_error(f"Entity {kind} file not found: {file_path}")
+        return report, []
+    parsed = parse_entities_json(file_path) if kind == "JSON" else parse_entities_csv(file_path)
+    report.errors.extend(parsed.errors)
+    report.warnings.extend(parsed.warnings)
+    _check_bounds(parsed.entities, f"{kind} {file_path}:", map_dimensions, report)
+    if parsed.ok or parsed.count:
+        _check_player_count(parsed.entities, f"{kind} {file_path}", report)
+    report.add_info(f"{kind} {file_path.name}: Found {len(parsed.entities)} entity placements.")
+    return report, parsed.entities
 
 
-def validate_entity_json(
-    file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
-) -> Tuple[ValidationReport, List[dict]]:
+def validate_entity_csv(file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
+                        ) -> Tuple[ValidationReport, List[dict]]:
+    """Validate an entity CSV export (type,x,y,mapX,mapY,kind,value,angle,variant,key,lock)."""
+    return _validate_entity_file(file_path, "CSV", map_dimensions)
+
+
+def validate_entity_json(file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
+                         ) -> Tuple[ValidationReport, List[dict]]:
     """Validate an entity JSON file (level, entities array)."""
-    report = ValidationReport()
-    entities: List[dict] = []
-    file_path = Path(file_path)
+    return _validate_entity_file(file_path, "JSON", map_dimensions)
 
-    if not file_path.exists():
-        report.add_error(f"Entity JSON file not found: {file_path}")
-        return report, entities
 
-    try:
-        data = json.loads(file_path.read_text(encoding="utf-8-sig"))
-    except Exception as exc:
-        report.add_error(f"JSON syntax error in {file_path}: {exc}")
-        return report, entities
+# --- gameplay.json (engine/assets/GameplayConfig.cpp) -------------------------------------------
 
-    if not isinstance(data, dict):
-        report.add_error(f"JSON {file_path}: Root must be an object.")
-        return report, entities
+# (key, kind, minimum, maximum, minimum exclusive, maximum exclusive, default)
+_INT = "integer"
+_NUM = "number"
+GAMEPLAY_SCHEMA: Dict[str, List[Tuple[str, str, float, float, bool, bool, float]]] = {
+    "player": [
+        ("initialHealth", _INT, 1, 10000, False, False, 100),
+        ("maxHealth", _INT, 1, 10000, False, False, 100),
+        ("moveSpeed", _NUM, 0, 20, True, False, 3.0),
+        ("turnSpeed", _NUM, 0, 20, True, False, 1.8),
+        ("collisionRadius", _NUM, 0, 0.5, True, True, 0.22),
+    ],
+    "weapon": [
+        ("damage", _INT, 1, 10000, False, False, 35),
+        ("fireRate", _NUM, 0, 60, False, False, 0.25),
+        ("range", _NUM, 0, 1000, True, False, 12.0),
+        ("initialAmmo", _INT, 0, 10000, False, False, 24),
+        ("maxAmmo", _INT, 0, 10000, False, False, 99),
+        ("noiseRadius", _NUM, 0, 1000, False, False, 10.0),
+    ],
+    "enemy": [
+        ("health", _INT, 1, 10000, False, False, 50),
+        ("damage", _INT, 0, 10000, False, False, 12),
+        ("moveSpeed", _NUM, 0, 20, False, False, 1.6),
+        ("alertRadius", _NUM, 0, 1000, False, False, 6.5),
+        ("attackRadius", _NUM, 0, 1000, False, False, 1.1),
+        ("attackRate", _NUM, 0, 60, True, False, 1.0),
+        ("reactionTime", _NUM, 0, 60, False, False, 0.5),
+        ("score", _INT, 0, 10000, False, False, 100),
+    ],
+    "pickup": [("value", _INT, 1, 10000, False, False, 0)],
+}
+_ENEMY_DEFAULTS = {
+    "guard": {},
+    "brute": {"health": 140, "damage": 25, "moveSpeed": 1.0, "alertRadius": 5.5, "attackRadius": 1.3,
+              "attackRate": 1.6, "reactionTime": 0.8, "score": 300},
+    "runner": {"health": 25, "damage": 6, "moveSpeed": 2.8, "alertRadius": 8.0, "attackRadius": 1.0,
+               "attackRate": 0.6, "reactionTime": 0.2, "score": 150},
+}
+_PICKUP_DEFAULTS = {"health": 25, "ammo": 12}
 
-    if "entities" not in data or not isinstance(data["entities"], list):
-        report.add_error(f"JSON {file_path}: Missing 'entities' array.")
-        return report, entities
 
-    for key in sorted(set(data) - {"level", "entities"}):
-        report.add_warning(f"JSON {file_path}: unknown top-level field '{key}' ignored")
+def _describe(value: Any) -> str:
+    if isinstance(value, dict):
+        return "an object"
+    if isinstance(value, list):
+        return "an array"
+    if value is None:
+        return "null"
+    return json_dump(value)
 
-    for idx, item in enumerate(data["entities"]):
-        label = f"JSON {file_path}: entities[{idx}]"
-        if not isinstance(item, dict):
-            report.add_error(f"{label} is not an object.")
+
+def json_dump(value: Any) -> str:
+    import json
+    return json.dumps(value)
+
+
+def _format_range(kind: str, lo: float, hi: float, lo_ex: bool, hi_ex: bool) -> str:
+    if kind == _INT:
+        return f"an integer from {int(lo)} to {int(hi)}"
+    def fmt(v: float) -> str:
+        return f"{v:g}"
+    return f"a number {'>' if lo_ex else '>='} {fmt(lo)} and {'<' if hi_ex else '<='} {fmt(hi)}"
+
+
+def _read_section(section: dict, path: str, schema: list, defaults: Dict[str, Any], report: ValidationReport,
+                  label: str) -> Dict[str, Any]:
+    values: Dict[str, Any] = {key: default for key, _, _, _, _, _, default in schema}
+    values.update(defaults)
+    known = set()
+    for key, kind, lo, hi, lo_ex, hi_ex, _ in schema:
+        known.add(key)
+        if key not in section:
             continue
-        if _check_entity(item, label, map_dimensions, report):
-            entities.append(item)
+        value = section[key]
+        name = f"{path}.{key}"
+        expected = _format_range(kind, lo, hi, lo_ex, hi_ex)
+        is_int = isinstance(value, int) and not isinstance(value, bool)
+        is_num = (is_int or isinstance(value, float)) and math.isfinite(value)
+        if (kind == _INT and not is_int) or (kind == _NUM and not is_num):
+            report.add_error(f"{label}: {name} must be {expected}, got {_describe(value)}")
+            continue
+        above = value > lo if lo_ex else value >= lo
+        below = value < hi if hi_ex else value <= hi
+        if not (above and below):
+            report.add_error(f"{label}: {name} must be {expected}, got {_describe(value)}")
+            continue
+        values[key] = value
+    hints = {"pickups.health.maxPlayerHealth": " (moved to player.maxHealth)",
+             "pickups.ammo.maxPlayerAmmo": " (moved to weapon.maxAmmo)"}
+    for key in section:
+        if key not in known:
+            report.add_warning(f"{label}: unknown key {path}.{key} ignored{hints.get(path + '.' + key, '')}")
+    return values
 
-    _check_player_count(entities, f"JSON {file_path}", report)
-    report.add_info(f"JSON {file_path.name}: Found {len(entities)} entity placements.")
-    return report, entities
 
-
-def validate_project(project_root: Path) -> ValidationReport:
-    """Run a complete validation pass on all maps, assets, defs, and config files in project."""
-    project_root = Path(project_root).resolve()
+def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]]:
+    """gameplay.json with the engine's rules: types, ranges, duplicate keys, sections, the
+    enemies section (and the deprecated 'enemy'), cross-field rules; unknown keys are warnings.
+    Returns the effective values (defaults for missing keys), e.g. values['player']['collisionRadius']."""
     report = ValidationReport()
+    file_path = Path(file_path)
+    label = str(file_path)
+    values: Dict[str, Any] = {
+        "player": {k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["player"]},
+        "weapon": {k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["weapon"]},
+        "enemies": {name: {**{k: d for k, _, _, _, _, _, d in GAMEPLAY_SCHEMA["enemy"]}, **over}
+                    for name, over in _ENEMY_DEFAULTS.items()},
+        "pickups": {name: {"value": v} for name, v in _PICKUP_DEFAULTS.items()},
+    }
+    if not file_path.is_file():
+        report.add_error(f"Missing gameplay definitions: {file_path} (the game does not start without it)")
+        return report, values
+    document, errors = load_json_strict(file_path)
+    for error in errors:
+        report.add_error(error)
+    if document is None or errors:
+        return report, values
+    if not isinstance(document, dict):
+        report.add_error(f"{label}: the top level must be an object, got {_describe(document)}")
+        return report, values
 
-    report.add_info(f"Starting complete project validation for {project_root}")
+    def section(parent: dict, path: str, key: str) -> Optional[dict]:
+        if key not in parent:
+            return None
+        if not isinstance(parent[key], dict):
+            report.add_error(f"{label}: {path + '.' if path else ''}{key} must be an object, got {_describe(parent[key])}")
+            return None
+        return parent[key]
 
-    maps_dir = project_root / "game" / "maps"
-    assets_dir = project_root / "game" / "assets"
-    defs_dir = project_root / "game" / "defs"
-
-    # 1. Validate Map files
-    map_dimensions: Dict[str, Tuple[int, int]] = {}
-    if not maps_dir.exists():
-        report.add_error(f"Missing maps directory: {maps_dir}")
-    else:
-        map_files = list(maps_dir.glob("*.map"))
-        if not map_files:
-            report.add_error(f"No .map files found in {maps_dir}")
-        for map_file in map_files:
-            map_rep, rows = validate_map(map_file)
-            report.merge(map_rep)
-            if rows:
-                map_dimensions[map_file.stem] = (len(rows[0]), len(rows))
-
-    # 2. Validate PPM textures & sprites
-    if not assets_dir.exists():
-        report.add_error(f"Missing assets directory: {assets_dir}")
-    else:
-        ppm_files = sorted(assets_dir.rglob("*.ppm"))  # includes the theme folders
-        if not ppm_files:
-            report.add_error(f"No .ppm files found in {assets_dir}")
-        for ppm_file in ppm_files:
-            ppm_rep = validate_ppm(ppm_file, expected_dim=None)
-            report.merge(ppm_rep)
-
-        # Validate WAV audio files
-        wav_files = list(assets_dir.glob("*.wav"))
-        if not wav_files:
-            report.add_error(f"No .wav files found in {assets_dir}")
-        for wav_file in wav_files:
-            wav_rep = validate_wav(wav_file)
-            report.merge(wav_rep)
-
-    # 3. Validate Defs & Configs
-    if not defs_dir.exists():
-        report.add_error(f"Missing defs directory: {defs_dir}")
-    else:
-        # Texture themes: game/defs/themes/<id>.cfg (the former wall_textures.cfg is themes/classic.cfg).
-        themes_dir = defs_dir / "themes"
-        theme_files = sorted(themes_dir.glob("*.cfg")) if themes_dir.is_dir() else []
-        if not theme_files:
-            report.add_error(f"No texture themes found in {themes_dir}")
-        for theme_cfg in theme_files:
-            cfg_rep, theme_vals = validate_cfg(theme_cfg, THEME_KEYS)
-            report.merge(cfg_rep)
-            for key, rel_path in theme_vals.items():
-                if key not in THEME_KEYS:
-                    report.add_warning(f"{theme_cfg.name}: unknown key '{key}' ignored by the engine")
-                    continue
-                if not (project_root / rel_path).exists():
-                    report.add_error(
-                        f"themes/{theme_cfg.name} references non-existent file for '{key}': {rel_path}"
-                    )
-
-        # Sprites cfg
-        sprites_cfg = defs_dir / "sprites.cfg"
-        if sprites_cfg.exists():
-            cfg_rep, spr_vals = validate_cfg(sprites_cfg, SPRITE_KEYS)
-            report.merge(cfg_rep)
-            for key, rel_path in spr_vals.items():
-                if key in RENAMED_SPRITE_KEYS:
-                    report.add_error(
-                        f"sprites.cfg: key '{key}' was renamed to '{RENAMED_SPRITE_KEYS[key]}' (Phase 6); the engine ignores it"
-                    )
-                    continue
-                if key not in SPRITE_KEYS:
-                    report.add_warning(f"sprites.cfg: unknown key '{key}' ignored by the engine")
-                    continue
-                target = project_root / rel_path
-                if not target.exists():
-                    report.add_error(
-                        f"sprites.cfg references non-existent file for '{key}': {rel_path}"
-                    )
-        else:
-            report.add_error(f"Missing sprites.cfg in {defs_dir}")
-
-        # Audio cfg
-        audio_cfg = defs_dir / "audio.cfg"
-        if audio_cfg.exists():
-            cfg_rep, audio_vals = validate_cfg(
-                audio_cfg, {"door_open", "pickup", "enemy_alert"}
-            )
-            report.merge(cfg_rep)
-            for key, rel_path in audio_vals.items():
-                if key == "master_volume":
-                    try:
-                        vol = float(rel_path)
-                        if not (0.0 <= vol <= 1.0):
-                            report.add_warning(
-                                f"audio.cfg master_volume ({vol}) is outside typical range [0.0, 1.0]"
-                            )
-                    except ValueError:
-                        report.add_error(f"audio.cfg invalid master_volume: {rel_path}")
-                    continue
-                target = project_root / rel_path
-                if not target.exists():
-                    report.add_error(
-                        f"audio.cfg references non-existent file for '{key}': {rel_path}"
-                    )
-        else:
-            report.add_error(f"Missing audio.cfg in {defs_dir}")
-
-        # Entity placements: <level>.entities.json (canonical) and the optional CSV export.
-        for csv_file in defs_dir.glob("*.entities.csv"):
-            level_name = csv_file.name.replace(".entities.csv", "")
-            dims = map_dimensions.get(level_name)
-            csv_rep, _ = validate_entity_csv(csv_file, dims)
-            report.merge(csv_rep)
-
-        for json_file in defs_dir.glob("*.entities.json"):
-            level_name = json_file.name.replace(".entities.json", "")
-            dims = map_dimensions.get(level_name)
-            json_rep, _ = validate_entity_json(json_file, dims)
-            report.merge(json_rep)
-
-        # The campaign manifest and, per level, a reachable exit switch.
-        report.merge(validate_campaign(project_root))
-
-    return report
+    for name in ("player", "weapon"):
+        sec = section(document, "", name)
+        if sec is not None:
+            values[name] = _read_section(sec, name, GAMEPLAY_SCHEMA[name], {}, report, label)
+    legacy = section(document, "", "enemy")
+    enemies = section(document, "", "enemies")
+    if legacy is not None and enemies is not None:
+        report.add_error(f'{label}: use either "enemies" or the old "enemy" section, not both ("enemy" is now "enemies.guard")')
+    elif legacy is not None:
+        report.add_warning(f'{label}: section "enemy" is deprecated: it is read as "enemies.guard" (move it there)')
+        values["enemies"]["guard"] = _read_section(legacy, "enemy", GAMEPLAY_SCHEMA["enemy"], {}, report, label)
+    elif enemies is not None:
+        for name in ENEMY_VARIANTS:
+            sec = section(enemies, "enemies", name)
+            if sec is not None:
+                values["enemies"][name] = _read_section(sec, f"enemies.{name}", GAMEPLAY_SCHEMA["enemy"],
+                                                        _ENEMY_DEFAULTS[name], report, label)
+        for key in enemies:
+            if key not in ENEMY_VARIANTS:
+                report.add_warning(f"{label}: unknown key enemies.{key} ignored")
+    pickups = section(document, "", "pickups")
+    if pickups is not None:
+        for name in ("health", "ammo"):
+            sec = section(pickups, "pickups", name)
+            if sec is not None:
+                schema = [("value", _INT, 1, 10000, False, False, _PICKUP_DEFAULTS[name])]
+                values["pickups"][name] = _read_section(sec, f"pickups.{name}", schema, {}, report, label)
+        for key in pickups:
+            if key not in ("health", "ammo"):
+                report.add_warning(f"{label}: unknown key pickups.{key} ignored")
+    for key in document:
+        if key not in ("player", "weapon", "enemy", "enemies", "pickups"):
+            report.add_warning(f"{label}: unknown key {key} ignored")
+    if report.is_valid:
+        player, weapon = values["player"], values["weapon"]
+        if player["initialHealth"] > player["maxHealth"]:
+            report.add_error(f"{label}: player.initialHealth ({player['initialHealth']}) must not exceed player.maxHealth ({player['maxHealth']})")
+        if weapon["initialAmmo"] > weapon["maxAmmo"]:
+            report.add_error(f"{label}: weapon.initialAmmo ({weapon['initialAmmo']}) must not exceed weapon.maxAmmo ({weapon['maxAmmo']})")
+    if report.is_valid:
+        report.add_info(f"gameplay.json: valid ({len(document)} section(s))")
+    return report, values
 
 
-def _load_grid(map_path: Path) -> List[str]:
-    rows: List[str] = []
-    for line in map_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith(";"):
-            rows.append(line)
-    return rows
+# --- Level layout and progress -----------------------------------------------------------------
 
 
-def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tuple[int, int]:
-    """Returns (exit switches in the map, exit switches the player can use).
+def _cell_of(x: float, y: float) -> Tuple[int, int]:
+    return int(math.floor(x)), int(math.floor(y))
 
-    An exit 'X' is usable when one of its four neighbours is a walkable cell that is reachable
-    from the spawn cell; doors ('D') count as passable (the player can open them)."""
+
+def _body_overlaps(x: float, y: float, radius: float, solid) -> Optional[Tuple[int, int]]:
+    """The first solid cell a circle overlaps (the engine's IsBlockedByWall test), or None."""
+    for cy in range(int(math.floor(y - radius)), int(math.floor(y + radius)) + 1):
+        for cx in range(int(math.floor(x - radius)), int(math.floor(x + radius)) + 1):
+            if not solid(cx, cy):
+                continue
+            nx = min(max(x, cx), cx + 1.0)
+            ny = min(max(y, cy), cy + 1.0)
+            if (x - nx) ** 2 + (y - ny) ** 2 < radius * radius:
+                return cx, cy
+    return None
+
+
+def check_level_layout(rows: List[str], entities: List[dict], label: str, report: ValidationReport,
+                       player_radius: float = DEFAULT_PLAYER_RADIUS) -> None:
+    """Placement rules of a campaign level (all errors unless noted):
+
+    * exactly one player, standing on a floor cell ('.' or 'T') with its body clear of walls;
+    * every door entity on a 'D' cell, positioned inside that cell; every 'D' cell controlled by
+      exactly one door entity (a 'D' without one is a wall for good);
+    * every trigger entity on a 'T' cell, positioned inside it ('T' without a trigger: warning);
+    * enemies, pickups and decorations on floor cells, not inside walls, the exit or a door;
+      an enemy whose body overlaps a wall is a warning (it starts wedged)."""
     height = len(rows)
     width = len(rows[0]) if rows else 0
 
     def tile(x: int, y: int) -> str:
-        return rows[y][x] if 0 <= y < height and 0 <= x < len(rows[y]) else "#"
+        return rows[y][x] if 0 <= y < height and 0 <= x < width else "#"
 
-    start = (int(spawn_x), int(spawn_y))
-    seen = set()
-    if tile(*start) in WALKABLE_TILES:
-        seen.add(start)
-        stack = [start]
-        while stack:
-            cx, cy = stack.pop()
-            for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
-                if (nx, ny) not in seen and tile(nx, ny) in WALKABLE_TILES:
-                    seen.add((nx, ny))
-                    stack.append((nx, ny))
-    total = 0
-    usable = 0
+    door_cells: Dict[Tuple[int, int], int] = {}
+    trigger_cells: Dict[Tuple[int, int], int] = {}
+    for ent in entities:
+        if ent["type"] == "door":
+            door_cells[(ent["mapX"], ent["mapY"])] = door_cells.get((ent["mapX"], ent["mapY"]), 0) + 1
+        elif ent["type"] == "trigger":
+            trigger_cells[(ent["mapX"], ent["mapY"])] = trigger_cells.get((ent["mapX"], ent["mapY"]), 0) + 1
+
+    def solid(x: int, y: int) -> bool:  # at level start: walls, the exit, and every closed door
+        return tile(x, y) in SOLID_TILES or tile(x, y) == "D" or (x, y) in door_cells
+
+    players = [e for e in entities if e["type"] == "player"]
+    if len(players) != 1:
+        report.add_error(f"{label}: {len(players)} player entities; exactly one is required")
+
+    for index, ent in enumerate(entities):
+        etype = ent["type"]
+        where = f"{label}: {etype} {index} at ({ent['x']}, {ent['y']})"
+        cell = _cell_of(ent["x"], ent["y"])
+        if etype in ("door", "trigger"):
+            target = (ent["mapX"], ent["mapY"])
+            wanted = "D" if etype == "door" else "T"
+            if tile(*target) != wanted:
+                report.add_error(f"{where}: its cell {target} is '{tile(*target)}' on the map, not '{wanted}' "
+                                 f"(a {etype} must sit on a '{wanted}' cell)")
+            if cell != target:
+                report.add_error(f"{where}: the position is in cell {cell}, not in its own cell {target}")
+            continue
+        t = tile(*cell)
+        if t not in FLOOR_TILES or cell in door_cells:
+            what = "a door cell" if (t == "D" or cell in door_cells) else f"a solid cell '{t}'"
+            report.add_error(f"{where}: it is inside {what} {cell}; place it on a floor cell ('.' or 'T')")
+            continue
+        if etype == "player":
+            blocked = _body_overlaps(ent["x"], ent["y"], player_radius, solid)
+            if blocked:
+                report.add_error(f"{where}: the player's body (radius {player_radius}) overlaps the solid cell "
+                                 f"{blocked}, so it cannot move; move it towards the centre of its cell")
+        elif etype == "enemy":
+            blocked = _body_overlaps(ent["x"], ent["y"], ENEMY_RADIUS, solid)
+            if blocked:
+                report.add_warning(f"{where}: the enemy's body (radius {ENEMY_RADIUS}) overlaps the solid cell "
+                                   f"{blocked}; it starts wedged against it")
+
     for y in range(height):
         for x in range(width):
-            if tile(x, y) != "X":
-                continue
-            total += 1
-            if any(n in seen for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))):
-                usable += 1
-    return total, usable
+            if tile(x, y) == "D":
+                count = door_cells.get((x, y), 0)
+                if count == 0:
+                    report.add_error(f"{label}: 'D' at ({x}, {y}) has no door entity, so it never opens "
+                                     "(add a door with mapX/mapY, or make it a wall)")
+                elif count > 1:
+                    report.add_error(f"{label}: 'D' at ({x}, {y}) has {count} door entities; exactly one is allowed")
+            elif tile(x, y) == "T" and (x, y) not in trigger_cells:
+                report.add_warning(f"{label}: 'T' at ({x}, {y}) has no trigger entity; it does nothing")
+
+
+def find_reachable_exits(rows: List[str], spawn_x: float, spawn_y: float) -> Tuple[int, int]:
+    """Returns (exit switches in the map, exit switches usable from the spawn), counting every
+    'D' as passable. A map-only check (no entities); campaign levels use analyse_level_progress."""
+    progress = analyse_level_progress(
+        rows,
+        [{"type": "door", "mapX": x, "mapY": y} for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"],
+        spawn_x, spawn_y,
+    )
+    return progress.total_exits, progress.usable_exits
 
 
 @dataclass
@@ -779,32 +705,37 @@ class LevelProgress:
     locks: Dict[Tuple[int, int], str] = field(default_factory=dict)  # door cell -> lock colour
     key_order: List[str] = field(default_factory=list)  # colours in the order they become reachable
     problems: List[str] = field(default_factory=list)  # errors (lock without key, key behind its lock)
+    reached: Set[Tuple[int, int]] = field(default_factory=set)  # cells reachable at the end
 
 
 def analyse_level_progress(rows: List[str], entities: List[dict], spawn_x: float, spawn_y: float) -> LevelProgress:
-    """Key-before-lock reachability (Roadmap Phase 6).
+    """Key-before-lock reachability, as the player experiences it.
 
-    Breadth-first search from the spawn over walkable cells. Door cells (the map's 'D' tiles and
-    every door entity's mapX/mapY, which the engine turns into doors) are passable, except a
-    locked door, which becomes passable only once a key of its colour lies in a reached cell.
-    The search repeats until no new key is reached; the exit switches usable at the end count.
-    Problems: a lock colour with no key in the level, and a key that cannot be reached before
-    the door it opens (it is behind its own lock, or behind another lock that never opens)."""
+    Breadth-first search (4-connected, like the exit switch rule) from the spawn cell over floor
+    cells ('.', 'T', and every trigger entity's cell, which the engine turns into 'T'). A door
+    entity's cell (mapX/mapY) is passable; a locked one only once a key of its colour lies in a
+    reached cell. A 'D' without a door entity never opens. The search repeats until no new key is
+    reached; an exit switch 'X' counts as usable when one of its four neighbours was reached.
+    Problems: a lock colour without a key in the level, and a key that cannot be collected
+    before the door it opens."""
     result = LevelProgress()
     height = len(rows)
     width = len(rows[0]) if rows else 0
-    door_cells = set()
-    for e in entities:
-        if e.get("type") == "door" and _is_int(e.get("mapX")) and _is_int(e.get("mapY")):
-            cell = (e["mapX"], e["mapY"])
-            door_cells.add(cell)
-            if e.get("lock") in KEY_COLORS:
-                result.locks[cell] = e["lock"]
+    door_cells: Set[Tuple[int, int]] = set()
+    trigger_cells: Set[Tuple[int, int]] = set()
     keys: List[Tuple[Tuple[int, int], str]] = []
     for e in entities:
-        if e.get("type") == "pickup" and e.get("kind") == "key" and e.get("key") in KEY_COLORS:
-            if _is_number(e.get("x")) and _is_number(e.get("y")):
-                keys.append(((int(e["x"]), int(e["y"])), e["key"]))
+        if e.get("type") in ("door", "trigger") and isinstance(e.get("mapX"), int) and isinstance(e.get("mapY"), int):
+            cell = (e["mapX"], e["mapY"])
+            if e["type"] == "door":
+                door_cells.add(cell)
+                if e.get("lock") in KEY_COLORS:
+                    result.locks[cell] = e["lock"]
+            else:
+                trigger_cells.add(cell)
+        elif e.get("type") == "pickup" and e.get("kind") == "key" and e.get("key") in KEY_COLORS:
+            if isinstance(e.get("x"), (int, float)) and isinstance(e.get("y"), (int, float)):
+                keys.append((_cell_of(e["x"], e["y"]), e["key"]))
 
     for cell, color in sorted(result.locks.items()):
         if not any(key_color == color for _, key_color in keys):
@@ -816,30 +747,32 @@ def analyse_level_progress(rows: List[str], entities: List[dict], spawn_x: float
     held: Set[str] = set()
 
     def passable(x: int, y: int) -> bool:
-        if (x, y) in result.locks:
-            return result.locks[(x, y)] in held
-        return (x, y) in door_cells or tile(x, y) in WALKABLE_TILES
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+        if (x, y) in door_cells:
+            return (x, y) not in result.locks or result.locks[(x, y)] in held
+        return (x, y) in trigger_cells or tile(x, y) in FLOOR_TILES
 
-    start = (int(spawn_x), int(spawn_y))
+    start = _cell_of(spawn_x, spawn_y)
     seen: Set[Tuple[int, int]] = set()
     while True:
         seen = set()
         if passable(*start):
             seen.add(start)
-            stack = [start]
-            while stack:
-                cx, cy = stack.pop()
+            queue = [start]
+            for cx, cy in queue:
                 for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
                     if (nx, ny) not in seen and passable(nx, ny):
                         seen.add((nx, ny))
-                        stack.append((nx, ny))
+                        queue.append((nx, ny))
         new_keys = sorted({color for cell, color in keys if cell in seen} - held)
         if not new_keys:
             break
         held.update(new_keys)
         result.key_order.extend(new_keys)
+    result.reached = seen
 
-    for color in sorted({color for color in result.locks.values()} - held):
+    for color in sorted(set(result.locks.values()) - held):
         if any(key_color == color for _, key_color in keys):
             result.problems.append(
                 f"the {color} key cannot be reached from the spawn before the door it opens "
@@ -856,76 +789,304 @@ def analyse_level_progress(rows: List[str], entities: List[dict], spawn_x: float
     return result
 
 
-def validate_campaign(project_root: Path) -> ValidationReport:
-    """Checks game/defs/campaign.json like the engine (fields, unique ids, files, themes) and
-    that every level has at least one exit switch the player can reach from the spawn."""
-    report = ValidationReport()
-    campaign_path = Path(project_root) / "game" / "defs" / "campaign.json"
-    if not campaign_path.is_file():
-        report.add_error(f"Missing campaign manifest: {campaign_path}")
-        return report
-    try:
-        data = json.loads(campaign_path.read_text(encoding="utf-8-sig"))
-    except Exception as exc:
-        report.add_error(f"JSON syntax error in {campaign_path}: {exc}")
-        return report
-    if not isinstance(data, dict):
-        report.add_error(f"{campaign_path}: the top level must be an object")
-        return report
-    if not isinstance(data.get("title"), str) or not data.get("title"):
-        report.add_error(f"{campaign_path}: 'title' must be a non-empty string")
-    levels = data.get("levels")
-    if not isinstance(levels, list) or not levels:
-        report.add_error(f"{campaign_path}: 'levels' must be a non-empty array")
-        return report
+# --- campaign.json (engine/assets/CampaignConfig.cpp) and its levels -----------------------------
 
-    seen_ids = set()
+
+def _is_content_id(value: str) -> bool:
+    return bool(value) and all(c.isascii() and (c.islower() or c.isdigit() or c in "_-") for c in value)
+
+
+@dataclass
+class CampaignLevelInfo:
+    index: int
+    id: str
+    map: str
+    entities: str
+    theme: str
+
+
+def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List[CampaignLevelInfo]]:
+    """campaign.json with the engine's rules. Returns the levels whose fields are all valid, or
+    None when the manifest itself cannot be used."""
+    root = Path(project_root)
+    path = root / "game" / "defs" / "campaign.json"
+    label = path.name
+    if not path.is_file():
+        report.add_error(f"Missing campaign manifest: {path}")
+        return None
+    document, errors = load_json_strict(path)
+    for error in errors:
+        report.add_error(error)
+    if document is None:
+        return None
+    if not isinstance(document, dict):
+        report.add_error(f"{path}: the top level must be an object, got {_describe(document)}")
+        return None
+    title = document.get("title")
+    if not isinstance(title, str) or not title:
+        report.add_error(f"{label}: 'title' must be a non-empty string")
+    elif len(title.encode("utf-8")) > MAX_CAMPAIGN_NAME_BYTES:
+        report.add_warning(f"{label}: title is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen")
+    for key in document:
+        if key not in ("title", "levels"):
+            report.add_warning(f'{label}: unknown key "{key}" ignored')
+    levels = document.get("levels")
+    if not isinstance(levels, list) or not levels:
+        report.add_error(f"{label}: 'levels' must be a non-empty array")
+        return None
+
+    result: List[CampaignLevelInfo] = []
+    seen_ids: Set[str] = set()
     for index, level in enumerate(levels):
-        label = f"{campaign_path.name}: levels[{index}]"
+        entry_label = f"{label}: levels[{index}]"
         if not isinstance(level, dict):
-            report.add_error(f"{label} must be an object")
+            report.add_error(f"{entry_label} must be an object")
             continue
         missing = [k for k in CAMPAIGN_LEVEL_FIELDS if not isinstance(level.get(k), str) or not level.get(k)]
         if missing:
-            report.add_error(f"{label}: missing or empty field(s): {', '.join(missing)}")
+            report.add_error(f"{entry_label}: missing or empty field(s): {', '.join(missing)}")
             continue
-        label += f" ({level['id']})"
-        if level["id"] in seen_ids:
-            report.add_error(f"{label}: id is used by an earlier level")
+        entry_label += f" ({level['id']})"
+        ok = True
+        if not _is_content_id(level["id"]):
+            report.add_error(f"{entry_label}: id must use only a-z, 0-9, '_' and '-'")
+            ok = False
+        elif level["id"] in seen_ids:
+            report.add_error(f"{entry_label}: id is used by an earlier level (ids must be unique)")
+            ok = False
         seen_ids.add(level["id"])
-        theme_cfg = Path(project_root) / "game" / "defs" / "themes" / f"{level['theme']}.cfg"
-        if not theme_cfg.is_file():
-            report.add_error(f"{label}: theme '{level['theme']}' not found ({theme_cfg})")
-        map_path = Path(project_root) / level["map"]
-        entities_path = Path(project_root) / level["entities"]
-        if not map_path.is_file():
-            report.add_error(f"{label}: map file not found: {level['map']}")
-            continue
-        if not entities_path.is_file():
-            report.add_error(f"{label}: entities file not found: {level['entities']}")
-            continue
+        if len(level["name"].encode("utf-8")) > MAX_CAMPAIGN_NAME_BYTES:
+            report.add_warning(f"{entry_label}: name is longer than {MAX_CAMPAIGN_NAME_BYTES} characters and is shortened on screen")
+        if not _is_content_id(level["theme"]):
+            report.add_error(f"{entry_label}: theme must use only a-z, 0-9, '_' and '-', got '{level['theme']}'")
+            ok = False
+        elif not (root / "game" / "defs" / "themes" / f"{level['theme']}.cfg").is_file():
+            report.add_error(f"{entry_label}: theme '{level['theme']}' not found (game/defs/themes/{level['theme']}.cfg)")
+            ok = False
+        for key in ("map", "entities"):
+            if not (root / level[key]).is_file():
+                report.add_error(f"{entry_label}: {key} file not found: {level[key]}")
+                ok = False
+        for key in level:
+            if key not in CAMPAIGN_LEVEL_FIELDS:
+                report.add_warning(f'{entry_label}: unknown key "{key}" ignored')
+        if ok:
+            result.append(CampaignLevelInfo(index, level["id"], level["map"], level["entities"], level["theme"]))
+    return result
 
-        try:
-            entities = json.loads(entities_path.read_text(encoding="utf-8-sig")).get("entities", [])
-            entities = [e for e in entities if isinstance(e, dict)]
-            spawn = next(e for e in entities if e.get("type") == "player")
-            spawn_x, spawn_y = float(spawn["x"]), float(spawn["y"])
-        except Exception:
-            report.add_error(f"{label}: cannot read the player spawn from {level['entities']}")
-            continue
-        progress = analyse_level_progress(_load_grid(map_path), entities, spawn_x, spawn_y)
-        for problem in progress.problems:
-            report.add_error(f"{label}: {problem}")
-        if progress.total_exits == 0:
-            report.add_error(f"{label}: the map has no exit switch 'X'; the level cannot be completed")
-        elif progress.usable_exits == 0:
-            report.add_error(
-                f"{label}: no exit switch 'X' can be reached from the player spawn ({spawn_x}, {spawn_y})"
-                + (" with the keys that can be collected first" if progress.locks else "")
-            )
-        else:
-            keys = f"; keys in order: {', '.join(progress.key_order)}" if progress.key_order else ""
-            report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}")
 
-    report.add_info(f"Campaign: {len(levels)} level(s)")
+def validate_level(project_root: Path, level: CampaignLevelInfo, report: ValidationReport,
+                   player_radius: float = DEFAULT_PLAYER_RADIUS) -> None:
+    """Everything one campaign level needs to load and to be completable."""
+    root = Path(project_root)
+    label = f"campaign.json: levels[{level.index}] ({level.id})"
+    map_report, rows = validate_map(root / level.map)
+    if rows is None:
+        for error in map_report.errors:
+            report.add_error(f"{label}: {error}")
+        return
+    parsed = parse_entities(root / level.entities)
+    if not parsed.ok:
+        report.add_error(f"{label}: the entity file {level.entities} does not load ({len(parsed.errors)} error(s); "
+                         f"first: {parsed.errors[0]})")
+        return
+    entities = parsed.entities
+    bounds = ValidationReport()
+    _check_bounds(entities, f"{label}: {level.entities}", (len(rows[0]), len(rows)), bounds)
+    if bounds.errors:
+        report.errors.extend(bounds.errors)
+        return
+
+    before = len(report.errors)
+    check_level_layout(rows, entities, label, report, player_radius)
+    players = [e for e in entities if e["type"] == "player"]
+    if len(players) != 1:
+        return
+    spawn_x, spawn_y = players[0]["x"], players[0]["y"]
+    progress = analyse_level_progress(rows, entities, spawn_x, spawn_y)
+    for problem in progress.problems:
+        report.add_error(f"{label}: {problem}")
+    if progress.total_exits == 0:
+        report.add_error(f"{label}: the map has no exit switch 'X'; the level cannot be completed")
+    elif progress.usable_exits == 0:
+        report.add_error(
+            f"{label}: no exit switch 'X' can be reached from the player spawn ({spawn_x}, {spawn_y})"
+            + (" with the keys that can be collected first" if progress.locks else "")
+        )
+    for index, ent in enumerate(entities):
+        if ent["type"] in ("pickup", "enemy") and _cell_of(ent["x"], ent["y"]) not in progress.reached:
+            what = f"{ent.get('kind', '')} pickup" if ent["type"] == "pickup" else f"{ent.get('variant', 'guard')} enemy"
+            report.add_warning(f"{label}: the {what} (entity {index}) at ({ent['x']}, {ent['y']}) cannot be reached "
+                               "from the spawn")
+    if len(report.errors) == before:
+        keys = f"; keys in order: {', '.join(progress.key_order)}" if progress.key_order else ""
+        report.add_info(f"{label}: {progress.usable_exits} of {progress.total_exits} exit switch(es) reachable{keys}")
+
+
+def validate_campaign(project_root: Path, require_levels: Optional[int] = None,
+                      player_radius: Optional[float] = None) -> ValidationReport:
+    """campaign.json like the engine (fields, ids, files, themes), the level count when
+    `require_levels` is given, and every level's layout and progress (validate_level)."""
+    report = ValidationReport()
+    root = Path(project_root)
+    if player_radius is None:
+        gameplay_path = root / "game" / "defs" / "gameplay.json"
+        player_radius = DEFAULT_PLAYER_RADIUS
+        if gameplay_path.is_file():
+            gameplay_report, values = validate_gameplay(gameplay_path)
+            if gameplay_report.is_valid:
+                player_radius = values["player"]["collisionRadius"]
+    levels = read_campaign(root, report)
+    if levels is None:
+        return report
+    count = _campaign_level_count(root)
+    if require_levels is not None and count != require_levels:
+        report.add_error(f"campaign.json: the campaign has {count} level(s); {require_levels} are required (--require-levels)")
+    for level in levels:
+        validate_level(root, level, report, player_radius)
+    report.add_info(f"Campaign: {count} level(s)")
+    return report
+
+
+def _campaign_level_count(project_root: Path) -> int:
+    document, _ = load_json_strict(Path(project_root) / "game" / "defs" / "campaign.json")
+    if isinstance(document, dict) and isinstance(document.get("levels"), list):
+        return len(document["levels"])
+    return 0
+
+
+def find_orphans(project_root: Path) -> List[str]:
+    """Maps and entity files under game/ that campaign.json does not use."""
+    root = Path(project_root)
+    scratch = ValidationReport()
+    levels = read_campaign(root, scratch) or []
+    used = {(root / level.map).resolve() for level in levels} | {(root / level.entities).resolve() for level in levels}
+    orphans: List[str] = []
+    for map_file in sorted((root / "game" / "maps").glob("*.map")):
+        if map_file.resolve() not in used:
+            orphans.append(f"orphan map: game/maps/{map_file.name} is not used by campaign.json")
+    defs = root / "game" / "defs"
+    for entity_file in sorted(defs.glob("*.entities.json")):
+        if entity_file.resolve() not in used:
+            orphans.append(f"orphan entity file: game/defs/{entity_file.name} is not used by campaign.json")
+    for csv_file in sorted(defs.glob("*.entities.csv")):
+        sibling = csv_file.with_name(csv_file.name.replace(".entities.csv", ".entities.json"))
+        if csv_file.resolve() not in used and sibling.resolve() not in used:
+            orphans.append(f"orphan entity file: game/defs/{csv_file.name} (no campaign level uses it or its JSON)")
+    return orphans
+
+
+def validate_project(project_root: Path, require_levels: Optional[int] = None) -> ValidationReport:
+    """A complete pass over game/: maps, assets, theme/sprite/audio files, gameplay.json, entity
+    files, campaign.json and its levels, and orphans (warnings)."""
+    project_root = Path(project_root).resolve()
+    report = ValidationReport()
+    report.add_info(f"Starting complete project validation for {project_root}")
+
+    maps_dir = project_root / "game" / "maps"
+    assets_dir = project_root / "game" / "assets"
+    defs_dir = project_root / "game" / "defs"
+
+    map_dimensions: Dict[str, Tuple[int, int]] = {}
+    if not maps_dir.exists():
+        report.add_error(f"Missing maps directory: {maps_dir}")
+    else:
+        map_files = sorted(maps_dir.glob("*.map"))
+        if not map_files:
+            report.add_error(f"No .map files found in {maps_dir}")
+        for map_file in map_files:
+            map_rep, rows = validate_map(map_file)
+            report.merge(map_rep)
+            if rows:
+                map_dimensions[map_file.stem] = (len(rows[0]), len(rows))
+
+    if not assets_dir.exists():
+        report.add_error(f"Missing assets directory: {assets_dir}")
+    else:
+        ppm_files = sorted(assets_dir.rglob("*.ppm"))  # includes the theme folders
+        if not ppm_files:
+            report.add_error(f"No .ppm files found in {assets_dir}")
+        for ppm_file in ppm_files:
+            report.merge(validate_ppm(ppm_file, expected_dim=None))
+        wav_files = sorted(assets_dir.glob("*.wav"))
+        if not wav_files:
+            report.add_error(f"No .wav files found in {assets_dir}")
+        for wav_file in wav_files:
+            report.merge(validate_wav(wav_file))
+
+    if not defs_dir.exists():
+        report.add_error(f"Missing defs directory: {defs_dir}")
+        return report
+
+    def check_referenced_file(owner: str, key: str, rel_path: str) -> None:
+        target = project_root / rel_path
+        if not target.is_file():
+            report.add_error(f"{owner} references non-existent file for '{key}': {rel_path}")
+        elif target.suffix.lower() == ".ppm" and assets_dir not in target.resolve().parents:
+            report.merge(validate_ppm(target))  # outside game/assets: not validated above
+
+    # Texture themes: game/defs/themes/<id>.cfg, ten keys each, every file present.
+    themes_dir = defs_dir / "themes"
+    theme_files = sorted(themes_dir.glob("*.cfg")) if themes_dir.is_dir() else []
+    if not theme_files:
+        report.add_error(f"No texture themes found in {themes_dir}")
+    for theme_cfg in theme_files:
+        cfg_rep, theme_vals = validate_cfg(theme_cfg, THEME_KEYS)
+        report.merge(cfg_rep)
+        for key, rel_path in sorted(theme_vals.items()):
+            if key not in THEME_KEYS:
+                report.add_warning(f"{theme_cfg.name}: unknown key '{key}' ignored by the engine")
+                continue
+            check_referenced_file(f"themes/{theme_cfg.name}", key, rel_path)
+
+    sprites_cfg = defs_dir / "sprites.cfg"
+    if sprites_cfg.exists():
+        cfg_rep, spr_vals = validate_cfg(sprites_cfg, SPRITE_KEYS)
+        report.merge(cfg_rep)
+        for key, rel_path in sorted(spr_vals.items()):
+            if key in RENAMED_SPRITE_KEYS:
+                report.add_error(
+                    f"sprites.cfg: key '{key}' was renamed to '{RENAMED_SPRITE_KEYS[key]}' (Phase 6); the engine ignores it"
+                )
+            elif key not in SPRITE_KEYS:
+                report.add_warning(f"sprites.cfg: unknown key '{key}' ignored by the engine")
+            else:
+                check_referenced_file("sprites.cfg", key, rel_path)
+    else:
+        report.add_error(f"Missing sprites.cfg in {defs_dir}")
+
+    audio_cfg = defs_dir / "audio.cfg"
+    if audio_cfg.exists():
+        cfg_rep, audio_vals = validate_cfg(audio_cfg, AUDIO_REQUIRED_KEYS)
+        report.merge(cfg_rep)
+        for key, value in sorted(audio_vals.items()):
+            if key == "master_volume":
+                try:
+                    volume = float(value)
+                    if not (0.0 <= volume <= 1.0):
+                        report.add_warning(f"audio.cfg master_volume ({volume}) is outside [0.0, 1.0] (clamped)")
+                except ValueError:
+                    report.add_error(f"audio.cfg invalid master_volume: {value}")
+            elif key not in AUDIO_REQUIRED_KEYS | AUDIO_OPTIONAL_KEYS:
+                report.add_warning(f"audio.cfg: unknown key '{key}' ignored by the engine")
+            else:
+                check_referenced_file("audio.cfg", key, value)
+    else:
+        report.add_error(f"Missing audio.cfg in {defs_dir}")
+
+    gameplay_report, gameplay = validate_gameplay(defs_dir / "gameplay.json")
+    report.merge(gameplay_report)
+
+    # Every entity file on its own (the campaign check below adds the level rules).
+    for csv_file in sorted(defs_dir.glob("*.entities.csv")):
+        dims = map_dimensions.get(csv_file.name.replace(".entities.csv", ""))
+        report.merge(validate_entity_csv(csv_file, dims)[0])
+    for json_file in sorted(defs_dir.glob("*.entities.json")):
+        dims = map_dimensions.get(json_file.name.replace(".entities.json", ""))
+        report.merge(validate_entity_json(json_file, dims)[0])
+
+    report.merge(validate_campaign(project_root, require_levels,
+                                   gameplay["player"]["collisionRadius"] if gameplay_report.is_valid else None))
+    for orphan in find_orphans(project_root):
+        report.add_warning(orphan)
     return report
