@@ -11,7 +11,6 @@ from tools.devkit.def_tools import (
     json_to_csv,
     load_entity_csv,
     load_entity_json,
-    save_entity_csv,
     save_entity_json,
     sync_entity_definitions,
 )

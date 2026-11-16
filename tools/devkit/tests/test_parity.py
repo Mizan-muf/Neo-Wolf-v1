@@ -44,7 +44,7 @@ class TestParity(unittest.TestCase):
                     self.assertEqual((parsed.width, parsed.height), (want["width"], want["height"]))
                     # The map tools and the validator read the same rows.
                     self.assertEqual(load_map(PARITY_DIR / name).width, want["width"])
-                    report, rows = validate_map(PARITY_DIR / name)
+                    report, _ = validate_map(PARITY_DIR / name)
                     self.assertTrue(report.is_valid, report.errors)
                 else:
                     self.assertIsNone(validate_map(PARITY_DIR / name)[1])

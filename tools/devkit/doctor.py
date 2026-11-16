@@ -27,13 +27,16 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, List, Mapping, Optional, Sequence, Tuple
 
 from tools.devkit.term import Palette
 from tools.devkit.validator import validate_project
 
 MIN_CMAKE = (3, 25)
 MIN_PYTHON = (3, 8)
+COMMAND_TIMEOUT_SECONDS = 5  # a `--version` query that takes longer is treated as failing
+CONTENT_ERRORS_SHOWN = 5  # validation errors repeated as the hint of a failing content check
+CONTENT_WARNINGS_SHOWN = 3
 
 HINTS = {
     "cmake": {
@@ -92,9 +95,11 @@ Runner = Callable[[Sequence[str]], Tuple[int, str]]
 
 
 def _run(command: Sequence[str]) -> Tuple[int, str]:
-    """Runs a command (5 s timeout); returns (exit code, stdout + stderr). -1 if it cannot run."""
+    """Runs a command (with a timeout); returns (exit code, stdout + stderr). -1 if it cannot run."""
     try:
-        res = subprocess.run(list(command), capture_output=True, text=True, timeout=5)
+        res = subprocess.run(
+            list(command), capture_output=True, text=True, timeout=COMMAND_TIMEOUT_SECONDS, check=False
+        )
         return res.returncode, (res.stdout or "") + (res.stderr or "")
     except (OSError, subprocess.SubprocessError):
         return -1, ""
@@ -224,32 +229,44 @@ def check_sdl_source(
         )
 
 
-def check_toolchain(
-    report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner, environ: dict
-) -> None:
-    def hint(tool: str) -> str:
-        return HINTS[tool].get(system, HINTS[tool]["Linux"])
+def vswhere_path(environ: Mapping[str, str]) -> Path:
+    """Where the Visual Studio Installer puts vswhere.exe (the same path on every Windows)."""
+    return (
+        Path(environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+        / "Microsoft Visual Studio"
+        / "Installer"
+        / "vswhere.exe"
+    )
 
-    # CMake 3.25+
-    if which("cmake"):
-        code, out = run(["cmake", "--version"])
-        version = parse_version(out) if code == 0 else None
-        if version is None:
-            report.add("Toolchain", "CMake", "WARN", "cmake is on PATH but `cmake --version` failed", hint("cmake"))
-        elif version[:2] >= MIN_CMAKE:
-            report.add("Toolchain", "CMake", "PASS", f"CMake {'.'.join(map(str, version))}")
-        else:
-            report.add(
-                "Toolchain",
-                "CMake",
-                "FAIL",
-                f"CMake {'.'.join(map(str, version))} is older than the required {MIN_CMAKE[0]}.{MIN_CMAKE[1]}",
-                hint("cmake"),
-            )
+
+def _first_line(code: int, out: str, fallback: str = "") -> str:
+    """The first line of a command's output when it succeeded and printed something."""
+    return out.strip().splitlines()[0] if code == 0 and out.strip() else fallback
+
+
+def _check_cmake(report: DoctorReport, which: Callable[[str], Optional[str]], run: Runner, hint: str) -> None:
+    if not which("cmake"):
+        report.add("Toolchain", "CMake", "FAIL", "CMake not found on PATH (3.25 or newer is required)", hint)
+        return
+    code, out = run(["cmake", "--version"])
+    version = parse_version(out) if code == 0 else None
+    if version is None:
+        report.add("Toolchain", "CMake", "WARN", "cmake is on PATH but `cmake --version` failed", hint)
+    elif version[:2] >= MIN_CMAKE:
+        report.add("Toolchain", "CMake", "PASS", f"CMake {'.'.join(map(str, version))}")
     else:
-        report.add("Toolchain", "CMake", "FAIL", "CMake not found on PATH (3.25 or newer is required)", hint("cmake"))
+        report.add(
+            "Toolchain",
+            "CMake",
+            "FAIL",
+            f"CMake {'.'.join(map(str, version))} is older than the required {MIN_CMAKE[0]}.{MIN_CMAKE[1]}",
+            hint,
+        )
 
-    # Ninja (the macOS and Linux presets)
+
+def _check_ninja(
+    report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner, hint: str
+) -> None:
     if which("ninja"):
         code, out = run(["ninja", "--version"])
         report.add(
@@ -258,71 +275,79 @@ def check_toolchain(
     elif system == "Windows":
         report.add("Toolchain", "Ninja", "INFO", "Ninja not found (not needed for the windows-msvc presets)")
     else:
+        report.add("Toolchain", "Ninja", "FAIL", "Ninja not found on PATH (the macos/linux presets use it)", hint)
+
+
+def _check_windows_compiler(
+    report: DoctorReport, which: Callable[[str], Optional[str]], run: Runner, environ: dict, hint: str
+) -> None:
+    """Visual Studio with the C++ workload (found with vswhere), else cl.exe or MinGW/clang on PATH."""
+    vswhere = vswhere_path(environ)
+    exe = str(vswhere) if vswhere.is_file() else ("vswhere" if which("vswhere") else "")
+    if exe:
+        query = [
+            exe,
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+        ]
+        found_vs = _first_line(*run([*query, "displayName"]))
+        if found_vs:
+            version = _first_line(*run([*query, "catalog_productDisplayVersion"]))
+            report.add(
+                "Toolchain",
+                "C++ compiler",
+                "PASS",
+                f"{found_vs}{' ' + version if version else ''} with the C++ tools (found by vswhere)",
+            )
+            return
+    if which("cl"):
+        report.add("Toolchain", "C++ compiler", "PASS", "MSVC cl.exe on PATH (Developer prompt)")
+    elif which("g++") or which("clang++"):
         report.add(
-            "Toolchain", "Ninja", "FAIL", "Ninja not found on PATH (the macos/linux presets use it)", hint("ninja")
+            "Toolchain",
+            "C++ compiler",
+            "WARN",
+            "Only MinGW/clang found; the supported Windows compiler is MSVC (windows-msvc presets)",
+            hint,
         )
-
-    # A C++ compiler
-    if system == "Windows":
-        vswhere = (
-            Path(environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
-            / "Microsoft Visual Studio"
-            / "Installer"
-            / "vswhere.exe"
-        )
-        found_vs = ""
-        exe = str(vswhere) if vswhere.is_file() else ("vswhere" if which("vswhere") else "")
-        if exe:
-            query = [
-                exe,
-                "-latest",
-                "-products",
-                "*",
-                "-requires",
-                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-                "-property",
-            ]
-            code, out = run(query + ["displayName"])
-            found_vs = out.strip().splitlines()[0] if code == 0 and out.strip() else ""
-            if found_vs:
-                code, ver = run(query + ["catalog_productDisplayVersion"])
-                version = ver.strip().splitlines()[0] if code == 0 and ver.strip() else ""
-                report.add(
-                    "Toolchain",
-                    "C++ compiler",
-                    "PASS",
-                    f"{found_vs}{' ' + version if version else ''} with the C++ tools (found by vswhere)",
-                )
-        if not found_vs:
-            if which("cl"):
-                report.add("Toolchain", "C++ compiler", "PASS", "MSVC cl.exe on PATH (Developer prompt)")
-            elif which("g++") or which("clang++"):
-                report.add(
-                    "Toolchain",
-                    "C++ compiler",
-                    "WARN",
-                    "Only MinGW/clang found; the supported Windows compiler is MSVC (windows-msvc presets)",
-                    hint("compiler"),
-                )
-            else:
-                report.add(
-                    "Toolchain",
-                    "C++ compiler",
-                    "FAIL",
-                    "No Visual Studio with the C++ workload found (vswhere) and no compiler on PATH",
-                    hint("compiler"),
-                )
     else:
-        candidates = ["clang++", "g++", "c++"] if system == "Darwin" else ["g++", "clang++", "c++"]
-        for compiler in candidates:
-            if which(compiler):
-                code, out = run([compiler, "--version"])
-                first = out.strip().splitlines()[0] if code == 0 and out.strip() else "version unknown"
-                report.add("Toolchain", "C++ compiler", "PASS", f"{compiler}: {first}")
-                break
-        else:
-            report.add("Toolchain", "C++ compiler", "FAIL", "No C++ compiler (clang++, g++) on PATH", hint("compiler"))
+        report.add(
+            "Toolchain",
+            "C++ compiler",
+            "FAIL",
+            "No Visual Studio with the C++ workload found (vswhere) and no compiler on PATH",
+            hint,
+        )
 
+
+def _check_unix_compiler(
+    report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner, hint: str
+) -> None:
+    candidates = ["clang++", "g++", "c++"] if system == "Darwin" else ["g++", "clang++", "c++"]
+    for compiler in candidates:
+        if which(compiler):
+            first = _first_line(*run([compiler, "--version"]), fallback="version unknown")
+            report.add("Toolchain", "C++ compiler", "PASS", f"{compiler}: {first}")
+            return
+    report.add("Toolchain", "C++ compiler", "FAIL", "No C++ compiler (clang++, g++) on PATH", hint)
+
+
+def check_toolchain(
+    report: DoctorReport, system: str, which: Callable[[str], Optional[str]], run: Runner, environ: dict
+) -> None:
+    def hint(tool: str) -> str:
+        return HINTS[tool].get(system, HINTS[tool]["Linux"])
+
+    _check_cmake(report, which, run, hint("cmake"))
+    _check_ninja(report, system, which, run, hint("ninja"))
+    if system == "Windows":
+        _check_windows_compiler(report, which, run, environ, hint("compiler"))
+    else:
+        _check_unix_compiler(report, system, which, run, hint("compiler"))
     if which("make"):
         report.add("Toolchain", "make", "INFO", "Found (optional: the Makefile wraps the CMake presets)")
     else:
@@ -331,7 +356,6 @@ def check_toolchain(
 
 def run_doctor(
     project_root: Path,
-    color: bool = True,
     *,
     check_network: bool = True,
     which: Callable[[str], Optional[str]] = shutil.which,
@@ -341,9 +365,8 @@ def run_doctor(
     environ: Optional[dict] = None,
     python_version: Optional[Tuple[int, ...]] = None,
 ) -> DoctorReport:
-    """Every check. The keyword arguments stand in for the real environment in tests; `color` is
-    unused (render_doctor_report takes it) and kept for compatibility."""
-    del color
+    """Every check. The keyword arguments stand in for the real environment in tests (colours are
+    render_doctor_report's job)."""
     project_root = Path(project_root).resolve()
     system = system or platform_module.system()
     env = dict(os.environ) if environ is None else environ
@@ -365,7 +388,13 @@ def run_doctor(
 
     check_toolchain(report, system, which, run, env)
     check_sdl_source(project_root, report, check_network, network, env)
+    _check_project_layout(project_root, report)
+    _check_content(project_root, report)
+    return report
 
+
+def _check_project_layout(project_root: Path, report: DoctorReport) -> None:
+    """The source folders and core files, and which builds exist."""
     required_dirs = [
         "engine/core",
         "engine/world",
@@ -425,6 +454,9 @@ def run_doctor(
         else "No build yet (cmake --preset <preset> && cmake --build --preset <preset>)",
     )
 
+
+def _check_content(project_root: Path, report: DoctorReport) -> None:
+    """`validate` on the content: errors fail, warnings warn (`validate --strict` would fail)."""
     val_report = validate_project(project_root)
     levels = next((line for line in val_report.info if line.startswith("Campaign: ")), "Campaign: ?")
     if not val_report.is_valid:
@@ -433,7 +465,7 @@ def run_doctor(
             "Content validation",
             "FAIL",
             f"{len(val_report.errors)} error(s) ({levels}); run `neo_devkit validate`",
-            "\n".join(val_report.errors[:5]),
+            "\n".join(val_report.errors[:CONTENT_ERRORS_SHOWN]),
         )
     elif val_report.warnings:
         report.add(
@@ -441,13 +473,12 @@ def run_doctor(
             "Content validation",
             "WARN",
             f"Valid with {len(val_report.warnings)} warning(s) ({levels}); `validate --strict` fails",
-            "\n".join(val_report.warnings[:3]),
+            "\n".join(val_report.warnings[:CONTENT_WARNINGS_SHOWN]),
         )
     else:
         report.add(
             "Content", "Content validation", "PASS", f"Maps, assets, definitions and campaign are valid ({levels})."
         )
-    return report
 
 
 def render_doctor_report(report: DoctorReport, color: bool = True) -> str:

@@ -28,12 +28,9 @@ class TestReleaseReadme(unittest.TestCase):
         titles = [s.title for s in screens]
         self.assertEqual(
             titles,
-            [
-                m
-                for m in re.findall(
-                    r"^### (.+)$", CONTROLS_MD.split("## Per screen", 1)[1].split("\n## ", 1)[0], re.MULTILINE
-                )
-            ],
+            list(
+                re.findall(r"^### (.+)$", CONTROLS_MD.split("## Per screen", 1)[1].split("\n## ", 1)[0], re.MULTILINE)
+            ),
         )
         self.assertIn("Play", titles)
         self.assertGreaterEqual(len(window_keys), 2)

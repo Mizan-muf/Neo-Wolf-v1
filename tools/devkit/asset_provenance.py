@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Callable, NamedTuple
 
 try:  # run as a module (tests) or as a script
     from tools.devkit import gen_sounds, gen_sprites, gen_textures
@@ -45,20 +45,20 @@ IGNORED_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
 class Generator(NamedTuple):
     script: str  # path from the repository root
     folder: str  # folder under game/assets that its output goes to ("" = game/assets itself)
-    generate: Callable[[], Dict[str, Union[str, bytes]]]
+    generate: Callable[[], dict[str, str | bytes]]
 
 
-MANIFEST: Tuple[Generator, ...] = (
+MANIFEST: tuple[Generator, ...] = (
     Generator("tools/devkit/gen_textures.py", "themes", gen_textures.generate),
     Generator("tools/devkit/gen_sprites.py", "sprites", gen_sprites.generate),
     Generator("tools/devkit/gen_sounds.py", "", gen_sounds.generate),
 )
 
 
-def expected_files() -> Dict[str, Tuple[bytes, str]]:
+def expected_files() -> dict[str, tuple[bytes, str]]:
     """{"<path under game/assets, with />": (bytes, generator script)} for every generated file.
     Text output is UTF-8 with \\n line endings, exactly as the generators write it."""
-    files: Dict[str, Tuple[bytes, str]] = {}
+    files: dict[str, tuple[bytes, str]] = {}
     for generator in MANIFEST:
         for rel, content in generator.generate().items():
             path = f"{generator.folder}/{rel}" if generator.folder else rel
@@ -70,9 +70,9 @@ def expected_files() -> Dict[str, Tuple[bytes, str]]:
 
 
 class Report(NamedTuple):
-    matched: Dict[str, str]  # path -> generator script
-    unknown: List[str]  # on disk, no generator makes it
-    stale: List[str]  # generated, but missing on disk or different
+    matched: dict[str, str]  # path -> generator script
+    unknown: list[str]  # on disk, no generator makes it
+    stale: list[str]  # generated, but missing on disk or different
 
 
 def check(assets_dir: Path = ASSETS_DIR) -> Report:
@@ -82,9 +82,9 @@ def check(assets_dir: Path = ASSETS_DIR) -> Report:
         for p in assets_dir.rglob("*")
         if p.is_file() and p.name not in IGNORED_NAMES
     )
-    matched: Dict[str, str] = {}
-    unknown: List[str] = []
-    stale: List[str] = []
+    matched: dict[str, str] = {}
+    unknown: list[str] = []
+    stale: list[str] = []
     for rel in on_disk:
         if rel not in expected:
             unknown.append(rel)
@@ -96,7 +96,7 @@ def check(assets_dir: Path = ASSETS_DIR) -> Report:
     return Report(matched, unknown, stale)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--assets", type=Path, default=ASSETS_DIR, help="folder to check (default: game/assets)")
     parser.add_argument("--list", action="store_true", help="list every file and the generator that makes it")
@@ -112,7 +112,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Missing or out of date (run its generator): game/assets/{rel}")
     if report.unknown or report.stale:
         return 1
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     for script in report.matched.values():
         counts[script] = counts.get(script, 0) + 1
     summary = ", ".join(f"{Path(script).name} {count}" for script, count in counts.items())

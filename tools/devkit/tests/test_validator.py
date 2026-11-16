@@ -9,13 +9,11 @@ from tools.devkit.validator import (
     analyse_level_progress,
     find_reachable_exits,
     validate_campaign,
-    validate_cfg,
     validate_entity_csv,
     validate_entity_json,
     validate_map,
     validate_ppm,
     validate_project,
-    validate_wav,
 )
 
 
@@ -271,7 +269,7 @@ class TestValidator(unittest.TestCase):
         map_file = self.dir_path / "unclosed.map"
         map_file.write_text(map_content, encoding="utf-8")
 
-        report, rows = validate_map(map_file)
+        report, _ = validate_map(map_file)
         self.assertFalse(report.is_valid)
         self.assertTrue(any("West perimeter leak" in err for err in report.errors))
 

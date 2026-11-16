@@ -52,8 +52,8 @@ class TestGenSounds(unittest.TestCase):
     def test_deterministic_and_matches_audio_cfg(self) -> None:
         self.assertEqual(self.files, gen_sounds.generate())
         referenced = set()
-        for line in (REPO_ROOT / "game" / "defs" / "audio.cfg").read_text(encoding="utf-8").splitlines():
-            line = line.strip()
+        for raw in (REPO_ROOT / "game" / "defs" / "audio.cfg").read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
             if line and not line.startswith("#") and line.split("=", 1)[0].strip() != "master_volume":
                 referenced.add(Path(line.split("=", 1)[1].strip()).name)
         self.assertEqual(set(self.files), referenced)  # every slot has a generated sound, nothing extra

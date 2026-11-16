@@ -2,8 +2,62 @@
 
 import math
 import struct
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+WAV_HEADER_BYTES = 44  # RIFF, WAVE, a 16-byte 'fmt ' chunk and the 'data' chunk header
+WAV_FORMAT_PCM = 1
+PCM_FMT_CHUNK_BYTES = 16  # the PCM part of a 'fmt ' chunk (format, channels, rate, byte rate, align, bits)
+INT16_MAX = 32767
+
+
+def ppm_tokens(text: str) -> List[str]:
+    """The whitespace-separated tokens of a plain-text PPM, with '#' comments removed."""
+    tokens: List[str] = []
+    for line in text.splitlines():
+        content = line.split("#", 1)[0].strip()
+        if content:
+            tokens.extend(content.split())
+    return tokens
+
+
+@dataclass
+class WavFormat:
+    """What the RIFF chunks of a WAV file say (zeros for a chunk that is missing)."""
+
+    fmt_found: bool = False
+    data_found: bool = False
+    audio_format: int = 0
+    num_channels: int = 0
+    sample_rate: int = 0
+    bits_per_sample: int = 0
+    data_size: int = 0
+
+
+def read_wav_format(data: bytes) -> WavFormat:
+    """Walks the chunks after the 12-byte RIFF/WAVE header: 'fmt ' and the 'data' size."""
+    info = WavFormat()
+    offset = 12
+    while offset + 8 <= len(data):
+        chunk_id = data[offset : offset + 4]
+        chunk_size = struct.unpack("<I", data[offset + 4 : offset + 8])[0]
+        chunk_data_offset = offset + 8
+
+        if chunk_id == b"fmt ":
+            info.fmt_found = True
+            if chunk_size >= PCM_FMT_CHUNK_BYTES:
+                info.audio_format, info.num_channels, info.sample_rate, _, _, info.bits_per_sample = struct.unpack(
+                    "<HHIIHH", data[chunk_data_offset : chunk_data_offset + PCM_FMT_CHUNK_BYTES]
+                )
+        elif chunk_id == b"data":
+            info.data_found = True
+            info.data_size = chunk_size
+
+        offset += 8 + chunk_size
+        if chunk_size % 2 != 0:  # chunks are padded to an even size
+            offset += 1
+    return info
 
 
 def inspect_ppm(file_path: Path) -> Dict[str, Any]:
@@ -12,14 +66,8 @@ def inspect_ppm(file_path: Path) -> Dict[str, Any]:
     if not file_path.exists():
         raise FileNotFoundError(f"PPM file not found: {file_path}")
 
-    with open(file_path, "r", encoding="latin-1") as f:
-        text = f.read()
-
-    tokens: List[str] = []
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            tokens.extend(line.split())
+    with open(file_path, encoding="latin-1") as f:
+        tokens = ppm_tokens(f.read())
 
     if len(tokens) < 4:
         raise ValueError(f"Invalid PPM header in {file_path}")
@@ -78,32 +126,12 @@ def inspect_wav(file_path: Path) -> Dict[str, Any]:
         raise FileNotFoundError(f"WAV file not found: {file_path}")
 
     data = file_path.read_bytes()
-    if len(data) < 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+    if len(data) < WAV_HEADER_BYTES or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
         raise ValueError(f"Not a valid RIFF WAVE file: {file_path}")
 
-    offset = 12
-    num_channels = 0
-    sample_rate = 0
-    bits_per_sample = 0
-    data_size = 0
-    audio_format = 0
-
-    while offset + 8 <= len(data):
-        chunk_id = data[offset : offset + 4]
-        chunk_size = struct.unpack("<I", data[offset + 4 : offset + 8])[0]
-        chunk_data_offset = offset + 8
-
-        if chunk_id == b"fmt ":
-            if chunk_size >= 16:
-                audio_format, num_channels, sample_rate, byte_rate, block_align, bits_per_sample = struct.unpack(
-                    "<HHIIHH", data[chunk_data_offset : chunk_data_offset + 16]
-                )
-        elif chunk_id == b"data":
-            data_size = chunk_size
-
-        offset += 8 + chunk_size
-        if chunk_size % 2 != 0:
-            offset += 1
+    wav = read_wav_format(data)
+    audio_format, num_channels, sample_rate = wav.audio_format, wav.num_channels, wav.sample_rate
+    bits_per_sample, data_size = wav.bits_per_sample, wav.data_size
 
     bytes_per_sample = (bits_per_sample // 8) * num_channels if bits_per_sample > 0 else 2
     duration_sec = (data_size / (sample_rate * bytes_per_sample)) if (sample_rate * bytes_per_sample) > 0 else 0.0
@@ -111,7 +139,7 @@ def inspect_wav(file_path: Path) -> Dict[str, Any]:
     return {
         "file_name": file_path.name,
         "format_code": audio_format,
-        "format_name": "PCM" if audio_format == 1 else f"Code_{audio_format}",
+        "format_name": "PCM" if audio_format == WAV_FORMAT_PCM else f"Code_{audio_format}",
         "channels": num_channels,
         "channel_desc": "Mono" if num_channels == 1 else ("Stereo" if num_channels == 2 else f"{num_channels}ch"),
         "sample_rate": sample_rate,
@@ -220,15 +248,15 @@ def generate_beep_wav(
     """Generate a simple mono 16-bit PCM wave sound effect."""
     file_path = Path(file_path)
     total_samples = int(sample_rate * duration_sec)
-    max_amplitude = int(32767 * max(0.0, min(1.0, volume)))
+    max_amplitude = int(INT16_MAX * max(0.0, min(1.0, volume)))
 
     raw_samples = bytearray()
     for i in range(total_samples):
         t = float(i) / sample_rate
-        # Envelope: slight attack and fade out
+        # Envelope: full level, then a linear fade-out over the last 40% of the tone
         env = min(1.0, (total_samples - i) / (total_samples * 0.4))
         sample_val = int(max_amplitude * env * math.sin(2.0 * math.pi * frequency * t))
-        sample_val = max(-32768, min(32767, sample_val))
+        sample_val = max(-INT16_MAX - 1, min(INT16_MAX, sample_val))
         raw_samples.extend(struct.pack("<h", sample_val))
 
     num_channels = 1
@@ -236,7 +264,7 @@ def generate_beep_wav(
     byte_rate = sample_rate * num_channels * (bits_per_sample // 8)
     block_align = num_channels * (bits_per_sample // 8)
     data_size = len(raw_samples)
-    riff_chunk_size = 36 + data_size
+    riff_chunk_size = WAV_HEADER_BYTES - 8 + data_size  # everything after 'RIFF' and this size field
 
     header = bytearray()
     header.extend(b"RIFF")
@@ -244,8 +272,8 @@ def generate_beep_wav(
     header.extend(b"WAVE")
     # fmt chunk
     header.extend(b"fmt ")
-    header.extend(struct.pack("<I", 16))  # chunk size
-    header.extend(struct.pack("<H", 1))  # PCM format
+    header.extend(struct.pack("<I", PCM_FMT_CHUNK_BYTES))  # chunk size
+    header.extend(struct.pack("<H", WAV_FORMAT_PCM))
     header.extend(struct.pack("<H", num_channels))
     header.extend(struct.pack("<I", sample_rate))
     header.extend(struct.pack("<I", byte_rate))

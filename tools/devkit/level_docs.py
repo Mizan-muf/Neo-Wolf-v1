@@ -27,7 +27,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -54,24 +53,15 @@ PRIORITY = {
     "v": 5,
 }
 
-LEGEND = (
-    "Legend (documentation only: lower case and digits are not valid map tiles; the shipped "
-    "`.map` above has `.` or `D`/`T` there): `p` player start, `g` guard, `b` brute, `n` "
-    "runner, `h` health, `a` ammo, `r` / `u` / `y` red / blue / gold key card, `d` unlocked "
-    "door, `1` / `2` / `3` red / blue / gold locked door, `t` checkpoint trigger, `v` "
-    "decoration (vase); `#` wall, `A` / `B` wall variants, `X` exit switch. Column numbers "
-    "run along the top (tens, then units), row numbers down the left."
-)
-
 FENCE_RE = re.compile(r"^```text\n(.*?)^```$", re.MULTILINE | re.DOTALL)
 
 
-def map_grid(map_text: str) -> List[str]:
+def map_grid(map_text: str) -> list[str]:
     """The grid rows of a map file (comment lines and blank lines removed)."""
     return [line for line in map_text.split("\n") if line and not line.startswith(";")]
 
 
-def symbol_for(entity: Dict) -> Optional[str]:
+def symbol_for(entity: dict) -> str | None:
     kind = entity.get("type")
     if kind == "player":
         return "p"
@@ -91,16 +81,16 @@ def symbol_for(entity: Dict) -> Optional[str]:
     return None
 
 
-def entity_cell(entity: Dict) -> Tuple[int, int]:
+def entity_cell(entity: dict) -> tuple[int, int]:
     if "mapX" in entity and "mapY" in entity:
         return int(entity["mapX"]), int(entity["mapY"])
     return int(float(entity["x"])), int(float(entity["y"]))
 
 
-def annotated_grid(map_text: str, entities_doc: Dict) -> str:
+def annotated_grid(map_text: str, entities_doc: dict) -> str:
     """The map grid with entities drawn in, with column and row numbers."""
     rows = [list(row) for row in map_grid(map_text)]
-    best: Dict[Tuple[int, int], str] = {}
+    best: dict[tuple[int, int], str] = {}
     for entity in entities_doc.get("entities", []):
         symbol = symbol_for(entity)
         if symbol is None:
@@ -120,7 +110,7 @@ def annotated_grid(map_text: str, entities_doc: Dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def campaign_levels(root: Path) -> List[Dict]:
+def campaign_levels(root: Path) -> list[dict]:
     campaign = json.loads((root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
     return campaign["levels"]
 
@@ -129,16 +119,16 @@ def page_path(root: Path, level_id: str) -> Path:
     return root / "docs" / "levels" / f"{level_id}.md"
 
 
-def expected_blocks(root: Path, level: Dict) -> Tuple[str, str]:
+def expected_blocks(root: Path, level: dict) -> tuple[str, str]:
     map_text = (root / level["map"]).read_text(encoding="utf-8")
     entities = json.loads((root / level["entities"]).read_text(encoding="utf-8"))
     return map_text, annotated_grid(map_text, entities)
 
 
-def check(root: Path = REPO_ROOT, write: bool = False) -> List[str]:
+def check(root: Path = REPO_ROOT, write: bool = False) -> list[str]:
     """Returns one problem per line (empty: every page matches). With ``write``, rewrites the
     annotated grid (the second ``text`` block of the "## Map" section) of each page."""
-    problems: List[str] = []
+    problems: list[str] = []
     for level in campaign_levels(root):
         page = page_path(root, level["id"])
         rel = page.relative_to(root).as_posix()
@@ -168,7 +158,7 @@ def check(root: Path = REPO_ROOT, write: bool = False) -> List[str]:
     return problems
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write", action="store_true", help="rewrite out-of-date annotated grids")
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="project root (default: this repository)")

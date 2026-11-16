@@ -54,7 +54,7 @@ class TestGenIcon(unittest.TestCase):
         self.assertEqual(alpha(127, 127), 0)
         self.assertEqual(alpha(64, 64), 255)  # opaque middle
         self.assertEqual(alpha(64, 6), 0)  # above the body
-        r, g, b = rows[40][64 * 4 : 64 * 4 + 3]  # the glowing far wall above the wolf's head
+        r, _, b = rows[40][64 * 4 : 64 * 4 + 3]  # the glowing far wall above the wolf's head
         self.assertGreater(r, 150)
         self.assertGreater(r, b)
 

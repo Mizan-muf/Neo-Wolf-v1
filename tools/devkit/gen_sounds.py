@@ -48,17 +48,18 @@ import sys
 import wave
 import zlib
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List
 
 SEED = 20261116
 SAMPLE_RATE = 44100  # AudioSystem::Init's device rate: no resampling at load time
+INT16_MAX = 32767  # full scale of a 16-bit sample (symmetric: -32768 is never written)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT = REPO_ROOT / "game" / "assets"
 
 Signal = List[float]
 
 # Peak level of each effect after normalisation, in dB relative to full scale.
-PEAK_DBFS: Dict[str, float] = {
+PEAK_DBFS: dict[str, float] = {
     "weapon_fire": -3.0,
     "door_open": -6.0,
     "enemy_alert": -12.0,  # a dense square wave: much louder than its peak suggests
@@ -70,7 +71,7 @@ PEAK_DBFS: Dict[str, float] = {
 
 
 def frames(seconds: float) -> int:
-    return int(round(seconds * SAMPLE_RATE))
+    return round(seconds * SAMPLE_RATE)
 
 
 def silence(seconds: float) -> Signal:
@@ -263,7 +264,7 @@ def enemy_alert(rng: random.Random) -> Signal:
     return mix(n, (1.0, high, 0.0), (1.0, low, 0.12), (0.35, breath, 0.0))
 
 
-SOUNDS: Dict[str, Callable[[random.Random], Signal]] = {
+SOUNDS: dict[str, Callable[[random.Random], Signal]] = {
     "weapon_fire": weapon_fire,
     "door_open": door_open,
     "pickup": pickup,
@@ -274,7 +275,7 @@ SOUNDS: Dict[str, Callable[[random.Random], Signal]] = {
 # --- Output -------------------------------------------------------------------------------
 
 
-def finish(signal: Signal, peak_dbfs: float) -> List[int]:
+def finish(signal: Signal, peak_dbfs: float) -> list[int]:
     """High-pass at 30 Hz, fade in (0.3 ms) and out (8 ms), normalise the peak to
     `peak_dbfs` and round to 16-bit samples."""
     signal = highpass(signal, 30.0)
@@ -285,11 +286,11 @@ def finish(signal: Signal, peak_dbfs: float) -> List[int]:
     for i in range(min(fade_out, n)):
         signal[n - 1 - i] *= i / fade_out
     peak = max(abs(x) for x in signal)
-    scale = (10.0 ** (peak_dbfs / 20.0)) * 32767.0 / peak
-    return [max(-32767, min(32767, int(round(x * scale)))) for x in signal]
+    scale = (10.0 ** (peak_dbfs / 20.0)) * INT16_MAX / peak
+    return [max(-INT16_MAX, min(INT16_MAX, round(x * scale))) for x in signal]
 
 
-def wav_bytes(samples: List[int]) -> bytes:
+def wav_bytes(samples: list[int]) -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as out:
         out.setnchannels(1)
@@ -299,16 +300,16 @@ def wav_bytes(samples: List[int]) -> bytes:
     return buffer.getvalue()
 
 
-def generate() -> Dict[str, bytes]:
+def generate() -> dict[str, bytes]:
     """Returns {"sfx_<name>.wav": WAV bytes} for every sound."""
-    files: Dict[str, bytes] = {}
+    files: dict[str, bytes] = {}
     for name, synth in SOUNDS.items():
-        rng = random.Random(SEED ^ zlib.crc32(f"sound/{name}".encode("utf-8")))
+        rng = random.Random(SEED ^ zlib.crc32(f"sound/{name}".encode()))
         files[f"sfx_{name}.wav"] = wav_bytes(finish(synth(rng), PEAK_DBFS[name]))
     return files
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output folder (default: game/assets)")
     parser.add_argument("--check", action="store_true", help="compare with the files on disk instead of writing")

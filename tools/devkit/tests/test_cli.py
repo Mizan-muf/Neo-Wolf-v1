@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from fixture_builder import GOOD_LEVELS, write_content_root, write_entities
+
 from tools.devkit import cli
 from tools.devkit.doctor import render_doctor_report, run_doctor
 from tools.devkit.term import supports_color
@@ -534,6 +535,7 @@ class TestRootLaunchersAndColours(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,  # the exit code is the result under test
         )
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
         bad = subprocess.run(
@@ -550,6 +552,7 @@ class TestRootLaunchersAndColours(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,
         )
         self.assertEqual(bad.returncode, 1, bad.stdout + bad.stderr)  # the exit code is passed on
 
@@ -565,7 +568,7 @@ class TestRootLaunchersAndColours(unittest.TestCase):
         self.assertTrue(supports_color(True, Tty(), "linux", {"TERM": "xterm-256color"}))
         if sys.platform != "win32":
             self.assertFalse(supports_color(True, Tty(), "win32", {}))  # no Windows console to enable VT on
-        code, out = run_cli("validate", "--map", str(REPO_ROOT / "game" / "maps" / "level01.map"))
+        _, out = run_cli("validate", "--map", str(REPO_ROOT / "game" / "maps" / "level01.map"))
         self.assertNotIn("\033[", out)
 
 

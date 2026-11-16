@@ -31,8 +31,9 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from tools.devkit.doctor import vswhere_path
 from tools.devkit.validator import validate_project
 
 PACKAGE_PRESETS: Dict[str, str] = {
@@ -59,6 +60,14 @@ REQUIRED_FILES = (
 
 # runner(command, working directory) -> exit code. The default streams the output.
 Runner = Callable[[Sequence[str], Path], int]
+EXIT_COMMAND_NOT_FOUND = 127  # what a shell returns for a command it cannot run
+VSWHERE_TIMEOUT_SECONDS = 30
+HASH_CHUNK_BYTES = 65536
+# The earliest time a zip entry can hold (zip dates start on 1980-01-01; a day later stays clear of
+# time-zone underflow when the date is converted to local time).
+ZIP_EPOCH_SECONDS = 315532800 + 86400
+ZIP_UNIX_SYSTEM = 3  # "made by" Unix: the permission bits are honoured on extraction
+MSDOS_DIRECTORY_ATTRIBUTE = 0x10
 
 
 @dataclass
@@ -78,7 +87,7 @@ def calculate_sha256(file_path: Path) -> str:
     """SHA-256 hex digest of a file."""
     h = hashlib.sha256()
     with open(file_path, "rb") as f:
-        while chunk := f.read(65536):
+        while chunk := f.read(HASH_CHUNK_BYTES):
             h.update(chunk)
     return h.hexdigest()
 
@@ -86,10 +95,10 @@ def calculate_sha256(file_path: Path) -> str:
 def default_runner(command: Sequence[str], cwd: Path) -> int:
     print("$ " + " ".join(f'"{c}"' if " " in c else c for c in command), flush=True)
     try:
-        return subprocess.run(list(command), cwd=str(cwd)).returncode
+        return subprocess.run(list(command), cwd=str(cwd), check=False).returncode
     except OSError as exc:
         print(f"cannot run {command[0]}: {exc}", flush=True)
-        return 127
+        return EXIT_COMMAND_NOT_FOUND
 
 
 def host_os() -> str:
@@ -109,12 +118,7 @@ def find_cmake(
     if (system or host_os()) != "windows":
         return None
     env = os.environ if environ is None else environ
-    vswhere = (
-        Path(env.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
-        / "Microsoft Visual Studio"
-        / "Installer"
-        / "vswhere.exe"
-    )
+    vswhere = vswhere_path(env)
     if not vswhere.is_file():
         return None
     try:
@@ -123,7 +127,8 @@ def find_cmake(
                 [str(vswhere), "-latest", "-products", "*", "-property", "installationPath"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=VSWHERE_TIMEOUT_SECONDS,
+                check=False,
             )
             .stdout.strip()
             .splitlines()
@@ -206,21 +211,32 @@ def check_package_tree(tree: Path, info: Mapping[str, object]) -> List[str]:
             errors.append(f"{rel} must not be shipped (test/autoplay executable)")
 
     if info["os"] == "macos":
-        app = str(info["executable"]).split("/Contents/")[0]
-        plist_path = tree / app / "Contents" / "Info.plist"
-        try:
-            with open(plist_path, "rb") as handle:
-                plist = plistlib.load(handle)
-        except (OSError, plistlib.InvalidFileException, ValueError) as exc:
-            errors.append(f"{app}/Contents/Info.plist cannot be read: {exc}")
-        else:
-            if plist.get("CFBundleShortVersionString") != info["version"]:
-                errors.append(
-                    f"Info.plist CFBundleShortVersionString is "
-                    f"{plist.get('CFBundleShortVersionString')!r}, expected {info['version']!r}"
-                )
-            if plist.get("CFBundleExecutable") != Path(str(info["executable"])).name:
-                errors.append(f"Info.plist CFBundleExecutable is {plist.get('CFBundleExecutable')!r}")
+        errors.extend(_check_app_plist(tree, info))
+    return errors
+
+
+def _app_bundle(info: Mapping[str, object]) -> str:
+    """The .app folder of a macOS package (the executable is <app>/Contents/MacOS/<name>)."""
+    return str(info["executable"]).split("/Contents/")[0]
+
+
+def _check_app_plist(tree: Path, info: Mapping[str, object]) -> List[str]:
+    """Problems in the app's Info.plist: its version and executable must match the package."""
+    app = _app_bundle(info)
+    plist_path = tree / app / "Contents" / "Info.plist"
+    try:
+        with open(plist_path, "rb") as handle:
+            plist = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException, ValueError) as exc:
+        return [f"{app}/Contents/Info.plist cannot be read: {exc}"]
+    errors: List[str] = []
+    if plist.get("CFBundleShortVersionString") != info["version"]:
+        errors.append(
+            f"Info.plist CFBundleShortVersionString is "
+            f"{plist.get('CFBundleShortVersionString')!r}, expected {info['version']!r}"
+        )
+    if plist.get("CFBundleExecutable") != Path(str(info["executable"])).name:
+        errors.append(f"Info.plist CFBundleExecutable is {plist.get('CFBundleExecutable')!r}")
     return errors
 
 
@@ -232,7 +248,7 @@ def _timestamp(path: Path) -> float:
 
 
 def _zip_date(seconds: float):
-    return time.localtime(max(seconds, 315532800 + 86400))[:6]  # zip dates start in 1980
+    return time.localtime(max(seconds, ZIP_EPOCH_SECONDS))[:6]
 
 
 def write_archive(tree: Path, out_dir: Path, package: str, fmt: str, executables: Sequence[str] = ()) -> Path:
@@ -249,15 +265,15 @@ def write_archive(tree: Path, out_dir: Path, package: str, fmt: str, executables
         archive.unlink()
     if fmt == "zip":
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-            for path in [tree] + entries:
+            for path in [tree, *entries]:
                 rel = path.relative_to(tree).as_posix()
                 arcname = package if rel == "." else f"{package}/{rel}"
                 if path.is_dir():
                     arcname += "/"
                 zi = zipfile.ZipInfo(arcname, _zip_date(_timestamp(path)))
-                zi.create_system = 3  # Unix: the permission bits below are honoured on extraction
+                zi.create_system = ZIP_UNIX_SYSTEM
                 if path.is_dir():
-                    zi.external_attr = ((stat.S_IFDIR | 0o755) << 16) | 0x10
+                    zi.external_attr = ((stat.S_IFDIR | 0o755) << 16) | MSDOS_DIRECTORY_ATTRIBUTE
                     zf.writestr(zi, b"")
                 else:
                     is_exec = rel in forced_exec or path.stat().st_mode & stat.S_IXUSR
@@ -314,6 +330,63 @@ def clean_output(out_dir: Path) -> None:
             path.unlink()
 
 
+def _build(
+    project_root: Path,
+    cmake: str,
+    preset: Optional[str],
+    build_dir: Optional[Path],
+    build: bool,
+    runner: Runner,
+    system: str,
+) -> Tuple[Optional[Path], str]:
+    """Configures and builds the package preset, or builds the given tree. (build folder, "")
+    on success, else (None, the error)."""
+    if build_dir is None:
+        preset = preset or PACKAGE_PRESETS.get(system)
+        if not preset:
+            return None, f"no package preset for this OS ({system}); give --preset or --build-dir"
+        if build:
+            if runner([cmake, "--preset", preset], project_root) != 0:
+                return None, f"CMake configure failed (preset {preset})"
+            if runner([cmake, "--build", "--preset", preset], project_root) != 0:
+                return None, f"build failed (preset {preset})"
+        return project_root / "build" / preset, ""
+    build_dir = Path(build_dir).resolve()
+    if not (build_dir / "CMakeCache.txt").is_file():
+        return None, f"{build_dir} is not a configured CMake build tree (no CMakeCache.txt)"
+    if build and runner([cmake, "--build", str(build_dir), "--config", "Release"], project_root) != 0:
+        return None, f"build failed ({build_dir})"
+    return build_dir, ""
+
+
+def _install_and_check(
+    project_root: Path,
+    cmake: str,
+    build_dir: Path,
+    staging: Path,
+    info: Mapping[str, object],
+    runner: Runner,
+    system: str,
+    result: PackageResult,
+) -> str:
+    """Installs the build into `staging` and checks the tree (and, on macOS, the signature).
+    "" when it may be archived, else the error (the tree's problems go to result.errors)."""
+    if staging.exists():
+        shutil.rmtree(staging)
+    result.staging_dir = staging
+    if runner([cmake, "--install", str(build_dir), "--config", "Release", "--prefix", str(staging)], project_root) != 0:
+        return "cmake --install failed"
+    problems = check_package_tree(staging, info)
+    if problems:
+        result.errors.extend(problems)
+        return "the package is incomplete: no archive was written"
+    if info["os"] == "macos" and system == "darwin":
+        app = staging / _app_bundle(info)
+        if runner(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)], project_root) != 0:
+            return f"codesign --verify failed for {app.name}"
+    return ""
+
+
 def create_release_package(
     project_root: Path,
     output_dir: Path,
@@ -344,33 +417,20 @@ def create_release_package(
         report = validate_project(project_root)
         result.warnings.extend(report.warnings)
         if report.errors or report.warnings:
-            result.errors.extend(report.errors + [f"(strict) {w}" for w in report.warnings])
+            result.errors.extend([*report.errors, *(f"(strict) {w}" for w in report.warnings)])
             return fail("content validation failed (as `validate --strict`): nothing was packaged")
 
     # 2. Configure and build.
     cmake = cmake or find_cmake(system)
     if not cmake:
         return fail("cmake not found: install CMake 3.25+ (docs/BUILD_MACOS.md, docs/BUILD_WINDOWS.md)")
-    if build_dir is None:
-        preset = preset or PACKAGE_PRESETS.get(system)
-        if not preset:
-            return fail(f"no package preset for this OS ({system}); give --preset or --build-dir")
-        build_dir = project_root / "build" / preset
-        if build:
-            if runner([cmake, "--preset", preset], project_root) != 0:
-                return fail(f"CMake configure failed (preset {preset})")
-            if runner([cmake, "--build", "--preset", preset], project_root) != 0:
-                return fail(f"build failed (preset {preset})")
-    else:
-        build_dir = Path(build_dir).resolve()
-        if not (build_dir / "CMakeCache.txt").is_file():
-            return fail(f"{build_dir} is not a configured CMake build tree (no CMakeCache.txt)")
-        if build and runner([cmake, "--build", str(build_dir), "--config", "Release"], project_root) != 0:
-            return fail(f"build failed ({build_dir})")
-    result.build_dir = build_dir
+    built, error = _build(project_root, cmake, preset, build_dir, build, runner, system)
+    if built is None:
+        return fail(error)
+    result.build_dir = built
 
     try:
-        info = read_package_info(build_dir)
+        info = read_package_info(built)
     except ValueError as exc:
         return fail(str(exc))
     result.info = info
@@ -380,27 +440,15 @@ def create_release_package(
             f"{expect_version} (docs/RELEASE.md, Versioning)"
         )
 
-    # 3. Install into staging.
+    # 3. Install into staging, and 4. check the tree.
     output_dir.mkdir(parents=True, exist_ok=True)
     if clean:
         clean_output(output_dir)
     staging_root = output_dir / ".staging"
     staging = staging_root / str(info["package"])
-    if staging.exists():
-        shutil.rmtree(staging)
-    result.staging_dir = staging
-    if runner([cmake, "--install", str(build_dir), "--config", "Release", "--prefix", str(staging)], project_root) != 0:
-        return fail("cmake --install failed")
-
-    # 4. Check the tree.
-    problems = check_package_tree(staging, info)
-    if problems:
-        result.errors.extend(problems)
-        return fail("the package is incomplete: no archive was written")
-    if info["os"] == "macos" and system == "darwin":
-        app = staging / str(info["executable"]).split("/Contents/")[0]
-        if runner(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app)], project_root) != 0:
-            return fail(f"codesign --verify failed for {app.name}")
+    error = _install_and_check(project_root, cmake, built, staging, info, runner, system, result)
+    if error:
+        return fail(error)
     result.files = _relative_files(staging)
 
     # 5. Archive and checksum.

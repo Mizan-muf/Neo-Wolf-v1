@@ -18,20 +18,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# CSV column order and value types (the engine's EntityPlacementLoader uses the same table).
-CSV_COLUMNS: List[Tuple[str, type]] = [
-    ("type", str),
-    ("x", float),
-    ("y", float),
-    ("mapX", int),
-    ("mapY", int),
-    ("kind", str),
-    ("value", int),
-    ("angle", float),
-    ("variant", str),
-    ("key", str),
-    ("lock", str),
-]
+from tools.devkit.engine_formats import CSV_COLUMNS as ENGINE_CSV_COLUMNS
+
+# CSV column order and value types: the engine's table (engine_formats.CSV_COLUMNS).
+_PYTHON_TYPES = {"text": str, "number": float, "integer": int}
+CSV_COLUMNS: List[Tuple[str, type]] = [(name, _PYTHON_TYPES[kind]) for name, kind in ENGINE_CSV_COLUMNS]
+MIN_CSV_COLUMNS = 3  # type, x, y
 CSV_HEADER = "# " + ",".join(name for name, _ in CSV_COLUMNS)
 
 
@@ -43,12 +35,12 @@ def load_entity_csv(file_path: Path) -> List[Dict[str, Any]]:
 
     entities: List[Dict[str, Any]] = []
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
-    for line in lines:
-        line = line.strip()
+    for raw in lines:
+        line = raw.strip()
         if not line or line.startswith("#"):
             continue
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
+        if len(parts) < MIN_CSV_COLUMNS:
             continue
         entry: Dict[str, Any] = {}
         for (name, kind), cell in zip(CSV_COLUMNS, parts):
@@ -76,7 +68,7 @@ def save_entity_csv(entities: List[Dict[str, Any]], file_path: Path, dropped_lig
         )
     for ent in entities:
         cells = [_format_cell(ent.get(name)) for name, _ in CSV_COLUMNS]
-        while len(cells) > 3 and cells[-1] == "":
+        while len(cells) > MIN_CSV_COLUMNS and cells[-1] == "":
             cells.pop()
         lines.append(",".join(cells))
     file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

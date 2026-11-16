@@ -22,7 +22,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Iterable
 from urllib.parse import unquote
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -65,11 +65,11 @@ def github_slug(heading: str) -> str:
     return "".join(out)
 
 
-def _strip_code(lines: Iterable[str], keep_inline_code: bool = False) -> List[Tuple[int, str]]:
+def _strip_code(lines: Iterable[str], keep_inline_code: bool = False) -> list[tuple[int, str]]:
     """The lines outside fenced code blocks, (line number, text); inline code is removed unless
     `keep_inline_code` (headings keep it: GitHub builds their anchors from the code's text)."""
-    result: List[Tuple[int, str]] = []
-    fence: Optional[str] = None
+    result: list[tuple[int, str]] = []
+    fence: str | None = None
     for number, line in enumerate(lines, start=1):
         match = FENCE.match(line)
         if fence is not None:
@@ -83,13 +83,13 @@ def _strip_code(lines: Iterable[str], keep_inline_code: bool = False) -> List[Tu
     return result
 
 
-def anchors_of(path: Path, cache: Dict[Path, Set[str]]) -> Set[str]:
+def anchors_of(path: Path, cache: dict[Path, set[str]]) -> set[str]:
     """Every anchor a Markdown file defines: heading slugs (with GitHub's -N suffixes) and
     explicit HTML anchors."""
     if path in cache:
         return cache[path]
-    anchors: Set[str] = set()
-    counts: Dict[str, int] = {}
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
     text = path.read_text(encoding="utf-8", errors="replace")
     for _, line in _strip_code(text.splitlines(), keep_inline_code=True):
         heading = HEADING.match(line)
@@ -104,10 +104,10 @@ def anchors_of(path: Path, cache: Dict[Path, Set[str]]) -> Set[str]:
     return anchors
 
 
-def links_of(path: Path) -> List[Tuple[int, str]]:
+def links_of(path: Path) -> list[tuple[int, str]]:
     """(line number, target) of every link in a Markdown file, outside code."""
     text = path.read_text(encoding="utf-8", errors="replace")
-    found: List[Tuple[int, str]] = []
+    found: list[tuple[int, str]] = []
     for number, line in _strip_code(text.splitlines()):
         for match in INLINE_LINK.finditer(line):
             found.append((number, match.group(1)))
@@ -117,7 +117,7 @@ def links_of(path: Path) -> List[Tuple[int, str]]:
     return [(number, target[1:-1] if target.startswith("<") else target) for number, target in found]
 
 
-def markdown_files(root: Path) -> List[Path]:
+def markdown_files(root: Path) -> list[Path]:
     files = []
     for path in sorted(root.rglob("*.md")):
         relative = path.relative_to(root)
@@ -135,13 +135,13 @@ def _shown(path: Path, root: Path) -> str:
         return str(path)
 
 
-def check(root: Path = REPO_ROOT, files: Optional[List[Path]] = None) -> List[str]:
+def check(root: Path = REPO_ROOT, files: list[Path] | None = None) -> list[str]:
     """Every broken relative link or anchor under `root`, as "file:line: message"."""
     root = root.resolve()
-    problems: List[str] = []
-    cache: Dict[Path, Set[str]] = {}
-    for source in files if files is not None else markdown_files(root):
-        source = source.resolve()
+    problems: list[str] = []
+    cache: dict[Path, set[str]] = {}
+    for listed in files if files is not None else markdown_files(root):
+        source = listed.resolve()
         shown = _shown(source, root)
         for number, target in links_of(source):
             if not target or SCHEME.match(target) or target.startswith("//"):
@@ -170,7 +170,7 @@ def check(root: Path = REPO_ROOT, files: Optional[List[Path]] = None) -> List[st
     return problems
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check relative links and anchors in Markdown files.")
     parser.add_argument(
         "root", nargs="?", type=Path, default=REPO_ROOT, help="repository root (default: this repository)"

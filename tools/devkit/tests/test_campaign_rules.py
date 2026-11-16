@@ -8,9 +8,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fixture_builder import GOOD_LEVELS, write_campaign, write_content_root, write_entities
+
 from tools.devkit import cli
 from tools.devkit.validator import validate_gameplay, validate_project
 
@@ -29,7 +30,7 @@ class CampaignRuleTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def set_level(self, level_id: str, grid: str = None, entities: List[dict] = None) -> None:
+    def set_level(self, level_id: str, grid: Optional[str] = None, entities: Optional[List[dict]] = None) -> None:
         if grid is not None:
             (self.root / "game" / "maps" / f"{level_id}.map").write_text(grid, encoding="utf-8")
         if entities is not None:
@@ -38,7 +39,7 @@ class CampaignRuleTest(unittest.TestCase):
     def entities(self, level_id: str) -> List[dict]:
         return copy.deepcopy(GOOD_LEVELS[level_id][1])
 
-    def validate(self, require_levels: int = None):
+    def validate(self, require_levels: Optional[int] = None):
         return validate_project(self.root, require_levels=require_levels)
 
     def strict_cli(self, *extra: str) -> int:
@@ -131,7 +132,7 @@ class TestPlayersAndPlacements(CampaignRuleTest):
     def test_exactly_one_player(self) -> None:
         self.set_level("alpha", entities=[e for e in self.entities("alpha") if e["type"] != "player"])
         self.assertTrue(contains(self.validate().errors, "(alpha)", "0 player entities"))
-        self.set_level("alpha", entities=self.entities("alpha") + [{"type": "player", "x": 2.5, "y": 1.5}])
+        self.set_level("alpha", entities=[*self.entities("alpha"), {"type": "player", "x": 2.5, "y": 1.5}])
         self.assertTrue(contains(self.validate().errors, "(alpha)", "2 player entities"))
 
     def test_player_must_stand_on_a_floor_cell_clear_of_walls(self) -> None:
@@ -144,7 +145,8 @@ class TestPlayersAndPlacements(CampaignRuleTest):
         self.assertTrue(contains(self.validate().errors, "the player's body", "cannot move"))
 
     def test_entities_inside_solid_cells_or_doors(self) -> None:
-        ents = self.entities("beta") + [
+        ents = [
+            *self.entities("beta"),
             {"type": "pickup", "x": 3.5, "y": 0.5, "kind": "health"},
             {"type": "enemy", "x": 3.5, "y": 1.5},
             {"type": "decoration", "x": 9.5, "y": 1.5},
@@ -171,7 +173,7 @@ class TestPlayersAndPlacements(CampaignRuleTest):
         self.assertTrue(contains(errors, "(beta): door 1", "is '.' on the map, not 'D'"))
         self.assertTrue(contains(errors, "(beta): 'D' at (3, 1) has no door entity"))
 
-        ents = self.entities("beta") + [{"type": "door", "x": 6.5, "y": 1.5, "mapX": 6, "mapY": 1}]
+        ents = [*self.entities("beta"), {"type": "door", "x": 6.5, "y": 1.5, "mapX": 6, "mapY": 1}]
         self.set_level("beta", entities=ents)
         self.assertTrue(contains(self.validate().errors, "'D' at (6, 1) has 2 door entities"))
 
@@ -214,7 +216,8 @@ class TestProgress(CampaignRuleTest):
 
     def test_unreachable_pickups_and_enemies_are_warnings(self) -> None:
         grid = "########\n#......#\n#.####.#\n#......X\n#.#.####\n#.#.#..#\n########\n"
-        ents = self.entities("gamma") + [
+        ents = [
+            *self.entities("gamma"),
             {"type": "pickup", "x": 5.5, "y": 5.5, "kind": "health"},
             {"type": "enemy", "x": 6.5, "y": 5.5, "variant": "guard"},
         ]

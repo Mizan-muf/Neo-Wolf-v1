@@ -82,11 +82,10 @@ def map_rows_from_bytes(data: bytes) -> List[str]:
     """The grid rows of a .map file, exactly as MapLoader reads them (bytes as latin-1 text)."""
     rows: List[str] = []
     for raw in data.split(b"\n"):
-        if raw.endswith(b"\r"):
-            raw = raw[:-1]  # CRLF file
-        if not raw or raw[:1] == b";":
+        line = raw[:-1] if raw.endswith(b"\r") else raw  # CRLF file
+        if not line or line[:1] == b";":
             continue
-        rows.append(raw.decode("latin-1"))
+        rows.append(line.decode("latin-1"))
     return rows
 
 
@@ -167,7 +166,7 @@ def parse_c_integer(text: str) -> Optional[int]:
     if not _INTEGER.match(text):
         return None
     value = int(text)
-    return value if -(2**63) <= value < 2**63 else None
+    return value if -(2**63) <= value < 2**63 else None  # strtoll's range (int64); beyond it, ERANGE
 
 
 # --- JSON like nlohmann/json ---------------------------------------------------------------------
@@ -217,11 +216,11 @@ def load_json_strict(path: Path) -> Tuple[Any, List[str]]:
 # --- Entity placements ---------------------------------------------------------------------------
 
 
-def _is_number(value: object) -> bool:
+def is_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def _is_int(value: object) -> bool:
+def is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
@@ -251,7 +250,7 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     ok = True
     x = item.get("x")
     y = item.get("y")
-    if not _is_number(x) or not _is_number(y):
+    if not is_number(x) or not is_number(y):
         result.errors.append(f"{label} ({etype}): x and y must be numbers, got {x!r}, {y!r}")
         ok = False
 
@@ -264,40 +263,17 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     if etype in ("door", "trigger"):
         map_x = item.get("mapX")
         map_y = item.get("mapY")
-        if not all(_is_int(v) and 0 <= v <= MAX_MAP_COORDINATE for v in (map_x, map_y)):
+        if not all(is_int(v) and 0 <= v <= MAX_MAP_COORDINATE for v in (map_x, map_y)):
             result.errors.append(
                 f"{label} ({etype}): mapX and mapY are required integers from 0 to {MAX_MAP_COORDINATE}, "
                 f"got {map_x!r}, {map_y!r}"
             )
             ok = False
 
-    if etype == "pickup":
-        kind = item.get("kind")
-        if kind not in PICKUP_KINDS:
-            result.errors.append(
-                f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}"
-            )
-            ok = False
-        if kind == "key":
-            if item.get("key") not in KEY_COLORS:
-                result.errors.append(
-                    f"{label} (pickup): a key pickup needs 'key': 'red', 'blue' or 'gold', got {item.get('key')!r}"
-                )
-                ok = False
-            if "value" in item:
-                result.warnings.append(f"{label} (pickup): field 'value' is not used by a key pickup; ignored")
-        else:
-            if "key" in item:
-                result.warnings.append(f"{label} (pickup): field 'key' only applies to pickups of kind 'key'; ignored")
-            if "value" in item:
-                value = item["value"]
-                if not _is_int(value) or not (1 <= value <= MAX_GAMEPLAY_STAT):
-                    result.errors.append(
-                        f"{label} (pickup): value must be an integer from 1 to {MAX_GAMEPLAY_STAT}, got {value!r}"
-                    )
-                    ok = False
+    if etype == "pickup" and not _check_pickup(item, label, result):
+        ok = False
 
-    if etype == "player" and "angle" in item and not _is_number(item["angle"]):
+    if etype == "player" and "angle" in item and not is_number(item["angle"]):
         result.errors.append(f"{label} (player): angle must be a number (degrees), got {item['angle']!r}")
         ok = False
     if etype == "enemy" and "variant" in item and item["variant"] not in ENEMY_VARIANTS:
@@ -309,26 +285,58 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     return ok
 
 
+def _check_pickup(item: dict, label: str, result: EntityParse) -> bool:
+    """The pickup fields: kind, and the key colour of a key or the value of the others."""
+    ok = True
+    kind = item.get("kind")
+    if kind not in PICKUP_KINDS:
+        result.errors.append(f"{label} (pickup): kind is required and must be 'health', 'ammo' or 'key', got {kind!r}")
+        ok = False
+    if kind == "key":
+        if item.get("key") not in KEY_COLORS:
+            result.errors.append(
+                f"{label} (pickup): a key pickup needs 'key': 'red', 'blue' or 'gold', got {item.get('key')!r}"
+            )
+            ok = False
+        if "value" in item:
+            result.warnings.append(f"{label} (pickup): field 'value' is not used by a key pickup; ignored")
+        return ok
+    if "key" in item:
+        result.warnings.append(f"{label} (pickup): field 'key' only applies to pickups of kind 'key'; ignored")
+    if "value" in item:
+        value = item["value"]
+        if not is_int(value) or not (1 <= value <= MAX_GAMEPLAY_STAT):
+            result.errors.append(
+                f"{label} (pickup): value must be an integer from 1 to {MAX_GAMEPLAY_STAT}, got {value!r}"
+            )
+            ok = False
+    return ok
+
+
 def check_light_zone(item: dict, label: str, result: EntityParse) -> bool:
     """One entry of "lights" with the engine's rules (ReadLightZone). False on an error.
 
     x and y are integers from 0, w and h integers from 1 (all up to MAX_MAP_COORDINATE), and
-    level a number from 0.2 to 1.0. Map bounds are checked separately (check_light_bounds)."""
+    level a number from MIN_LIGHT_LEVEL to MAX_LIGHT_LEVEL. Map bounds are checked separately (check_light_bounds)."""
     ok = True
     for key, low in (("x", 0), ("y", 0), ("w", 1), ("h", 1)):
         if key not in item:
             result.errors.append(f"{label}: field '{key}' is required (an integer from {low} to {MAX_MAP_COORDINATE})")
             ok = False
-        elif not (_is_int(item[key]) and low <= item[key] <= MAX_MAP_COORDINATE):
+        elif not (is_int(item[key]) and low <= item[key] <= MAX_MAP_COORDINATE):
             result.errors.append(
                 f"{label}: field '{key}' must be an integer from {low} to {MAX_MAP_COORDINATE}, got {item[key]!r}"
             )
             ok = False
     if "level" not in item:
-        result.errors.append(f"{label}: field 'level' is required (a number from 0.2 to 1.0)")
+        result.errors.append(
+            f"{label}: field 'level' is required (a number from {MIN_LIGHT_LEVEL} to {MAX_LIGHT_LEVEL})"
+        )
         ok = False
-    elif not (_is_number(item["level"]) and MIN_LIGHT_LEVEL <= item["level"] <= MAX_LIGHT_LEVEL):
-        result.errors.append(f"{label}: field 'level' must be a number from 0.2 to 1.0, got {item['level']!r}")
+    elif not (is_number(item["level"]) and MIN_LIGHT_LEVEL <= item["level"] <= MAX_LIGHT_LEVEL):
+        result.errors.append(
+            f"{label}: field 'level' must be a number from {MIN_LIGHT_LEVEL} to {MAX_LIGHT_LEVEL}, got {item['level']!r}"
+        )
         ok = False
     for key in sorted(set(item) - set(LIGHT_FIELDS)):
         result.warnings.append(f"{label}: unknown field '{key}' ignored")
@@ -408,9 +416,8 @@ def parse_entities_csv(path: Path) -> EntityParse:
         return result
     index = 0
     for line_number, raw in enumerate(data.split(b"\n"), start=1):
-        if line_number == 1 and raw.startswith(UTF8_BOM):
-            raw = raw[len(UTF8_BOM) :]
-        line = c_strip(raw.decode("utf-8", errors="surrogateescape"))
+        text = raw[len(UTF8_BOM) :] if line_number == 1 and raw.startswith(UTF8_BOM) else raw
+        line = c_strip(text.decode("utf-8", errors="surrogateescape"))
         if not line or line.startswith("#"):
             continue
         label = f"CSV {path}:{line_number} (entity {index})"

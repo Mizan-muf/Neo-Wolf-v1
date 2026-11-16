@@ -1,13 +1,12 @@
 """Map inspection, visualization, reachability analysis, and generation tools for Neo-Wolf."""
 
 import json
-import math
-from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from tools.devkit.engine_formats import FLOOR_TILES, SOLID_TILES, WALKABLE_TILES, map_rows_from_bytes
+from tools.devkit.validator import analyse_level_progress, cell_of, door_on_every_d
 
 # 'X' is the exit switch (Phase 5): a solid wall cell the player activates with E.
 
@@ -108,11 +107,9 @@ def analyze_reachability(
     total_walkable, reachable_count, unreachable_count, unreachable_cells
     exits, usable_exits, key_order, problems, unreachable_entities
     """
-    from tools.devkit.validator import analyse_level_progress  # avoids an import cycle
-
     m = load_map(map_path)
     rows = ["".join(row) for row in m.grid]
-    spawn_cell = (int(math.floor(spawn_x)), int(math.floor(spawn_y)))
+    spawn_cell = cell_of(spawn_x, spawn_y)
     result: Dict[str, Any] = {
         "success": False,
         "all_reachable": False,
@@ -131,9 +128,7 @@ def analyze_reachability(
     }
     placed = [e for e in (entities or []) if isinstance(e, dict)]
     if entities is None:
-        placed = [
-            {"type": "door", "mapX": x, "mapY": y} for y, row in enumerate(rows) for x, c in enumerate(row) if c == "D"
-        ]
+        placed = door_on_every_d(rows)
     door_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "door"}
     trigger_cells = {(e.get("mapX"), e.get("mapY")) for e in placed if e.get("type") == "trigger"}
 
@@ -175,12 +170,66 @@ def analyze_reachability(
             ent.get("type") in ("pickup", "enemy")
             and isinstance(ent.get("x"), (int, float))
             and isinstance(ent.get("y"), (int, float))
+            and cell_of(ent["x"], ent["y"]) not in reached
         ):
-            if (int(math.floor(ent["x"])), int(math.floor(ent["y"]))) not in reached:
-                result["unreachable_entities"].append(ent)
+            result["unreachable_entities"].append(ent)
     result["success"] = progress.usable_exits > 0 and not progress.problems and not result["unreachable_entities"]
     result["all_reachable"] = not unreachable
     return result
+
+
+# ANSI colour of each preview symbol (map tiles, then the entity overlay); "." is the floor.
+PREVIEW_COLORS: Dict[str, str] = {
+    "#": "\033[37;1m",  # bright white
+    "A": "\033[36m",  # cyan
+    "B": "\033[34m",  # blue
+    "D": "\033[33;1m",  # bright yellow
+    "T": "\033[35;1m",  # bright magenta
+    "X": "\033[42;30m",  # black on green
+    "P": "\033[32;1m",  # bright green
+    "E": "\033[31;1m",  # bright red
+    "$": "\033[33m",  # yellow
+    "*": "\033[36;1m",  # bright cyan
+    ".": "\033[90m",  # dark grey
+}
+ANSI_RESET = "\033[0m"
+# The symbol an entity type is drawn with over the map.
+ENTITY_SYMBOLS = {"player": "P", "enemy": "E", "pickup": "$", "decoration": "*", "door": "D", "trigger": "T"}
+LEGEND = (
+    ("#", "Wall"),
+    ("A", "WallA"),
+    ("B", "WallB"),
+    ("D", "Door"),
+    ("T", "Trigger"),
+    ("X", "Exit"),
+    ("P", "Player"),
+    ("E", "Enemy"),
+    ("$", "Pickup"),
+    ("*", "Decor"),
+)
+
+
+def _paint(symbol: str, color: bool) -> str:
+    if not color or symbol not in PREVIEW_COLORS:
+        return symbol
+    return f"{PREVIEW_COLORS[symbol]}{symbol}{ANSI_RESET}"
+
+
+def _entity_overlay(m: MapData, entity_placements: Optional[List[dict]]) -> List[List[str]]:
+    """The map grid with every placed entity's symbol in its cell."""
+    overlay = [[m.grid[y][x] for x in range(m.width)] for y in range(m.height)]
+    for ent in entity_placements or []:
+        if (
+            not isinstance(ent, dict)
+            or not isinstance(ent.get("x"), (int, float))
+            or not isinstance(ent.get("y"), (int, float))
+        ):
+            continue
+        ex, ey = cell_of(ent["x"], ent["y"])
+        symbol = ENTITY_SYMBOLS.get(ent.get("type"))
+        if 0 <= ex < m.width and 0 <= ey < m.height and symbol:
+            overlay[ey][ex] = symbol
+    return overlay
 
 
 def render_ascii_preview(
@@ -191,102 +240,16 @@ def render_ascii_preview(
 ) -> str:
     """Render a colored/formatted ASCII preview of the map and placed entities."""
     m = load_map(map_path)
+    overlay = _entity_overlay(m, entity_placements)
 
-    # ANSI color codes
-    C_RESET = "\033[0m" if color else ""
-    C_WALL = "\033[37;1m" if color else ""  # Bright White
-    C_WALL_A = "\033[36m" if color else ""  # Cyan
-    C_WALL_B = "\033[34m" if color else ""  # Blue
-    C_DOOR = "\033[33;1m" if color else ""  # Bright Yellow
-    C_TRIGGER = "\033[35;1m" if color else ""  # Bright Magenta
-    C_EXIT = "\033[42;30m" if color else ""  # Black on green
-    C_PLAYER = "\033[32;1m" if color else ""  # Bright Green
-    C_ENEMY = "\033[31;1m" if color else ""  # Bright Red
-    C_PICKUP = "\033[33m" if color else ""  # Yellow
-    C_DECOR = "\033[36;1m" if color else ""  # Bright Cyan
-    C_EMPTY = "\033[90m" if color else ""  # Dark Gray
-
-    # Create overlay grid
-    overlay = [[m.grid[y][x] for x in range(m.width)] for y in range(m.height)]
-
-    if entity_placements:
-        for ent in entity_placements:
-            if (
-                not isinstance(ent, dict)
-                or not isinstance(ent.get("x"), (int, float))
-                or not isinstance(ent.get("y"), (int, float))
-            ):
-                continue
-            ex = int(math.floor(ent["x"]))
-            ey = int(math.floor(ent["y"]))
-            if 0 <= ex < m.width and 0 <= ey < m.height:
-                etype = ent.get("type")
-                if etype == "player":
-                    overlay[ey][ex] = "P"
-                elif etype == "enemy":
-                    overlay[ey][ex] = "E"
-                elif etype == "pickup":
-                    overlay[ey][ex] = "$"
-                elif etype == "decoration":
-                    overlay[ey][ex] = "*"
-                elif etype == "door":
-                    overlay[ey][ex] = "D"
-                elif etype == "trigger":
-                    overlay[ey][ex] = "T"
-
-    lines: List[str] = []
     header = f"=== Map Preview: {Path(map_path).name} ({m.width}x{m.height}) ==="
-    lines.append(header)
-
-    # Column numbers header (every 5)
-    col_header = "   " + "".join(str(x % 10) for x in range(m.width))
-    lines.append(col_header)
-
+    lines = [header, "   " + "".join(str(x % 10) for x in range(m.width))]  # column numbers (units)
     for y in range(m.height):
-        row_str = f"{y:2d} "
-        for x in range(m.width):
-            c = overlay[y][x]
-            if c == "#":
-                row_str += f"{C_WALL}#{C_RESET}"
-            elif c == "A":
-                row_str += f"{C_WALL_A}A{C_RESET}"
-            elif c == "B":
-                row_str += f"{C_WALL_B}B{C_RESET}"
-            elif c == "D":
-                row_str += f"{C_DOOR}D{C_RESET}"
-            elif c == "T":
-                row_str += f"{C_TRIGGER}T{C_RESET}"
-            elif c == "X":
-                row_str += f"{C_EXIT}X{C_RESET}"
-            elif c == "P":
-                row_str += f"{C_PLAYER}P{C_RESET}"
-            elif c == "E":
-                row_str += f"{C_ENEMY}E{C_RESET}"
-            elif c == "$":
-                row_str += f"{C_PICKUP}${C_RESET}"
-            elif c == "*":
-                row_str += f"{C_DECOR}*{C_RESET}"
-            elif c == ".":
-                row_str += f"{C_EMPTY}.{C_RESET}"
-            else:
-                row_str += c
-        lines.append(row_str)
+        lines.append(f"{y:2d} " + "".join(_paint(c, color) for c in overlay[y]))
 
     if show_legend:
         lines.append("-" * len(header))
-        legend = [
-            f"{C_WALL}#{C_RESET}:Wall",
-            f"{C_WALL_A}A{C_RESET}:WallA",
-            f"{C_WALL_B}B{C_RESET}:WallB",
-            f"{C_DOOR}D{C_RESET}:Door",
-            f"{C_TRIGGER}T{C_RESET}:Trigger",
-            f"{C_EXIT}X{C_RESET}:Exit",
-            f"{C_PLAYER}P{C_RESET}:Player",
-            f"{C_ENEMY}E{C_RESET}:Enemy",
-            f"{C_PICKUP}${C_RESET}:Pickup",
-            f"{C_DECOR}*{C_RESET}:Decor",
-        ]
-        lines.append("Legend: " + " | ".join(legend))
+        lines.append("Legend: " + " | ".join(f"{_paint(symbol, color)}:{name}" for symbol, name in LEGEND))
 
     return "\n".join(lines)
 
@@ -346,8 +309,6 @@ def create_level_stub_entities(map_data: MapData, level_id: str) -> Dict[str, An
     """Entity placements that make a template map a valid campaign level: the player on the
     first floor cell (row by row) from which an exit switch can be reached, a door entity on
     every 'D' and a trigger entity on every 'T'."""
-    from tools.devkit.validator import analyse_level_progress  # avoids an import cycle
-
     rows = ["".join(row) for row in map_data.grid]
     doors = [
         {"type": "door", "x": x + 0.5, "y": y + 0.5, "mapX": x, "mapY": y}
@@ -366,12 +327,12 @@ def create_level_stub_entities(map_data: MapData, level_id: str) -> Dict[str, An
         for x, c in enumerate(row):
             if c != "." or player is not None:
                 continue
-            progress = analyse_level_progress(rows, doors + triggers, x + 0.5, y + 0.5)
+            progress = analyse_level_progress(rows, [*doors, *triggers], x + 0.5, y + 0.5)
             if progress.usable_exits > 0:
                 player = {"type": "player", "x": x + 0.5, "y": y + 0.5, "angle": 0}
     if player is None:
         raise ValueError("the map has no floor cell from which an exit switch can be reached")
-    return {"level": level_id, "entities": [player] + doors + triggers}
+    return {"level": level_id, "entities": [player, *doors, *triggers]}
 
 
 def save_entities_json(document: Dict[str, Any], file_path: Path) -> None:

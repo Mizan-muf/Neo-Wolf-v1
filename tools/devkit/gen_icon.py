@@ -33,7 +33,7 @@ import struct
 import sys
 import zlib
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float]
@@ -51,7 +51,7 @@ WALL_SEGMENTS = 4  # stone blocks along each wall
 
 # The wolf's head, in a unit box placed over the far wall (WOLF_BOX).
 WOLF_BOX = (0.335, 0.300, 0.665, 0.615)
-WOLF_HEAD: List[Point] = [
+WOLF_HEAD: list[Point] = [
     (0.16, 0.02),
     (0.38, 0.27),
     (0.62, 0.27),
@@ -66,7 +66,7 @@ WOLF_HEAD: List[Point] = [
     (0.02, 0.57),
     (0.12, 0.40),  # left jaw and cheek
 ]
-WOLF_EYES: List[List[Point]] = [
+WOLF_EYES: list[list[Point]] = [
     [(0.25, 0.44), (0.43, 0.50), (0.41, 0.56), (0.29, 0.52)],
     [(0.75, 0.44), (0.71, 0.52), (0.59, 0.56), (0.57, 0.50)],
 ]
@@ -83,7 +83,7 @@ WOLF: Color = (20, 13, 13)
 EYES: Color = (255, 226, 110)
 
 # Sizes written by --iconset (file name -> pixels) and --ico.
-ICONSET: Dict[str, int] = {
+ICONSET: dict[str, int] = {
     "icon_16x16.png": 16,
     "icon_16x16@2x.png": 32,
     "icon_32x32.png": 32,
@@ -111,16 +111,16 @@ def _rgba(c: Color) -> bytes:
     return bytes((c[0], c[1], c[2], 255))
 
 
-def _pixel_range(x0: float, x1: float, n: int) -> Tuple[int, int]:
+def _pixel_range(x0: float, x1: float, n: int) -> tuple[int, int]:
     """Pixels whose centres lie in [x0, x1) on a row of n pixels (unit coordinates)."""
     a = math.ceil(x0 * n - 0.5)
     b = math.ceil(x1 * n - 0.5)
     return max(a, 0), min(b, n)
 
 
-def _polygon_spans(points: Sequence[Point], y: float) -> List[Tuple[float, float]]:
+def _polygon_spans(points: Sequence[Point], y: float) -> list[tuple[float, float]]:
     """x intervals inside the polygon on the horizontal line y (even-odd rule)."""
-    xs: List[float] = []
+    xs: list[float] = []
     count = len(points)
     for i in range(count):
         (x0, y0), (x1, y1) = points[i], points[(i + 1) % count]
@@ -130,12 +130,12 @@ def _polygon_spans(points: Sequence[Point], y: float) -> List[Tuple[float, float
     return [(xs[i], xs[i + 1]) for i in range(0, len(xs) - 1, 2)]
 
 
-def _in_box(points: Sequence[Point], box: Tuple[float, float, float, float]) -> List[Point]:
+def _in_box(points: Sequence[Point], box: tuple[float, float, float, float]) -> list[Point]:
     x0, y0, x1, y1 = box
     return [(x0 + px * (x1 - x0), y0 + py * (y1 - y0)) for px, py in points]
 
 
-def _body_span(y: float) -> Optional[Tuple[float, float]]:
+def _body_span(y: float) -> tuple[float, float] | None:
     """The rounded square's x interval on row y, or None outside it."""
     if y < BODY_MIN or y >= BODY_MAX:
         return None
@@ -170,14 +170,28 @@ def _wall_row(n: int, left: bool) -> bytes:
     return bytes(out)
 
 
-def render(n: int) -> List[bytearray]:
+def _fill_span(row: bytearray, body: tuple[int, int], x0: int, x1: int, colour: bytes) -> None:
+    """Pixels x0..x1 of an RGBA row in one colour, clipped to the body's pixels."""
+    x0, x1 = max(x0, body[0]), min(x1, body[1])
+    if x1 > x0:
+        row[x0 * 4 : x1 * 4] = colour * (x1 - x0)
+
+
+def _copy_span(row: bytearray, body: tuple[int, int], x0: int, x1: int, pattern: bytes) -> None:
+    """Pixels x0..x1 of an RGBA row copied from a full-width pattern row, clipped to the body."""
+    x0, x1 = max(x0, body[0]), min(x1, body[1])
+    if x1 > x0:
+        row[x0 * 4 : x1 * 4] = pattern[x0 * 4 : x1 * 4]
+
+
+def render(n: int) -> list[bytearray]:
     """Draws the icon at n x n pixels, no anti-aliasing. Returns RGBA rows."""
     left_wall = _wall_row(n, left=True)
     right_wall = _wall_row(n, left=False)
     wolf = _in_box(WOLF_HEAD, WOLF_BOX)
     eyes = [_in_box(eye, WOLF_BOX) for eye in WOLF_EYES]
     glow_cx, glow_cy, glow_r = 0.5 * (FAR_X0 + FAR_X1), 0.47, 0.30
-    rows: List[bytearray] = []
+    rows: list[bytearray] = []
     for py in range(n):
         y = (py + 0.5) / n
         row = bytearray(n * 4)  # transparent
@@ -185,30 +199,21 @@ def render(n: int) -> List[bytearray]:
         span = _body_span(y)
         if span is None:
             continue
-        b0, b1 = _pixel_range(span[0], span[1], n)
-
-        def fill(x0: int, x1: int, colour: bytes) -> None:
-            x0, x1 = max(x0, b0), min(x1, b1)
-            if x1 > x0:
-                row[x0 * 4 : x1 * 4] = colour * (x1 - x0)
-
-        def fill_pattern(x0: int, x1: int, pattern: bytes) -> None:
-            x0, x1 = max(x0, b0), min(x1, b1)
-            if x1 > x0:
-                row[x0 * 4 : x1 * 4] = pattern[x0 * 4 : x1 * 4]
+        body = _pixel_range(span[0], span[1], n)
+        b0, b1 = body
 
         if FAR_Y0 <= y < FAR_Y1:
             f0, f1 = _pixel_range(FAR_X0, FAR_X1, n)
-            fill_pattern(b0, f0, left_wall)
-            fill_pattern(f1, b1, right_wall)
+            _copy_span(row, body, b0, f0, left_wall)
+            _copy_span(row, body, f1, b1, right_wall)
             for x in range(f0, f1):  # radial glow
                 d = math.hypot((x + 0.5) / n - glow_cx, y - glow_cy) / glow_r
                 row[x * 4 : x * 4 + 4] = _rgba(_lerp(GLOW_CENTRE, GLOW_EDGE, d * d))
             for x0, x1 in _polygon_spans(wolf, y):
-                fill(*_pixel_range(x0, x1, n), _rgba(WOLF))
+                _fill_span(row, body, *_pixel_range(x0, x1, n), _rgba(WOLF))
             for eye in eyes:
                 for x0, x1 in _polygon_spans(eye, y):
-                    fill(*_pixel_range(x0, x1, n), _rgba(EYES))
+                    _fill_span(row, body, *_pixel_range(x0, x1, n), _rgba(EYES))
             continue
 
         top = y < FAR_Y0
@@ -218,18 +223,18 @@ def render(n: int) -> List[bytearray]:
         xl = BODY_MIN + t * (FAR_X0 - BODY_MIN)
         xr = BODY_MAX + t * (FAR_X1 - BODY_MAX)
         c0, c1 = _pixel_range(xl, xr, n)
-        fill_pattern(b0, c0, left_wall)
-        fill_pattern(c1, b1, right_wall)
+        _copy_span(row, body, b0, c0, left_wall)
+        _copy_span(row, body, c1, b1, right_wall)
         colour = _lerp(CEILING_NEAR, CEILING_FAR, t) if top else _lerp(FLOOR_NEAR, FLOOR_FAR, t)
-        fill(c0, c1, _rgba(colour))
+        _fill_span(row, body, c0, c1, _rgba(colour))
     return rows
 
 
-def downsample(rows: List[bytearray], factor: int) -> List[bytearray]:
+def downsample(rows: list[bytearray], factor: int) -> list[bytearray]:
     """Box filter by an integer factor; colours are weighted by alpha (no dark fringes)."""
     n = len(rows) // factor
     area = factor * factor
-    out: List[bytearray] = []
+    out: list[bytearray] = []
     for oy in range(n):
         acc_r = [0] * n
         acc_g = [0] * n
@@ -258,10 +263,10 @@ def downsample(rows: List[bytearray], factor: int) -> List[bytearray]:
     return out
 
 
-_CACHE: Dict[int, List[bytearray]] = {}
+_CACHE: dict[int, list[bytearray]] = {}
 
 
-def icon_pixels(size: int) -> List[bytearray]:
+def icon_pixels(size: int) -> list[bytearray]:
     """The icon at size x size, anti-aliased by supersampling (4x up to 256 px, else 2x)."""
     if size not in _CACHE:
         factor = 4 if size <= 256 else 2
@@ -270,7 +275,7 @@ def icon_pixels(size: int) -> List[bytearray]:
     return _CACHE[size]
 
 
-def encode_png(rows: List[bytearray]) -> bytes:
+def encode_png(rows: list[bytearray]) -> bytes:
     """RGBA, 8 bits per channel, filter type 0 on every row."""
     height = len(rows)
     width = len(rows[0]) // 4 if rows else 0
@@ -287,7 +292,7 @@ def encode_png(rows: List[bytearray]) -> bytes:
     )
 
 
-def encode_ico(images: Sequence[Tuple[int, bytes]]) -> bytes:
+def encode_ico(images: Sequence[tuple[int, bytes]]) -> bytes:
     """An .ico whose entries are PNG files (allowed since Windows Vista)."""
     header = struct.pack("<HHH", 0, 1, len(images))
     offset = len(header) + 16 * len(images)
@@ -299,7 +304,7 @@ def encode_ico(images: Sequence[Tuple[int, bytes]]) -> bytes:
     return header + entries + b"".join(png for _, png in images)
 
 
-def write_iconset(directory: Path) -> List[Path]:
+def write_iconset(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
     for name, size in ICONSET.items():
@@ -314,7 +319,7 @@ def write_ico(path: Path) -> None:
     path.write_bytes(encode_ico([(size, encode_png(icon_pixels(size))) for size in ICO_SIZES]))
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--iconset", type=Path, help="write a macOS .iconset folder (PNG files for iconutil)")
     parser.add_argument("--ico", type=Path, help="write a Windows .ico file")

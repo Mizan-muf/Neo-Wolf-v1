@@ -341,7 +341,11 @@ class TestPackagerSuccess(PackagerTestCase):
         res = self.package(FakeCMake(package_info("linux")))
         self.assertTrue(res.success, res.errors)
         done = subprocess.run(
-            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"], capture_output=True, text=True, timeout=120
+            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn("PASS: 1 package(s)", done.stdout)
@@ -349,7 +353,11 @@ class TestPackagerSuccess(PackagerTestCase):
         with open(res.archive, "ab") as handle:
             handle.write(b"tampered")
         done = subprocess.run(
-            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"], capture_output=True, text=True, timeout=120
+            [sys.executable, str(SMOKE_SCRIPT), str(self.out), "--no-run"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertIn("FAIL: SHA256SUMS matches the archive", done.stdout)
@@ -389,9 +397,13 @@ class TestFindCMakeAndLaunchers(unittest.TestCase):
         if sys.platform == "win32" or bash is None:
             self.skipTest("bash: not on this platform")
         self.assertTrue(os.access(script, os.X_OK))
-        old = subprocess.run([bash, str(script), "1.0.0", "release"], capture_output=True, text=True, timeout=60)
+        old = subprocess.run(
+            [bash, str(script), "1.0.0", "release"], capture_output=True, text=True, timeout=60, check=False
+        )
         self.assertEqual(old.returncode, 2, old.stdout + old.stderr)  # the old version argument is refused
-        bad = subprocess.run([bash, str(script), "--no-such-option"], capture_output=True, text=True, timeout=60)
+        bad = subprocess.run(
+            [bash, str(script), "--no-such-option"], capture_output=True, text=True, timeout=60, check=False
+        )
         self.assertEqual(bad.returncode, 2, bad.stdout + bad.stderr)  # argparse's exit code is passed on
 
 

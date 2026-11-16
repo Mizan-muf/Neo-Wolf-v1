@@ -22,13 +22,14 @@ import re
 import sys
 import textwrap
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTROLS = REPO_ROOT / "docs" / "CONTROLS.md"
 REPOSITORY_URL = "https://github.com/Mizan-muf/Neo-Wolf-v1"
 COPYRIGHT = "Copyright (c) 2026 Mizan-muf"  # the "Required Notice" of LICENSE.md
 WIDTH = 78
+KEY_COLUMN_MAX = 26  # wider key cells get a line of their own, so the effects stay aligned
 PLATFORMS = ("macos", "windows", "linux")
 
 Table = List[Tuple[str, str]]
@@ -42,12 +43,12 @@ def plain(markdown: str) -> str:
     return text.strip()
 
 
-def _split_row(line: str) -> List[str]:
+def _split_row(line: str) -> list[str]:
     cells = re.split(r"(?<!\\)\|", line.strip().strip("|"))
     return [plain(cell) for cell in cells]
 
 
-def _parse_table(lines: Sequence[str], start: int) -> Tuple[Table, int]:
+def _parse_table(lines: Sequence[str], start: int) -> tuple[Table, int]:
     """A two-column Markdown table starting at lines[start] (the header row)."""
     rows: Table = []
     i = start + 2  # skip the header and the |---|---| line
@@ -63,17 +64,17 @@ class ControlsSection:
     def __init__(self, title: str) -> None:
         self.title = title
         self.rows: Table = []
-        self.notes: List[str] = []
+        self.notes: list[str] = []
 
 
-def parse_controls(markdown: str) -> Tuple[List[ControlsSection], Table]:
+def parse_controls(markdown: str) -> tuple[list[ControlsSection], Table]:
     """The "Per screen" subsections (tables and their notes) and the window-keys table."""
     lines = markdown.splitlines()
-    screens: List[ControlsSection] = []
+    screens: list[ControlsSection] = []
     window_keys: Table = []
     in_per_screen = False
-    current: Optional[ControlsSection] = None
-    paragraph: List[str] = []
+    current: ControlsSection | None = None
+    paragraph: list[str] = []
 
     def flush_paragraph() -> None:
         if paragraph and current is not None:
@@ -115,9 +116,9 @@ def parse_controls(markdown: str) -> Tuple[List[ControlsSection], Table]:
     return screens, window_keys
 
 
-def _format_table(rows: Table, indent: str = "  ") -> List[str]:
-    key_width = min(26, max((len(k) for k, _ in rows), default=0))
-    out: List[str] = []
+def _format_table(rows: Table, indent: str = "  ") -> list[str]:
+    key_width = min(KEY_COLUMN_MAX, max((len(k) for k, _ in rows), default=0))
+    out: list[str] = []
     for keys, effect in rows:
         lead = f"{indent}{keys.ljust(key_width)}  "
         if len(keys) > key_width:
@@ -131,12 +132,12 @@ def _format_table(rows: Table, indent: str = "  ") -> List[str]:
     return out
 
 
-def controls_text(markdown: str) -> List[str]:
+def controls_text(markdown: str) -> list[str]:
     """The CONTROLS section of README.txt, converted from docs/CONTROLS.md."""
     screens, window_keys = parse_controls(markdown)
     if not screens or not window_keys:
         raise ValueError("docs/CONTROLS.md: the 'Per screen' section or the 'Window keys' table was not found")
-    out: List[str] = []
+    out: list[str] = []
     for section in screens:
         out.append(f"{section.title}:")
         out.extend(_format_table(section.rows))
@@ -148,11 +149,11 @@ def controls_text(markdown: str) -> List[str]:
     return out
 
 
-def _heading(title: str) -> List[str]:
+def _heading(title: str) -> list[str]:
     return ["", title, "-" * len(title)]
 
 
-def _wrap(text: str, indent: str = "", hanging: Optional[str] = None) -> List[str]:
+def _wrap(text: str, indent: str = "", hanging: str | None = None) -> list[str]:
     return textwrap.wrap(
         text,
         WIDTH,
@@ -172,7 +173,7 @@ def readme_text(platform: str, version: str, sdl_version: str, json_version: str
         "linux": "Linux (64-bit)",
     }[platform]
     title = f"Neo-Wolf {version} for {label}"
-    out: List[str] = [title, "=" * len(title), ""]
+    out: list[str] = [title, "=" * len(title), ""]
     out += _wrap(
         "A retro first-person shooter: a software raycaster with a ten-level campaign. "
         "Find the exit switch of each level; key cards open locked doors."
@@ -187,8 +188,8 @@ def readme_text(platform: str, version: str, sdl_version: str, json_version: str
         out += ["  neo_wolf      the game", "  game/         the game's content (keep it next to neo_wolf)"]
     sep = "\\" if platform == "windows" else "/"
     out += [
-        f"  README.txt    this file",
-        f"  LICENSE.md    the game's licence (PolyForm Noncommercial 1.0.0)",
+        "  README.txt    this file",
+        "  LICENSE.md    the game's licence (PolyForm Noncommercial 1.0.0)",
         f"  docs{sep}         CONTROLS.md (every key, per screen) and TROUBLESHOOTING.md",
         f"  LICENSES{sep}     notices and licence texts of the third-party libraries",
     ]
@@ -304,7 +305,7 @@ def readme_text(platform: str, version: str, sdl_version: str, json_version: str
     return "\n".join(out) + "\n"
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--platform", required=True, choices=PLATFORMS)
     parser.add_argument("--version", required=True, help="the game's version (CMake's PROJECT_VERSION)")
