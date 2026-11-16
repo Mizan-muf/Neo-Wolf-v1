@@ -1,0 +1,8 @@
+# Whole-tree formatting commits with no behaviour change. `git blame` skips them when run with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file automatically.)
+
+# style: apply clang-format to all C++ sources
+8c4c9eedc4919d57caa89ada72e10e1c5d6779ca
+# style: apply ruff format to the Python tools
+9351bbb266b057c72fb365c7b22ea0ab202e12eb
