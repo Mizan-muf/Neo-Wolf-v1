@@ -126,6 +126,15 @@ std::filesystem::path RepoRoot() {
         .parent_path();
 }
 
+// The Phase 7 campaign (level01..level03 at commit 1d40ae2), frozen as a test fixture in
+// tests/fixtures/reference/game/. Tests that need exact level details (level 1's door at
+// (8, 7), level 2's blue key, level 3's brute) read it instead of the shipped levels, so
+// Phase 8 can redraw game/ without touching them. Tests about the shipped campaign as a whole
+// read game/defs/campaign.json (ShippedCampaign) and hold for any number of levels.
+std::string ReferencePath(const std::string& relativePath) {
+    return ResolveRepoPath("tests/fixtures/reference/" + relativePath);
+}
+
 void BuildBorderWalls(Map& map) {
     for (int x = 0; x < map.Width(); ++x) {
         map.SetCell(x, 0, TileType::Wall);
@@ -423,13 +432,13 @@ void TestContentFileLoaders() {
     TEST_ASSERT(sprites.Path(SpriteTextureId::KeyGold) == "game/assets/sprites/key_gold.ppm");
 
     Map map{};
-    TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), map, errors));
+    TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), map, errors));
     TEST_ASSERT(map.Width() == 16);
     TEST_ASSERT(map.Height() == 12);
     TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
 
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
     TEST_ASSERT(!placements.empty());
     TEST_ASSERT(errors.empty() && warnings.empty());
 
@@ -775,7 +784,7 @@ void TestLogFile() {
 void TestLevelResetAndDynamicLoad() {
     std::vector<std::string> errors;
     Map map{};
-    const std::string mapPath = ResolveRepoPath("game/maps/level01.map");
+    const std::string mapPath = ReferencePath("game/maps/level01.map");
     TEST_ASSERT(LoadMapFromFile(mapPath, map, errors));
 
     // Multi-cycle load simulation: every build of the same files gives the same level.
@@ -784,7 +793,7 @@ void TestLevelResetAndDynamicLoad() {
         Map levelMap = map;
         std::vector<EntityPlacement> placements;
         errors.clear();
-        TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
         LevelContents level{};
         TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, GameplayDefinitions{}, level, errors));
         TEST_ASSERT(level.entities.Entities().size() == 7);
@@ -854,7 +863,7 @@ void TestPlayableVerticalSliceSimulation() {
 void TestMapPerimeterAndReachabilityValidation() {
     Map map{};
     std::vector<std::string> errors;
-    const std::string mapPath = ResolveRepoPath("game/maps/level01.map");
+    const std::string mapPath = ReferencePath("game/maps/level01.map");
     TEST_ASSERT(LoadMapFromFile(mapPath, map, errors));
     TEST_ASSERT(map.Width() > 0);
     TEST_ASSERT(map.Height() > 0);
@@ -998,6 +1007,39 @@ public:
 private:
     std::filesystem::path path_;
 };
+
+// A complete content root in `dir` for engine tests that need the reference levels: the
+// shipped game/ (gameplay.json, themes, sprites, sounds) with tests/fixtures/reference/game
+// (its campaign.json and level01..03) copied over it. Returns `dir`.
+std::filesystem::path MakeReferenceContentRoot(const std::filesystem::path& dir) {
+    const auto options = std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing;
+    std::filesystem::create_directories(dir / "game");
+    std::filesystem::copy(RepoRoot() / "game", dir / "game", options);
+    std::filesystem::copy(PathFromUtf8(ReferencePath("game")), dir / "game", options);
+    return dir;
+}
+
+// Headless engine options on a reference content root inside `scratch` (see above);
+// `startLevel` as for --level (0 = the main menu).
+EngineOptions ReferenceEngineOptions(const ScratchDir& scratch, int startLevel) {
+    EngineOptions options{};
+    options.dataDir = PathToUtf8(MakeReferenceContentRoot(scratch.Path() / "content"));
+    options.headless = true;
+    options.errorDialogs = false;
+    options.startLevel = startLevel;
+    return options;
+}
+
+// The shipped campaign manifest, game/defs/campaign.json (no levels if it does not load).
+CampaignDefinition ShippedCampaign() {
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    CampaignDefinition campaign{};
+    if (!LoadCampaign(ResolveRepoPath("game/defs/campaign.json"), RepoRoot(), campaign, errors, warnings)) {
+        return CampaignDefinition{};
+    }
+    return campaign;
+}
 
 void MakeContentRoot(const std::filesystem::path& dir) {
     std::filesystem::create_directories(dir / "game" / "maps");
@@ -1244,8 +1286,8 @@ void TestCrlfContentLoading() {
     ScratchDir scratch("crlf");
     std::vector<std::string> errors;
 
-    // Map: the shipped level plus a comment and a blank line, in LF and CRLF form.
-    const std::string mapText = "; comment line\n\n" + ReadWholeFile(ResolveRepoPath("game/maps/level01.map"));
+    // Map: the reference level 1 plus a comment and a blank line, in LF and CRLF form.
+    const std::string mapText = "; comment line\n\n" + ReadWholeFile(ReferencePath("game/maps/level01.map"));
     TEST_ASSERT(mapText.find('\r') == std::string::npos);  // content files stay LF
     const std::filesystem::path lfMapPath = scratch.Path() / "lf.map";
     const std::filesystem::path crlfMapPath = scratch.Path() / "crlf.map";
@@ -1272,7 +1314,7 @@ void TestCrlfContentLoading() {
     // Entity placements, in both formats (JSON canonical, CSV legacy).
     std::vector<std::string> warnings;
     for (const char* entitiesFile : {"level01.entities.json", "level01.entities.csv"}) {
-        const std::string lfEntitiesPath = ResolveRepoPath(std::string("game/defs/") + entitiesFile);
+        const std::string lfEntitiesPath = ReferencePath(std::string("game/defs/") + entitiesFile);
         const std::filesystem::path crlfEntitiesPath = scratch.Path() / (std::string("crlf-") + entitiesFile);
         WriteWithCrlf(crlfEntitiesPath, ReadWholeFile(lfEntitiesPath));
         std::vector<EntityPlacement> lfPlacements;
@@ -1321,7 +1363,16 @@ void TestCrlfContentLoading() {
     CampaignDefinition crlfCampaign{};
     std::vector<std::string> campaignWarnings;
     TEST_ASSERT(LoadCampaign(PathToUtf8(crlfCampaignPath), RepoRoot(), crlfCampaign, errors, campaignWarnings));
-    TEST_ASSERT(crlfCampaign.levels.size() == 3 && crlfCampaign.levels[2].theme == "tech");
+    // The same levels as the LF original, whatever their number.
+    const CampaignDefinition lfCampaign = ShippedCampaign();
+    TEST_ASSERT(!lfCampaign.levels.empty() && crlfCampaign.levels.size() == lfCampaign.levels.size());
+    TEST_ASSERT(crlfCampaign.title == lfCampaign.title);
+    for (std::size_t i = 0; i < lfCampaign.levels.size(); ++i) {
+        TEST_ASSERT(crlfCampaign.levels[i].id == lfCampaign.levels[i].id);
+        TEST_ASSERT(crlfCampaign.levels[i].name == lfCampaign.levels[i].name);
+        TEST_ASSERT(crlfCampaign.levels[i].theme == lfCampaign.levels[i].theme);
+        TEST_ASSERT(crlfCampaign.levels[i].map == lfCampaign.levels[i].map);
+    }
     TEST_ASSERT(errors.empty());
 }
 
@@ -1547,8 +1598,8 @@ void TestEntityPlacementsJsonAndCsv() {
     std::vector<std::string> warnings;
     std::vector<EntityPlacement> fromJson;
     std::vector<EntityPlacement> fromCsv;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), fromJson, errors, warnings));
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.csv"), fromCsv, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), fromJson, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.csv"), fromCsv, errors, warnings));
     TEST_ASSERT(errors.empty());
     TEST_ASSERT(warnings.empty());
 
@@ -1571,17 +1622,43 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(fromJson[6].pickupKind == PickupType::Ammo);
 
     // The CSV export is equivalent, field by field.
-    TEST_ASSERT(fromCsv.size() == fromJson.size());
-    for (std::size_t i = 0; i < fromJson.size(); ++i) {
-        TEST_ASSERT(fromCsv[i].type == fromJson[i].type);
-        TEST_ASSERT_NEAR(fromCsv[i].position.x, fromJson[i].position.x, 1e-6f);
-        TEST_ASSERT_NEAR(fromCsv[i].position.y, fromJson[i].position.y, 1e-6f);
-        TEST_ASSERT(fromCsv[i].mapX == fromJson[i].mapX && fromCsv[i].mapY == fromJson[i].mapY);
-        TEST_ASSERT_NEAR(fromCsv[i].angleDegrees, fromJson[i].angleDegrees, 1e-6f);
-        TEST_ASSERT(fromCsv[i].pickupKind == fromJson[i].pickupKind);
-        TEST_ASSERT(fromCsv[i].pickupValue == fromJson[i].pickupValue);
-        TEST_ASSERT(fromCsv[i].variant == fromJson[i].variant);
-        TEST_ASSERT(fromCsv[i].key == fromJson[i].key && fromCsv[i].lock == fromJson[i].lock);
+    const auto expectEquivalent = [](const std::vector<EntityPlacement>& json, const std::vector<EntityPlacement>& csv) {
+        TEST_ASSERT(csv.size() == json.size());
+        for (std::size_t i = 0; i < json.size(); ++i) {
+            TEST_ASSERT(csv[i].type == json[i].type);
+            TEST_ASSERT_NEAR(csv[i].position.x, json[i].position.x, 1e-6f);
+            TEST_ASSERT_NEAR(csv[i].position.y, json[i].position.y, 1e-6f);
+            TEST_ASSERT(csv[i].mapX == json[i].mapX && csv[i].mapY == json[i].mapY);
+            TEST_ASSERT_NEAR(csv[i].angleDegrees, json[i].angleDegrees, 1e-6f);
+            TEST_ASSERT(csv[i].pickupKind == json[i].pickupKind);
+            TEST_ASSERT(csv[i].pickupValue == json[i].pickupValue);
+            TEST_ASSERT(csv[i].variant == json[i].variant);
+            TEST_ASSERT(csv[i].key == json[i].key && csv[i].lock == json[i].lock);
+        }
+    };
+    expectEquivalent(fromJson, fromCsv);
+
+    // Every shipped campaign level whose entity file has a CSV export next to it: the export
+    // is up to date (`devkit sync-entities` after editing the JSON).
+    const CampaignDefinition campaign = ShippedCampaign();
+    TEST_ASSERT(!campaign.levels.empty());
+    for (const CampaignLevel& level : campaign.levels) {
+        const std::string jsonExtension = ".json";
+        if (level.entities.size() <= jsonExtension.size() ||
+            level.entities.compare(level.entities.size() - jsonExtension.size(), jsonExtension.size(), jsonExtension) != 0) {
+            continue;
+        }
+        const std::string jsonPath = ResolveRepoPath(level.entities);
+        const std::string csvPath = jsonPath.substr(0, jsonPath.size() - jsonExtension.size()) + ".csv";
+        if (!std::filesystem::exists(PathFromUtf8(csvPath))) {
+            continue;
+        }
+        std::vector<EntityPlacement> shippedJson;
+        std::vector<EntityPlacement> shippedCsv;
+        TEST_ASSERT(LoadEntityPlacementsFromFile(jsonPath, shippedJson, errors, warnings));
+        TEST_ASSERT(LoadEntityPlacementsFromFile(csvPath, shippedCsv, errors, warnings));
+        TEST_ASSERT(errors.empty() && warnings.empty());
+        expectEquivalent(shippedJson, shippedCsv);
     }
 
     // Every optional field, in both formats.
@@ -1666,9 +1743,9 @@ void TestDecorationsAndSpriteSync() {
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
     Map map{};
-    TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), map, errors));
+    TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), map, errors));
     std::vector<EntityPlacement> placements;
-    TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath("game/defs/level01.entities.json"), placements, errors, warnings));
+    TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
     LevelContents level{};
     TEST_ASSERT(BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
 
@@ -1788,7 +1865,7 @@ void TestPickupKindFromData() {
 // A content root with level01.map and the given gameplay.json and level01.entities.json.
 void WriteContentRoot(const std::filesystem::path& root, const std::string& gameplayJson, const std::string& entitiesJson) {
     MakeContentRoot(root);
-    std::filesystem::copy_file(PathFromUtf8(ResolveRepoPath("game/maps/level01.map")), root / "game" / "maps" / "level01.map",
+    std::filesystem::copy_file(PathFromUtf8(ReferencePath("game/maps/level01.map")), root / "game" / "maps" / "level01.map",
                                std::filesystem::copy_options::overwrite_existing);
     WriteTextFile(root / "game" / "defs" / "gameplay.json", gameplayJson);
     WriteTextFile(root / "game" / "defs" / "level01.entities.json", entitiesJson);
@@ -1885,8 +1962,8 @@ void TestLevelLoadFailures() {
     ScratchDir scratch("level-load-failures");
     const std::filesystem::path root = scratch.Path() / "content";
     WriteContentRoot(root, ReadWholeFile(ResolveRepoPath("game/defs/gameplay.json")),
-                     ReadWholeFile(ResolveRepoPath("game/defs/level01.entities.json")));
-    std::filesystem::copy_file(PathFromUtf8(ResolveRepoPath("game/defs/level01.entities.csv")),
+                     ReadWholeFile(ReferencePath("game/defs/level01.entities.json")));
+    std::filesystem::copy_file(PathFromUtf8(ReferencePath("game/defs/level01.entities.csv")),
                                root / "game" / "defs" / "level01.entities.csv");
 
     Engine engine;
@@ -2234,10 +2311,31 @@ void TestCampaignManifestValidation() {
     CampaignDefinition campaign{};
     TEST_ASSERT(LoadCampaign(ResolveRepoPath("game/defs/campaign.json"), RepoRoot(), campaign, errors, warnings));
     TEST_ASSERT(errors.empty() && warnings.empty());
-    TEST_ASSERT(campaign.levels.size() == 3);
-    TEST_ASSERT(campaign.levels[0].id == "level01" && campaign.levels[0].theme == "bunker");
-    TEST_ASSERT(campaign.levels[1].theme == "stone" && campaign.levels[2].theme == "tech");
-    TEST_ASSERT(campaign.levels[2].map == "game/maps/level03.map");
+    // The shipped manifest loads exactly as written, whatever its number of levels.
+    const nlohmann::json manifest = nlohmann::json::parse(ReadWholeFile(ResolveRepoPath("game/defs/campaign.json")));
+    TEST_ASSERT(manifest["levels"].is_array() && !manifest["levels"].empty());
+    TEST_ASSERT(campaign.title == manifest["title"].get<std::string>());
+    TEST_ASSERT(campaign.levels.size() == manifest["levels"].size());
+    for (std::size_t i = 0; i < campaign.levels.size(); ++i) {
+        const nlohmann::json& entry = manifest["levels"][i];
+        TEST_ASSERT(campaign.levels[i].id == entry["id"].get<std::string>());
+        TEST_ASSERT(campaign.levels[i].name == entry["name"].get<std::string>());
+        TEST_ASSERT(campaign.levels[i].map == entry["map"].get<std::string>());
+        TEST_ASSERT(campaign.levels[i].entities == entry["entities"].get<std::string>());
+        TEST_ASSERT(campaign.levels[i].theme == entry["theme"].get<std::string>());
+    }
+    // The reference campaign (tests/fixtures/reference): exact values.
+    {
+        ScratchDir scratch("campaign-reference");
+        const std::filesystem::path root = MakeReferenceContentRoot(scratch.Path() / "content");
+        CampaignDefinition reference{};
+        TEST_ASSERT(LoadCampaign(PathToUtf8(root / "game" / "defs" / "campaign.json"), root, reference, errors, warnings));
+        TEST_ASSERT(errors.empty() && warnings.empty());
+        TEST_ASSERT(reference.levels.size() == 3);
+        TEST_ASSERT(reference.levels[0].id == "level01" && reference.levels[0].theme == "bunker");
+        TEST_ASSERT(reference.levels[1].theme == "stone" && reference.levels[2].theme == "tech");
+        TEST_ASSERT(reference.levels[2].map == "game/maps/level03.map");
+    }
 
     TEST_ASSERT(IsValidContentId("level01") && IsValidContentId("tech_2-b"));
     TEST_ASSERT(!IsValidContentId("") && !IsValidContentId("../x") && !IsValidContentId("Level"));
@@ -2281,7 +2379,7 @@ void TestCampaignManifestValidation() {
         if (!AnyMessageContains(errors, {"campaign.json", c.expected})) {
             FailTest(__FILE__, __LINE__, std::string("expected an error containing: ") + c.expected);
         }
-        TEST_ASSERT(untouched.levels.size() == 3);  // unchanged on failure
+        TEST_ASSERT(untouched.levels.size() == campaign.levels.size());  // unchanged on failure
     }
 
     // Unknown keys and very long names are warnings only.
@@ -2318,10 +2416,25 @@ void TestExitSwitchActivation() {
     std::vector<std::string> errors;
     TEST_ASSERT(LoadMapFromFile(PathToUtf8(scratch.Path() / "x.map"), loaded, errors));
     TEST_ASSERT(loaded.GetCell(3, 1) == TileType::Exit && loaded.IsWall(3, 1));
-    // The shipped level 1 has one, on the east wall.
+    // The reference level 1 has one, on the east wall; every shipped campaign map has one.
     Map level01{};
-    TEST_ASSERT(LoadMapFromFile(ResolveRepoPath("game/maps/level01.map"), level01, errors));
+    TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), level01, errors));
     TEST_ASSERT(level01.GetCell(15, 8) == TileType::Exit);
+    const CampaignDefinition campaign = ShippedCampaign();
+    TEST_ASSERT(!campaign.levels.empty());
+    for (const CampaignLevel& level : campaign.levels) {
+        Map shipped{};
+        TEST_ASSERT(LoadMapFromFile(ResolveRepoPath(level.map), shipped, errors));
+        int exits = 0;
+        for (int y = 0; y < shipped.Height(); ++y) {
+            for (int x = 0; x < shipped.Width(); ++x) {
+                exits += shipped.GetCell(x, y) == TileType::Exit ? 1 : 0;
+            }
+        }
+        if (exits == 0) {
+            FailTest(__FILE__, __LINE__, level.map + " has no exit switch X");
+        }
+    }
 
     const Map map = MakeExitTestMap();
     Player player{};
@@ -2452,7 +2565,9 @@ void TestProgressFileRoundTrip() {
         TEST_ASSERT(engine.Init(options));
         TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.MenuItems().size() == 3);
     }
-    data.highestUnlocked = 3;
+    // Level 3 unlocked (or the last level of a shorter campaign: a save beyond it is clamped).
+    const int unlocked = std::min(3, static_cast<int>(ShippedCampaign().levels.size()));
+    data.highestUnlocked = unlocked;
     TEST_ASSERT(SaveProgressFile(path, data, error));
     {
         Engine engine;
@@ -2462,7 +2577,7 @@ void TestProgressFileRoundTrip() {
         options.headless = true;
         options.errorDialogs = false;
         TEST_ASSERT(engine.Init(options));
-        TEST_ASSERT(engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == 3);
+        TEST_ASSERT(engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == unlocked);
         TEST_ASSERT(engine.flow_.MenuItems()[1] == MenuItem::Continue);
     }
 }
@@ -2545,11 +2660,17 @@ void TestThemeLoadingAndSwap() {
     options.headless = true;
     options.errorDialogs = false;
     TEST_ASSERT(campaignEngine.Init(options));
-    TEST_ASSERT(campaignEngine.currentThemeId_ == "bunker");
-    TEST_ASSERT(campaignEngine.LoadCampaignLevel(2, PlayerStats{50, 5}));
-    TEST_ASSERT(campaignEngine.currentThemeId_ == "tech");
-    TEST_ASSERT(campaignEngine.playerHealth_ == 50 && campaignEngine.playerAmmo_ == 5);
-    TEST_ASSERT(campaignEngine.CurrentCampaignLevel() != nullptr && campaignEngine.CurrentCampaignLevel()->id == "level03");
+    const CampaignDefinition campaign = ShippedCampaign();
+    TEST_ASSERT(!campaign.levels.empty());
+    TEST_ASSERT(campaignEngine.currentThemeId_ == campaign.levels[0].theme);
+    // Every shipped level, last to first (so consecutive loads switch themes in both directions).
+    for (int index = static_cast<int>(campaign.levels.size()) - 1; index >= 0; --index) {
+        const CampaignLevel& level = campaign.levels[static_cast<std::size_t>(index)];
+        TEST_ASSERT(campaignEngine.LoadCampaignLevel(index, PlayerStats{50, 5}));
+        TEST_ASSERT(campaignEngine.currentThemeId_ == level.theme);
+        TEST_ASSERT(campaignEngine.playerHealth_ == 50 && campaignEngine.playerAmmo_ == 5);
+        TEST_ASSERT(campaignEngine.CurrentCampaignLevel() != nullptr && campaignEngine.CurrentCampaignLevel()->id == level.id);
+    }
 }
 
 // Checks that everything drawn since the last ResetDrawBounds() lies inside the framebuffer,
@@ -2585,14 +2706,15 @@ void TestUiLayoutBounds() {
         AssertInsideMargin(engine.framebuffer_, PreviewScreenName(screen));
     }
 
-    // Play with everything on: minimap, level banner, debug overlay, a long message.
+    // Play with everything on: minimap, level banner, debug overlay, a long message. On the
+    // shipped campaign's last level (the biggest map, so the minimap follows the player).
     {
         Engine engine;
         EngineOptions options{};
         options.dataDir = PathToUtf8(RepoRoot());
         options.headless = true;
         options.errorDialogs = false;
-        options.startLevel = 3;
+        options.startLevel = static_cast<int>(ShippedCampaign().levels.size());
         TEST_ASSERT(engine.Init(options));
         engine.minimapVisible_ = true;
         engine.debugOverlayVisible_ = true;
@@ -2665,11 +2787,15 @@ void TestUiLayoutBounds() {
 
 // --- Scripted play-through ------------------------------------------------------------------
 // The Phase 7 autoplay bot (engine/autoplay/AutoplayBot.h) plays the shipped campaign through
-// Engine::Update with injected input, from the main menu: New Game, level01 -> level02 ->
-// level03 -> CampaignComplete, health and ammo carried over. The per-level runs are CTest
-// autoplay.level.N and autoplay.campaign (neo_wolf_autoplay); this test checks the engine state
-// they cannot see, then uses Continue on the main menu.
+// Engine::Update with injected input, from the main menu: New Game, every level of
+// game/defs/campaign.json in order -> CampaignComplete, health and ammo carried over. The
+// per-level runs are CTest autoplay.level.N and autoplay.campaign (neo_wolf_autoplay); this test
+// checks the engine state they cannot see, then uses Continue on the main menu. It holds for any
+// campaign size; fetching a key before its locked door is covered by autoplay_fixture_level.
 void TestCampaignPlaythrough() {
+    const CampaignDefinition campaign = ShippedCampaign();
+    TEST_ASSERT(!campaign.levels.empty());
+    const std::size_t levelCount = campaign.levels.size();
     ScratchDir prefs("playthrough-prefs");
     Engine engine;
     EngineOptions options{};
@@ -2685,7 +2811,7 @@ void TestCampaignPlaythrough() {
         FailTest(__FILE__, __LINE__, "the bot did not finish the campaign:\n" + FormatAutoplayTable(report));
     }
     TEST_ASSERT(engine.GetState() == GameState::CampaignComplete);
-    TEST_ASSERT(report.levels.size() == 3 && report.carryOverChecked && report.carryOverProblems.empty());
+    TEST_ASSERT(report.levels.size() == levelCount && report.carryOverChecked && report.carryOverProblems.empty());
     // New Game starts with the gameplay.json values; later levels start with what the
     // previous one ended with (clamped to the maxima).
     TEST_ASSERT(report.levels[0].healthStart == engine.gameplay_.player.initialHealth);
@@ -2694,20 +2820,40 @@ void TestCampaignPlaythrough() {
         TEST_ASSERT(report.levels[i].healthStart == std::min(report.levels[i - 1].healthEnd, engine.gameplay_.player.maxHealth));
         TEST_ASSERT(report.levels[i].ammoStart == std::min(report.levels[i - 1].ammoEnd, engine.gameplay_.weapon.maxAmmo));
     }
-    // Level 2's exit is behind a blue locked door: the bot fetched the key and used it. Level 3
-    // has a guard, a brute and a runner.
-    TEST_ASSERT(report.levels[1].keysCollected == std::vector<std::string>{"blue"});
-    TEST_ASSERT(report.levels[1].keysUsed == std::vector<std::string>{"blue"});
-    TEST_ASSERT(engine.flow_.LastResults().totalEnemies == 3);
-    TEST_ASSERT(engine.flow_.LastResults().shotsFired == report.levels[2].shotsFired);
+    // Per level, against its own files: the report names the level, counts its enemies, and
+    // every locked door the bot opened has a lock of that colour in the level and was opened
+    // with a key the bot collected there (keys do not carry over).
+    for (std::size_t i = 0; i < levelCount; ++i) {
+        const AutoplayLevelReport& level = report.levels[i];
+        TEST_ASSERT(level.id == campaign.levels[i].id && level.levelNumber == static_cast<int>(i) + 1);
+        std::vector<std::string> errors;
+        std::vector<std::string> warnings;
+        std::vector<EntityPlacement> placements;
+        TEST_ASSERT(LoadEntityPlacementsFromFile(ResolveRepoPath(campaign.levels[i].entities), placements, errors, warnings));
+        int enemies = 0;
+        std::vector<std::string> locks;
+        for (const EntityPlacement& placement : placements) {
+            enemies += placement.type == PlacementType::Enemy ? 1 : 0;
+            if (placement.type == PlacementType::Door && placement.lock != KeyColor::None) {
+                locks.push_back(KeyColorName(placement.lock));
+            }
+        }
+        TEST_ASSERT(level.totalEnemies == enemies);
+        for (const std::string& used : level.keysUsed) {
+            TEST_ASSERT(std::find(locks.begin(), locks.end(), used) != locks.end());
+            TEST_ASSERT(std::find(level.keysCollected.begin(), level.keysCollected.end(), used) != level.keysCollected.end());
+        }
+    }
+    TEST_ASSERT(engine.flow_.LastResults().totalEnemies == report.levels.back().totalEnemies);
+    TEST_ASSERT(engine.flow_.LastResults().shotsFired == report.levels.back().shotsFired);
 
-    // Progress was saved: all three levels unlocked.
+    // Progress was saved: every level unlocked.
     ProgressData saved{};
     std::string message;
     TEST_ASSERT(LoadProgressFile(PathToUtf8(prefs.Path() / kProgressFileName), saved, message) == ProgressLoadResult::Loaded);
-    TEST_ASSERT(saved.highestUnlocked == 3);
+    TEST_ASSERT(saved.highestUnlocked == static_cast<int>(levelCount));
 
-    // Credits -> Enter -> menu, where Continue is offered and starts level 3 with fresh stats.
+    // Credits -> Enter -> menu, where Continue is offered and starts the last level with fresh stats.
     constexpr double kDt = 1.0 / 60.0;
     InputAction pressed = InputAction::Count;
     engine.SetInputInjector([&pressed](InputState& input) {
@@ -2727,19 +2873,18 @@ void TestCampaignPlaythrough() {
     tap(InputAction::MoveBackward);  // NEW GAME -> CONTINUE
     TEST_ASSERT(engine.flow_.MenuCursor() == 1);
     tap(InputAction::Select);
-    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ == 2);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ == static_cast<int>(levelCount) - 1);
     TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
 }
 
 void TestNewGameResetsWorld() {
     // Known issue C7: Game Over -> Menu -> New Game used to keep 0 HP and the old world.
+    // On the reference campaign: level 1 has a guard and the spawn at (2.5, 2.5).
     ScratchDir prefs("new-game-prefs");
+    ScratchDir content("new-game-content");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
+    EngineOptions options = ReferenceEngineOptions(content, 0);
     options.prefDir = prefs.Path();
-    options.headless = true;
-    options.errorDialogs = false;
     TEST_ASSERT(engine.Init(options));
 
     InputAction pressed = InputAction::Count;
@@ -2931,14 +3076,11 @@ void TestEnemyHearing() {
     UpdateEnemyAi(manager, map, player, health, 0.05f, events, &loud);
     TEST_ASSERT(manager.GetEntityById(id)->enemyState == EnemyState::Alert);
 
-    // Through the engine: a shot in level 3 wakes the brute (10 cells along the corridor) but not
-    // the guard locked in the room behind the closed door.
+    // Through the engine: a shot in the reference level 3 wakes the brute (10 cells along the
+    // corridor) but not the guard locked in the room behind the closed door.
+    ScratchDir referenceContent("hearing-reference");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 3;
+    const EngineOptions options = ReferenceEngineOptions(referenceContent, 3);
     TEST_ASSERT(engine.Init(options));
     const Entity* guard = nullptr;
     const Entity* brute = nullptr;
@@ -3109,13 +3251,10 @@ void TestEnemyArchetypesFromData() {
     TEST_ASSERT_NEAR(entity.moveSpeed, 0.5f, 1e-6f);
     TEST_ASSERT(entity.damage == kDefaultEnemyDefinitions.brute.damage);  // not in the file: the default
 
-    // The shipped campaign: level 3 has one enemy of each type, each with its own texture loaded.
+    // The reference campaign: level 3 has one enemy of each type, each with its own texture loaded.
+    ScratchDir referenceContent("archetypes-reference");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 3;
+    const EngineOptions options = ReferenceEngineOptions(referenceContent, 3);
     TEST_ASSERT(engine.Init(options));
     int counts[kEnemyVariantCount] = {};
     for (const Entity& e : engine.entityManager_.Entities()) {
@@ -3244,14 +3383,11 @@ void TestLockedDoorsAndKeys() {
     UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, noKeys);
     TEST_ASSERT(noKeys.doorNeedsKey == KeyColor::Blue);
 
-    // Through the engine (level 2): "NEED BLUE KEY", the key card, the door opens; keys are
-    // cleared when the level restarts.
+    // Through the engine (reference level 2): "NEED BLUE KEY", the key card, the door opens;
+    // keys are cleared when the level restarts.
+    ScratchDir referenceContent("locked-doors-reference");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 2;
+    const EngineOptions options = ReferenceEngineOptions(referenceContent, 2);
     TEST_ASSERT(engine.Init(options));
     TEST_ASSERT(engine.map_.GetCell(9, 3) == TileType::Door && engine.map_.GetDoorLock(9, 3) == KeyColor::Blue);
     TEST_ASSERT(engine.map_.GetDoorLock(5, 3) == KeyColor::None);
@@ -3320,13 +3456,10 @@ void TestDoorCloseBlocked() {
     TEST_ASSERT(closed.doorToggled && !closed.doorOpened && !closed.doorBlocked);
     TEST_ASSERT(map.GetCell(5, 2) == TileType::Door);
 
-    // Through the engine: the HUD says BLOCKED (level 1's door, a guard in the doorway).
+    // Through the engine: the HUD says BLOCKED (reference level 1's door, a guard in the doorway).
+    ScratchDir referenceContent("door-blocked-reference");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 1;
+    const EngineOptions options = ReferenceEngineOptions(referenceContent, 1);
     TEST_ASSERT(engine.Init(options));
     bool interact = false;
     engine.SetInputInjector([&interact](InputState& input) { input.SetActionState(InputAction::Interact, interact); });
@@ -3858,16 +3991,14 @@ void TestPlayerEnemyCollision() {
     TEST_ASSERT_NEAR(corpse.position.x, 2.6f, 1e-6f);  // corpses are left alone
     TEST_ASSERT(LivingEnemyBodies(manager).size() == 1);
 
-    // In the engine: walk level 1's hall straight at its guard. The player never gets closer
-    // than the two radii, the guard attacks; once it is dead the player walks over its corpse.
+    // In the engine: walk the reference level 1's hall straight at its guard. The player never
+    // gets closer than the two radii, the guard attacks; once it is dead the player walks over
+    // its corpse.
     ScratchDir prefs("c15-prefs");
+    ScratchDir referenceContent("c15-reference");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
+    EngineOptions options = ReferenceEngineOptions(referenceContent, 1);
     options.prefDir = prefs.Path();
-    options.startLevel = 1;
-    options.headless = true;
-    options.errorDialogs = false;
     TEST_ASSERT(engine.Init(options));
     Entity* enemy = nullptr;
     for (Entity& entity : engine.entityManager_.Entities()) {
@@ -4030,7 +4161,7 @@ const TestCase kTests[] = {
     {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
     {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
     {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
-    {"campaign_playthrough", "Scripted play-through level01 -> 03 -> CampaignComplete", &TestCampaignPlaythrough},
+    {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete", &TestCampaignPlaythrough},
     {"line_of_sight", "Line of sight: walls and closed doors block, open doors do not", &TestLineOfSight},
     {"enemy_hearing", "Enemies hear shots through open cells only", &TestEnemyHearing},
     {"enemy_pathfinding", "Grid path finding and enemies walking round walls", &TestEnemyPathfinding},

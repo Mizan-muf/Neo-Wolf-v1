@@ -1,0 +1,10 @@
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+player,1.5,1.5,,,,,90
+door,7.5,4.5,7,4
+enemy,4.5,3.5,,,,,,guard
+pickup,3.5,4.5,,,ammo
+pickup,1.5,6.5,,,health
+trigger,7.5,6.5,7,6
+decoration,8.5,1.5
+enemy,8.5,4.5,,,,,,brute
+enemy,7.5,1.5,,,,,,runner

@@ -29,6 +29,46 @@ constexpr ThemeSlot kThemeSlots[] = {
     {"floor", &ThemeTextureAssignments::floor},     {"ceiling", &ThemeTextureAssignments::ceiling},
     {"exit", &ThemeTextureAssignments::exit},
 };
+
+// The fixed stage of the "enemies" and "items" previews: the hall of the Phase 7 level 1
+// (a door at (8, 7), a trigger at (13, 8), the exit switch at (15, 8)), built in code so the
+// reference screenshots do not change when the campaign's first level is redrawn (Phase 8).
+constexpr int kShowcaseWidth = 16;
+constexpr int kShowcaseHeight = 12;
+constexpr const char* kShowcaseRows[kShowcaseHeight] = {
+    "################", "#..............#", "#..............#", "#..##A####B##..#",
+    "#..............#", "#.......A......#", "#..............#", "#.......D......#",
+    "#............T.X", "#.......B......#", "#..............#", "################",
+};
+
+TileType ShowcaseTile(char c) {
+    switch (c) {
+    case '#':
+        return TileType::Wall;
+    case 'A':
+        return TileType::WallAltA;
+    case 'B':
+        return TileType::WallAltB;
+    case 'D':
+        return TileType::Door;
+    case 'T':
+        return TileType::Trigger;
+    case 'X':
+        return TileType::Exit;
+    default:
+        return TileType::Empty;
+    }
+}
+
+EntityPlacement ShowcasePlacement(PlacementType type, Vec2 position, int mapX, int mapY) {
+    EntityPlacement placement{};
+    placement.type = type;
+    placement.position = position;
+    placement.mapX = mapX;
+    placement.mapY = mapY;
+    placement.source = "preview stage";
+    return placement;
+}
 } // namespace
 
 bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors) {
@@ -309,29 +349,49 @@ bool Engine::SetupPreview(PreviewScreen screen) {
         break;
     case PreviewScreen::Enemies:
     case PreviewScreen::Items:
-        // Level 1's open hall: the preview locks its door and replaces the enemies and pickups
-        // with a fixed line-up in front of the player.
-        if (!startLevelOne()) {
+        // A fixed hall (not the campaign's level 1, which Phase 8 redraws): the preview locks
+        // its door and puts a fixed line-up in front of the player.
+        if (!startLevelOne() || !SetupShowcase(screen == PreviewScreen::Enemies)) {
             return false;
         }
-        SetupShowcase(screen == PreviewScreen::Enemies);
         break;
     }
     PublishStateChange();
     return true;
 }
 
-void Engine::SetupShowcase(bool enemies) {
-    std::vector<int> removed;
+bool Engine::SetupShowcase(bool enemies) {
+    // Replace level 1 with the stage: its map, the player looking east along the hall at the
+    // door, the door and the trigger; nothing else. The bunker theme, whatever level 1 uses.
+    Map stage(kShowcaseWidth, kShowcaseHeight);
+    for (int y = 0; y < kShowcaseHeight; ++y) {
+        for (int x = 0; x < kShowcaseWidth; ++x) {
+            stage.SetCell(x, y, ShowcaseTile(kShowcaseRows[y][x]));
+        }
+    }
+    std::vector<EntityPlacement> placements = {
+        ShowcasePlacement(PlacementType::Player, {2.5f, 7.5f}, -1, -1),
+        ShowcasePlacement(PlacementType::Door, {8.5f, 7.5f}, 8, 7),
+        ShowcasePlacement(PlacementType::Trigger, {13.5f, 8.5f}, 13, 8),
+    };
+    LevelContents contents{};
+    std::vector<std::string> errors;
+    if (!BuildLevelFromPlacements(stage, placements, gameplay_, contents, errors)) {
+        LogError("Preview stage could not be built:");
+        for (const std::string& error : errors) {
+            LogError("  " + error);
+        }
+        return false;
+    }
+    map_ = std::move(stage);
+    entityManager_ = std::move(contents.entities);
+    sprites_ = std::move(contents.sprites);
+    player_ = contents.player;
+    ApplyTheme("bunker");
+
     Entity* door = nullptr;
     for (Entity& entity : entityManager_.Entities()) {
-        // Level 1's own enemies, pickups and decorations make way for the line-up. (The
-        // decoration, a blue vase at (4.2, 8.8), used to show as a light-blue shape cut off at
-        // the right edge of both previews: known issue C18.)
-        if (entity.type == EntityType::Enemy || entity.type == EntityType::Pickup ||
-            entity.type == EntityType::Decoration) {
-            removed.push_back(entity.id);
-        } else if (entity.type == EntityType::Door && door == nullptr) {
+        if (entity.type == EntityType::Door && door == nullptr) {
             door = &entity;
         }
     }
@@ -340,15 +400,9 @@ void Engine::SetupShowcase(bool enemies) {
         door->doorLock = lock;
         map_.SetDoorLock(door->mapX, door->mapY, lock);
     }
-    for (const int id : removed) {
-        entityManager_.DestroyEntity(id);
-    }
     levelBannerTimer_ = 0.0f;
     playerHealth_ = 82;
     playerAmmo_ = 31;
-    // Looking east along the hall at the (locked) door.
-    player_.position = {2.5f, 7.5f};
-    player_.directionAngleRadians = 0.0f;
 
     if (enemies) {
         // One enemy of each type and a guard's corpse on the floor.
@@ -387,4 +441,5 @@ void Engine::SetupShowcase(bool enemies) {
         ShowMessage("GOLD KEY CARD", 60.0f);
     }
     SyncSpritesWithEntities(entityManager_, sprites_);
+    return true;
 }

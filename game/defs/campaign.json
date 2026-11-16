@@ -21,6 +21,55 @@
       "map": "game/maps/level03.map",
       "entities": "game/defs/level03.entities.json",
       "theme": "tech"
+    },
+    {
+      "id": "level04",
+      "name": "Motor Pool",
+      "map": "game/maps/level04.map",
+      "entities": "game/defs/level04.entities.json",
+      "theme": "bunker"
+    },
+    {
+      "id": "level05",
+      "name": "Catacombs",
+      "map": "game/maps/level05.map",
+      "entities": "game/defs/level05.entities.json",
+      "theme": "stone"
+    },
+    {
+      "id": "level06",
+      "name": "Relay Station",
+      "map": "game/maps/level06.map",
+      "entities": "game/defs/level06.entities.json",
+      "theme": "tech"
+    },
+    {
+      "id": "level07",
+      "name": "Blackout Barracks",
+      "map": "game/maps/level07.map",
+      "entities": "game/defs/level07.entities.json",
+      "theme": "bunker"
+    },
+    {
+      "id": "level08",
+      "name": "Reactor Spine",
+      "map": "game/maps/level08.map",
+      "entities": "game/defs/level08.entities.json",
+      "theme": "tech"
+    },
+    {
+      "id": "level09",
+      "name": "Sunken Archive",
+      "map": "game/maps/level09.map",
+      "entities": "game/defs/level09.entities.json",
+      "theme": "stone"
+    },
+    {
+      "id": "level10",
+      "name": "Wolf's Den",
+      "map": "game/maps/level10.map",
+      "entities": "game/defs/level10.entities.json",
+      "theme": "classic"
     }
   ]
 }

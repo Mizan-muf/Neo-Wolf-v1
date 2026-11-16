@@ -1,0 +1,14 @@
+{
+  "level": "level03",
+  "entities": [
+    { "type": "player", "x": 1.5, "y": 1.5, "angle": 90 },
+    { "type": "door", "x": 7.5, "y": 4.5, "mapX": 7, "mapY": 4 },
+    { "type": "enemy", "x": 4.5, "y": 3.5, "variant": "guard" },
+    { "type": "pickup", "x": 3.5, "y": 4.5, "kind": "ammo" },
+    { "type": "pickup", "x": 1.5, "y": 6.5, "kind": "health" },
+    { "type": "trigger", "x": 7.5, "y": 6.5, "mapX": 7, "mapY": 6 },
+    { "type": "decoration", "x": 8.5, "y": 1.5 },
+    { "type": "enemy", "x": 8.5, "y": 4.5, "variant": "brute" },
+    { "type": "enemy", "x": 7.5, "y": 1.5, "variant": "runner" }
+  ]
+}

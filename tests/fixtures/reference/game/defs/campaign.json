@@ -1,0 +1,26 @@
+{
+  "title": "Operation Neo-Wolf",
+  "levels": [
+    {
+      "id": "level01",
+      "name": "Outpost Gate",
+      "map": "game/maps/level01.map",
+      "entities": "game/defs/level01.entities.json",
+      "theme": "bunker"
+    },
+    {
+      "id": "level02",
+      "name": "Old Cellars",
+      "map": "game/maps/level02.map",
+      "entities": "game/defs/level02.entities.json",
+      "theme": "stone"
+    },
+    {
+      "id": "level03",
+      "name": "Server Annex",
+      "map": "game/maps/level03.map",
+      "entities": "game/defs/level03.entities.json",
+      "theme": "tech"
+    }
+  ]
+}

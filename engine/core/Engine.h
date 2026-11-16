@@ -179,8 +179,9 @@ private:
     // Pushes a StateChanged event (and logs) if the flow's state differs from the last one.
     void PublishStateChange();
     void RefreshTexturePointers();
-    // Previews "enemies" / "items": replaces the level's enemies and pickups with a line-up.
-    void SetupShowcase(bool enemies);
+    // Previews "enemies" / "items": replaces the loaded level with a fixed stage (a hall with a
+    // locked door, independent of the campaign) and a line-up of enemies or pickups.
+    bool SetupShowcase(bool enemies);
     void RenderWorld();
     void RenderUi();
 };

@@ -104,14 +104,26 @@ class TestCreateMap(CliTest):
 
 class TestInspectMap(CliTest):
     def test_every_shipped_campaign_level(self) -> None:
-        for level in ("1", "2", "3", "level01", "level02", "level03"):
-            with self.subTest(level=level):
-                code, out = run_cli("inspect-map", "--level", level)
-                self.assertEqual(code, 0, out)
-                self.assertIn("Status: OK", out)
-        code, out = run_cli("inspect-map", str(REPO_ROOT / "game" / "maps" / "level02.map"))
-        self.assertEqual(code, 0, out)  # finds level02's entity file through the campaign
-        self.assertIn("Keys, in the order they become reachable: blue", out)
+        # Data-driven: every level of the shipped campaign.json, by number and by id.
+        campaign = json.loads((REPO_ROOT / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
+        levels = campaign["levels"]
+        self.assertGreater(len(levels), 0)
+        for number, level in enumerate(levels, start=1):
+            for selector in (str(number), level["id"]):
+                with self.subTest(level=selector):
+                    code, out = run_cli("inspect-map", "--level", selector)
+                    self.assertEqual(code, 0, out)
+                    self.assertIn("Status: OK", out)
+        # A map path alone: the entity file is found through the campaign.
+        code, out = run_cli("inspect-map", str(REPO_ROOT / levels[-1]["map"]))
+        self.assertEqual(code, 0, out)
+        self.assertIn("Status: OK", out)
+
+    def test_key_order_through_the_campaign(self) -> None:
+        # The fixture's "beta" level: a blue door, then a red one; found through its campaign.
+        code, out = run_cli("--root", str(self.root), "inspect-map", str(self.root / "game" / "maps" / "beta.map"))
+        self.assertEqual(code, 0, out)
+        self.assertIn("Keys, in the order they become reachable: blue, red", out)
 
     def test_fixture_levels_and_unknown_level(self) -> None:
         code, out = run_cli("--root", str(self.root), "inspect-map", "--level", "beta")

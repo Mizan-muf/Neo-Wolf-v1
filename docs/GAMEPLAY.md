@@ -14,17 +14,23 @@ campaign through the real engine with simulated input. Keys per screen: [CONTROL
 ## The campaign
 
 The levels and their order come from `game/defs/campaign.json`
-([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#campaign)). The campaign has three levels for
-now:
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#campaign)). The campaign has its final ten
+levels (Roadmap Phase 8); the design, difficulty curve and resource economy are in
+[levels/README.md](levels/README.md). Levels 1–3 are still the Phase 7 levels and levels 4–10
+are **stubs** (a small room with an exit switch) until the builders replace them:
 
 | # | Id | Name | Theme | Status |
 |---|---|---|---|---|
-| 1 | `level01` | Outpost Gate | `bunker` | The original level with an exit switch: one guard, a health and an ammo pickup |
-| 2 | `level02` | Old Cellars | `stone` | **Placeholder**: a guard, and a blue key card that opens the blue locked door in front of the exit |
-| 3 | `level03` | Server Annex | `tech` | **Placeholder**: a guard (shut in a room), a brute and a runner |
-
-Roadmap Phase 8 replaces level 1 with a tutorial and the two placeholders with real levels
-(10 in total).
+| 1 | `level01` | Outpost Gate | `bunker` | Phase 7 level (one guard, a health and an ammo pickup); becomes the tutorial |
+| 2 | `level02` | Old Cellars | `stone` | Phase 7 placeholder: a guard, and a blue key card that opens the blue locked door in front of the exit |
+| 3 | `level03` | Server Annex | `tech` | Phase 7 placeholder: a guard (shut in a room), a brute and a runner |
+| 4 | `level04` | Motor Pool | `bunker` | **Stub** |
+| 5 | `level05` | Catacombs | `stone` | **Stub** |
+| 6 | `level06` | Relay Station | `tech` | **Stub** |
+| 7 | `level07` | Blackout Barracks | `bunker` | **Stub** |
+| 8 | `level08` | Reactor Spine | `tech` | **Stub** |
+| 9 | `level09` | Sunken Archive | `stone` | **Stub** |
+| 10 | `level10` | Wolf's Den | `classic` | **Stub** |
 
 ## States and transitions
 
@@ -210,8 +216,8 @@ the key cards and the red-locked door (preview `--preview items`).*
   reachable at the end ([DEVKIT_GUIDE.md](DEVKIT_GUIDE.md)).
 
 Tests: `locked_doors_and_keys`, `hud_key_icons_layout`, `entity_variant_validation`, and
-`campaign_playthrough` and the autoplay bot (`autoplay.level.2`), which fetches level 2's blue key
-before it can reach the exit ([TESTING.md](TESTING.md#autoplay-bot)).
+`autoplay_fixture_level` and the autoplay bot (`autoplay.level.2`), which fetch a blue key card
+before they can reach the exit ([TESTING.md](TESTING.md#autoplay-bot)).
 
 ![Level complete](images/screens/levelcomplete.png)
 

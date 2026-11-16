@@ -10,13 +10,13 @@ All paths inside the files are relative to the content root and use `/`.
 ```text
 game/
 |-- maps/
-|   `-- level01.map ... level03.map  level grids (format: MAP_FORMAT.md)
+|   `-- level01.map ... level10.map  level grids (format: MAP_FORMAT.md)
 |-- defs/
 |   |-- campaign.json             the level list and order                     (required)
 |   |-- gameplay.json             player, weapon, enemy type and pickup values (required)
 |   |-- level01.entities.json     level 1 entity placements, canonical         (required by the campaign)
 |   |-- level01.entities.csv      the same placements as a CSV export          (optional)
-|   |-- level02/03.entities.*     the same for levels 2 and 3
+|   |-- level02..10.entities.*    the same for levels 2 to 10
 |   |-- themes/<id>.cfg           texture themes: bunker, stone, tech, classic
 |   |-- sprites.cfg               billboard sprite textures (enemies, corpses, pickups, keys)
 |   `-- audio.cfg                 sound effects and master volume
@@ -414,9 +414,11 @@ three. Test `campaign_manifest_validation`; the DevKit's `validate` checks it to
 Errors: the file cannot be read; invalid JSON or a repeated key; a missing or mistyped field;
 an empty `levels`; a repeated or malformed id; a missing map, entity or theme file. Unknown keys
 are warnings. A title or name longer than 32 characters is a warning and is shortened on
-screen. The shipped campaign has 3 levels; `level02` and `level03` are **placeholders** (level 2
-adds a blue key and a blue locked door in front of the exit, level 3 a brute and a runner) and
-are replaced in Roadmap Phase 8.
+screen. The shipped campaign has its final 10 levels (ids `level01` to `level10`, names and
+themes from the Phase 8 design, [levels/README.md](levels/README.md)); `level01` to `level03`
+are still the Phase 7 levels and `level04` to `level10` are **stubs** (a small room with an
+exit switch, marked `STUB` in the map's header comment) until they are built. CTest
+`content_validation_campaign_size` requires exactly 10 (`validate --strict --require-levels 10`).
 
 Every campaign level must contain at least one exit switch (`X`) that the player can reach
 (DevKit rule, [MAP_FORMAT.md](MAP_FORMAT.md#devkit-rules-stricter-than-the-engine)).
@@ -442,10 +444,10 @@ exit=game/assets/themes/bunker/exit.ppm
 
 | Theme | Textures | Used by |
 |---|---|---|
-| `bunker` | concrete, olive steel, hazard stripes, blast door (generated, 32×32) | level01 |
-| `stone` | stone bricks, moss, granite, wooden door (generated, 32×32) | level02 |
-| `tech` | blue panels, circuits, server racks, sliding door (generated, 32×32) | level03 |
-| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch and locked doors | no level yet |
+| `bunker` | concrete, olive steel, hazard stripes, blast door (generated, 32×32) | level01, level04, level07 |
+| `stone` | stone bricks, moss, granite, wooden door (generated, 32×32) | level02, level05, level09 |
+| `tech` | blue panels, circuits, server racks, sliding door (generated, 32×32) | level03, level06, level08 |
+| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch and locked doors | level10 |
 
 Each full theme's locked doors are its own door with a band in the lock's colour (see
 [ASSET_GUIDE.md](ASSET_GUIDE.md#4-texture-themes)).

@@ -326,6 +326,24 @@ if(NEOWOLF_BUILD_TESTS)
                         "no per-level game_smoke_level_N or autoplay.level.N tests are registered.")
         set(neowolf_campaign_levels 0)
     endif()
+    # game_smoke_frames starts campaign level 1 and expects its entity count in the log: read it
+    # from level 1's entity file (a .json) so the test follows the content.
+    set(neowolf_first_level_entities_regex "[0-9]+")
+    if(neowolf_campaign_levels GREATER 0)
+        string(JSON neowolf_first_entities ERROR_VARIABLE neowolf_first_error GET "${neowolf_campaign_json}" levels 0 entities)
+        if(NOT neowolf_first_error AND neowolf_first_entities MATCHES "\\.json$"
+           AND EXISTS "${PROJECT_SOURCE_DIR}/${neowolf_first_entities}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/${neowolf_first_entities}")
+            file(READ "${PROJECT_SOURCE_DIR}/${neowolf_first_entities}" neowolf_first_entities_json)
+            string(JSON neowolf_first_entity_count ERROR_VARIABLE neowolf_first_error LENGTH "${neowolf_first_entities_json}" entities)
+            if(NOT neowolf_first_error)
+                set(neowolf_first_level_entities_regex "${neowolf_first_entity_count}")
+            endif()
+        endif()
+    endif()
+    # The number of levels the finished campaign must have (Roadmap Phase 8):
+    # content_validation_campaign_size runs `devkit validate --strict --require-levels N`.
+    set(NEOWOLF_REQUIRED_CAMPAIGN_LEVELS 10 CACHE STRING "Number of levels game/defs/campaign.json must have")
     set(NEOWOLF_HEADLESS_ENV
         "SDL_VIDEODRIVER=set:dummy"
         "SDL_AUDIODRIVER=set:dummy"
@@ -349,7 +367,7 @@ if(NEOWOLF_BUILD_TESTS)
     endfunction()
 
     neowolf_add_game_test(game_smoke_frames 0
-        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* ${neowolf_campaign_levels} level\\(s\\).*Renderer: .*Level entities: 7 entities.*Ran 120 frame"
+        "Per-user folder: .*test-pref.*\\(--pref-dir\\).*Content root: .*Gameplay definitions loaded from .*Campaign .* ${neowolf_campaign_levels} level\\(s\\).*Renderer: .*Level entities: ${neowolf_first_level_entities_regex} entities.*Ran 120 frame"
         --frames 120)
     set(NEOWOLF_EMPTY_DATA_DIR "${CMAKE_BINARY_DIR}/test-empty-data")
     file(MAKE_DIRECTORY "${NEOWOLF_EMPTY_DATA_DIR}")
@@ -443,8 +461,12 @@ if(NEOWOLF_BUILD_TESTS)
         add_test(NAME content_validation
                  COMMAND ${Python3_EXECUTABLE} tools/devkit/devkit.py --no-color validate --strict
                  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-        set_tests_properties(devkit_tests content_validation PROPERTIES LABELS devkit)
+        add_test(NAME content_validation_campaign_size
+                 COMMAND ${Python3_EXECUTABLE} tools/devkit/devkit.py --no-color validate --strict
+                         --require-levels ${NEOWOLF_REQUIRED_CAMPAIGN_LEVELS}
+                 WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        set_tests_properties(devkit_tests content_validation content_validation_campaign_size PROPERTIES LABELS devkit)
     else()
-        message(WARNING "Python 3 not found: devkit_tests and content_validation are not registered.")
+        message(WARNING "Python 3 not found: devkit_tests, content_validation and content_validation_campaign_size are not registered.")
     endif()
 endif()

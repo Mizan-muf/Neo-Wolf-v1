@@ -1,0 +1,8 @@
+; level06 - STUB (Roadmap Phase 8): a tiny room with the player and an exit switch, so the
+; 10-level campaign validates and the bot completes it. Builder B replaces it:
+; see docs/levels/BUILD_NOTES.md and docs/levels/README.md.
+########
+#......#
+#......X
+#......#
+########
