@@ -1,6 +1,10 @@
+// The native test suite: unit and integration tests of the engine, run by CTest as
+// native.<id> (one process per test case; the list is AllTests() at the end of this file).
 #include <SDL.h>
 
 #include <algorithm>
+#include <array>
+#include <bitset>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -9,7 +13,6 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
@@ -75,7 +78,9 @@ struct TestFailure {
 [[noreturn]] void FailTest(const char* file, int line, const std::string& what) {
     std::ostringstream out;
     out << file << ":" << line << ": " << what;
-    throw TestFailure{out.str()};
+    // TestFailure is deliberately not a std::exception, so no catch (const std::exception&) in
+    // the code under test can swallow a failed assertion.
+    throw TestFailure{out.str()};  // NOLINT(bugprone-std-exception-baseclass): see above
 }
 }  // namespace
 
@@ -110,7 +115,7 @@ std::string ResolveRepoPath(const std::string& relativePath) {
     if (std::filesystem::exists(relativePath)) {
         return relativePath;
     }
-    const std::string candidate = "../" + relativePath;
+    std::string candidate = "../" + relativePath;
     if (std::filesystem::exists(candidate)) {
         return candidate;
     }
@@ -143,6 +148,53 @@ void BuildBorderWalls(Map& map) {
         map.SetCell(0, y, TileType::Wall);
         map.SetCell(map.Width() - 1, y, TileType::Wall);
     }
+}
+
+// Facts about the frozen reference level 1 (tests/fixtures/reference/game/maps/level01.map
+// and defs/level01.entities.json) that several tests rely on.
+namespace ReferenceLevel1 {
+constexpr int kWidth = 16;
+constexpr int kHeight = 12;
+constexpr Vec2i kSpawnCell{2, 2};  // the player starts at (2.5, 2.5)
+constexpr float kSpawnX = 2.5f;
+constexpr float kGuardX = 6.5f;  // its only enemy, a guard at (6.5, 2.7) in the hall
+constexpr int kDoorX = 8;        // its only door, unlocked
+constexpr int kDoorY = 7;
+constexpr int kTriggerX = 13;  // the walk-over trigger in front of the exit switch
+constexpr int kTriggerY = 8;
+constexpr int kExitX = 15;  // the exit switch on the east wall
+constexpr int kExitY = 8;
+constexpr std::size_t kPlacementCount = 7;  // entities in level01.entities.json (and the .csv export)
+constexpr std::size_t kSpriteCount = 4;     // the guard, two pickups and the decoration
+}  // namespace ReferenceLevel1
+
+// The player maxima the interaction tests pass to UpdateEntityInteractions and GameFlow (the
+// shipped gameplay.json values).
+constexpr int kPlayerMaxHealth = 100;
+constexpr int kPlayerMaxAmmo = 99;
+
+// One 60 Hz frame, the engine's fixed update step: Engine::Update takes it as a double, the
+// AI functions as a float.
+constexpr double kFrameSeconds = 1.0 / 60.0;
+constexpr float kAiFrameSeconds = 1.0f / 60.0f;
+
+// The 60-degree field of view the engine renders with (Engine.Render.cpp), for direct
+// SpriteRenderer::Render calls.
+constexpr float kFieldOfViewRadians = 1.04719755f;
+
+// A framebuffer pixel, 0xAARRGGBB (Framebuffer::PackRGBA), and its colour channels.
+std::uint32_t PixelAt(const Framebuffer& framebuffer, int x, int y) {
+    return framebuffer.Data()[static_cast<std::size_t>(y) * static_cast<std::size_t>(framebuffer.Width()) +
+                              static_cast<std::size_t>(x)];
+}
+int RedOf(std::uint32_t pixel) {
+    return static_cast<int>((pixel >> 16u) & 0xFFu);
+}
+int GreenOf(std::uint32_t pixel) {
+    return static_cast<int>((pixel >> 8u) & 0xFFu);
+}
+int BlueOf(std::uint32_t pixel) {
+    return static_cast<int>(pixel & 0xFFu);
 }
 
 void TestVec2AndMathHelpers() {
@@ -286,18 +338,18 @@ void TestEntityManagerBasics() {
     EntityManager manager{};
     TEST_ASSERT(manager.Entities().empty());
 
-    Entity& e1 = manager.CreateEntity(EntityType::Enemy, Vec2{3.0f, 4.0f});
+    const Entity& e1 = manager.CreateEntity(EntityType::Enemy, Vec2{3.0f, 4.0f});
     const int id1 = e1.id;
     TEST_ASSERT(id1 > 0);
     TEST_ASSERT(e1.type == EntityType::Enemy);
     TEST_ASSERT_NEAR(e1.position.x, 3.0f, 0.0001f);
     TEST_ASSERT_NEAR(e1.position.y, 4.0f, 0.0001f);
 
-    Entity& e2 = manager.CreateEntity(EntityType::Pickup, Vec2{7.0f, 8.0f});
+    const Entity& e2 = manager.CreateEntity(EntityType::Pickup, Vec2{7.0f, 8.0f});
     TEST_ASSERT(e2.id > id1);
     TEST_ASSERT(manager.Entities().size() == 2);
 
-    Entity* fetched = manager.GetEntityById(id1);
+    const Entity* fetched = manager.GetEntityById(id1);
     TEST_ASSERT(fetched != nullptr);
     TEST_ASSERT(fetched->id == id1);
 
@@ -331,7 +383,7 @@ void TestSpriteDistanceSorting() {
     Player player{};
     player.position = {2.0f, 2.0f};
 
-    std::vector<SpriteEntity> sprites{
+    const std::vector<SpriteEntity> sprites{
         SpriteEntity{{6.0f, 2.0f}, 0, -1, SpriteType::Enemy, true, true},       // dist^2=16
         SpriteEntity{{3.0f, 2.0f}, 1, -1, SpriteType::Pickup, true, true},      // dist^2=1
         SpriteEntity{{2.0f, 5.0f}, 2, -1, SpriteType::Decoration, true, true},  // dist^2=9
@@ -356,7 +408,7 @@ void TestEntityInteractionRules() {
     Entity& playerEntity = manager.CreateEntity(EntityType::Player, player.position);
     playerEntity.visible = false;
 
-    Entity& pickup = manager.CreateEntity(EntityType::Pickup, Vec2{5.6f, 4.5f});
+    const Entity& pickup = manager.CreateEntity(EntityType::Pickup, Vec2{5.6f, 4.5f});
     const int pickupId = pickup.id;
     Entity& trigger = manager.CreateEntity(EntityType::Trigger, Vec2{6.0f, 4.5f});
     const int triggerId = trigger.id;
@@ -376,7 +428,7 @@ void TestEntityInteractionRules() {
     GameplayEvents events{};
 
     SyncPlayerEntity(manager, player);
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, false, events);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false, events);
     const Entity* pickupAfterCollect = manager.GetEntityById(pickupId);
     const Entity* triggerAfterActivate = manager.GetEntityById(triggerId);
     const Entity* doorInitial = manager.GetEntityById(doorId);
@@ -392,7 +444,8 @@ void TestEntityInteractionRules() {
     player.position = {6.6f, 4.5f};
     SyncPlayerEntity(manager, player);
     GameplayEvents doorOpenEvents{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, doorOpenEvents);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             doorOpenEvents);
     const Entity* doorOpen = manager.GetEntityById(doorId);
     TEST_ASSERT(doorOpen != nullptr);
     TEST_ASSERT(doorOpen->doorOpen);
@@ -401,7 +454,8 @@ void TestEntityInteractionRules() {
     player.position = {7.5f, 4.5f};
     SyncPlayerEntity(manager, player);
     GameplayEvents doorOverlapEvents{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, doorOverlapEvents);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             doorOverlapEvents);
     const Entity* doorStillOpen = manager.GetEntityById(doorId);
     TEST_ASSERT(doorStillOpen != nullptr);
     TEST_ASSERT(doorStillOpen->doorOpen);
@@ -410,7 +464,8 @@ void TestEntityInteractionRules() {
     player.position = {6.6f, 4.5f};
     SyncPlayerEntity(manager, player);
     GameplayEvents doorCloseEvents{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, doorCloseEvents);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             doorCloseEvents);
     const Entity* doorClosed = manager.GetEntityById(doorId);
     TEST_ASSERT(doorClosed != nullptr);
     TEST_ASSERT(!doorClosed->doorOpen);
@@ -432,9 +487,9 @@ void TestContentFileLoaders() {
 
     Map map{};
     TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), map, errors));
-    TEST_ASSERT(map.Width() == 16);
-    TEST_ASSERT(map.Height() == 12);
-    TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
+    TEST_ASSERT(map.Width() == ReferenceLevel1::kWidth);
+    TEST_ASSERT(map.Height() == ReferenceLevel1::kHeight);
+    TEST_ASSERT(map.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) == TileType::Door);
 
     std::vector<EntityPlacement> placements;
     TEST_ASSERT(
@@ -525,10 +580,12 @@ void TestPlayerCombatAndShooting() {
     enemy.maxHealth = 50;
 
     int ammo = 10;
+    constexpr int kDamage = 35;
+    constexpr float kRange = 12.0f;
     GameplayEvents events{};
 
     // Shoot enemy: ammo should decrease to 9, enemy takes 35 damage (50 -> 15)
-    bool shot = PerformPlayerAttack(manager, map, player, ammo, 35, 12.0f, events);
+    bool shot = PerformPlayerAttack(manager, map, player, ammo, kDamage, kRange, events);
     TEST_ASSERT(shot);
     TEST_ASSERT(ammo == 9);
     TEST_ASSERT(events.attackHit);
@@ -539,7 +596,7 @@ void TestPlayerCombatAndShooting() {
 
     // Shoot again to kill enemy: ammo 8, enemy health 0, enemy dead and inactive
     GameplayEvents killEvents{};
-    shot = PerformPlayerAttack(manager, map, player, ammo, 35, 12.0f, killEvents);
+    shot = PerformPlayerAttack(manager, map, player, ammo, kDamage, kRange, killEvents);
     TEST_ASSERT(shot);
     TEST_ASSERT(ammo == 8);
     TEST_ASSERT(killEvents.attackHit);
@@ -551,7 +608,7 @@ void TestPlayerCombatAndShooting() {
     // Shoot with 0 ammo: returns false
     ammo = 0;
     GameplayEvents noAmmoEvents{};
-    shot = PerformPlayerAttack(manager, map, player, ammo, 35, 12.0f, noAmmoEvents);
+    shot = PerformPlayerAttack(manager, map, player, ammo, kDamage, kRange, noAmmoEvents);
     TEST_ASSERT(!shot);
     TEST_ASSERT(ammo == 0);
 
@@ -562,7 +619,7 @@ void TestPlayerCombatAndShooting() {
     map.SetCell(4, 2, TileType::Wall);  // Wall in between at x=4
 
     GameplayEvents wallEvents{};
-    shot = PerformPlayerAttack(manager, map, player, ammo, 35, 12.0f, wallEvents);
+    shot = PerformPlayerAttack(manager, map, player, ammo, kDamage, kRange, wallEvents);
     TEST_ASSERT(shot);
     TEST_ASSERT(ammo == 4);
     TEST_ASSERT(!wallEvents.attackHit);
@@ -570,10 +627,11 @@ void TestPlayerCombatAndShooting() {
     TEST_ASSERT(behindWallEnemy.health == 50);
 }
 
-// Runs the AI for `seconds` in steps of `dt`.
+// Runs the AI for `seconds` (rounded to whole steps) in steps of `dt`.
 void RunAi(EntityManager& manager, const Map& map, const Player& player, int& health, float seconds,
            GameplayEvents* collected = nullptr, const NoiseEvent* noise = nullptr, float dt = 0.05f) {
-    for (float t = 0.0f; t < seconds - 1e-4f; t += dt) {
+    const long steps = std::lround(seconds / dt);
+    for (long step = 0; step < steps; ++step) {
         GameplayEvents events{};
         UpdateEnemyAi(manager, map, player, health, dt, events, noise);
         noise = nullptr;  // a shot is heard once
@@ -702,11 +760,10 @@ void TestPickupCollection() {
 
     int playerHealth = 60;
     int playerAmmo = 10;
-    int maxHealth = 100;
-    int maxAmmo = 99;
 
     GameplayEvents events{};
-    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, maxHealth, maxAmmo, false, events);
+    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             events);
 
     TEST_ASSERT(events.pickupCollected);
     TEST_ASSERT(events.pickupType == PickupType::Health);
@@ -720,7 +777,8 @@ void TestPickupCollection() {
     ammoPickup.pickupValue = 15;
 
     GameplayEvents ammoEvents{};
-    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, maxHealth, maxAmmo, false, ammoEvents);
+    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             ammoEvents);
 
     TEST_ASSERT(ammoEvents.pickupCollected);
     TEST_ASSERT(ammoEvents.pickupType == PickupType::Ammo);
@@ -769,7 +827,7 @@ void TestLogFile() {
     TEST_ASSERT(std::filesystem::exists(logPath));
     std::ifstream file(logPath);
     TEST_ASSERT(file.is_open());
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
     TEST_ASSERT(content.find("[INFO]") != std::string::npos);
@@ -797,8 +855,8 @@ void TestLevelResetAndDynamicLoad() {
                                                  warnings));
         LevelContents level{};
         TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, GameplayDefinitions{}, level, errors));
-        TEST_ASSERT(level.entities.Entities().size() == 7);
-        TEST_ASSERT(level.sprites.size() == 4);
+        TEST_ASSERT(level.entities.Entities().size() == ReferenceLevel1::kPlacementCount);
+        TEST_ASSERT(level.sprites.size() == ReferenceLevel1::kSpriteCount);
         TEST_ASSERT(level.entities.Entities().front().id == 1);
         level.entities.Clear();
         TEST_ASSERT(level.entities.Entities().empty());
@@ -835,7 +893,8 @@ void TestPlayableVerticalSliceSimulation() {
     Entity& hp = manager.CreateEntity(EntityType::Pickup, Vec2{2.2f, 2.0f});
     hp.pickupType = PickupType::Health;
     GameplayEvents pickEvents{};
-    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, 100, 99, false, pickEvents);
+    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             pickEvents);
     TEST_ASSERT(pickEvents.pickupCollected);
 
     // Open door
@@ -846,7 +905,8 @@ void TestPlayableVerticalSliceSimulation() {
 
     player.position = {5.2f, 2.0f};
     GameplayEvents doorEvents{};
-    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, 100, 99, true, doorEvents);
+    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             doorEvents);
     TEST_ASSERT(doorEvents.doorToggled);
     TEST_ASSERT(door.doorOpen);
     TEST_ASSERT(map.GetCell(6, 2) == TileType::Empty);
@@ -855,10 +915,48 @@ void TestPlayableVerticalSliceSimulation() {
     manager.CreateEntity(EntityType::Trigger, Vec2{10.0f, 2.0f});
     player.position = {10.0f, 2.0f};
     GameplayEvents trigEvents{};
-    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, 100, 99, false, trigEvents);
+    UpdateEntityInteractions(manager, map, player, playerHealth, playerAmmo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             trigEvents);
     TEST_ASSERT(trigEvents.triggerActivated);
     state = GameState::Victory;
     TEST_ASSERT(state == GameState::Victory);
+}
+
+// The number of walkable cells a flood fill from `start` (steps to the four neighbours; walls
+// and closed doors block) does not reach.
+int CountUnreachableWalkableCells(const Map& map, Vec2i start) {
+    const auto index = [&map](int x, int y) {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(map.Width()) + static_cast<std::size_t>(x);
+    };
+    std::vector<bool> visited(static_cast<std::size_t>(map.Width()) * static_cast<std::size_t>(map.Height()), false);
+    std::vector<Vec2i> queue{start};
+    visited[index(start.x, start.y)] = true;
+    for (std::size_t head = 0; head < queue.size(); ++head) {
+        const Vec2i current = queue[head];
+        const std::array<Vec2i, 4> neighbours = {
+            Vec2i{current.x + 1, current.y},
+            Vec2i{current.x - 1, current.y},
+            Vec2i{current.x, current.y + 1},
+            Vec2i{current.x, current.y - 1},
+        };
+        for (const Vec2i& n : neighbours) {
+            const bool inside = n.x >= 0 && n.x < map.Width() && n.y >= 0 && n.y < map.Height();
+            if (inside && !visited[index(n.x, n.y)] && !map.IsWall(n.x, n.y)) {
+                visited[index(n.x, n.y)] = true;
+                queue.push_back(n);
+            }
+        }
+    }
+
+    int unreached = 0;
+    for (int y = 0; y < map.Height(); ++y) {
+        for (int x = 0; x < map.Width(); ++x) {
+            if (!map.IsWall(x, y) && !visited[index(x, y)]) {
+                ++unreached;
+            }
+        }
+    }
+    return unreached;
 }
 
 void TestMapPerimeterAndReachabilityValidation() {
@@ -879,47 +977,7 @@ void TestMapPerimeterAndReachabilityValidation() {
         TEST_ASSERT(map.IsWall(map.Width() - 1, y));
     }
 
-    struct GridCoord {
-        int x;
-        int y;
-    };
-
-    // Reachability flood-fill from spawn (2, 2)
-    std::vector<bool> visited(map.Width() * map.Height(), false);
-    std::vector<GridCoord> queue;
-    queue.push_back({2, 2});
-    visited[2 * map.Width() + 2] = true;
-
-    int head = 0;
-    while (head < static_cast<int>(queue.size())) {
-        const GridCoord current = queue[head++];
-        const GridCoord neighbors[4] = {
-            {current.x + 1, current.y},
-            {current.x - 1, current.y},
-            {current.x, current.y + 1},
-            {current.x, current.y - 1},
-        };
-
-        for (const GridCoord& n : neighbors) {
-            if (n.x >= 0 && n.x < map.Width() && n.y >= 0 && n.y < map.Height()) {
-                const int idx = n.y * map.Width() + n.x;
-                if (!visited[idx] && !map.IsWall(n.x, n.y)) {
-                    visited[idx] = true;
-                    queue.push_back(n);
-                }
-            }
-        }
-    }
-
-    int unreachedWalkable = 0;
-    for (int y = 0; y < map.Height(); ++y) {
-        for (int x = 0; x < map.Width(); ++x) {
-            if (!map.IsWall(x, y) && !visited[y * map.Width() + x]) {
-                ++unreachedWalkable;
-            }
-        }
-    }
-    TEST_ASSERT(unreachedWalkable == 0);
+    TEST_ASSERT(CountUnreachableWalkableCells(map, ReferenceLevel1::kSpawnCell) == 0);
 }
 
 void TestAssetInventoryAndErrorResilience() {
@@ -939,7 +997,7 @@ void TestAssetInventoryAndErrorResilience() {
     }
 }
 
-void TestEngineInteropC_API() {
+void TestEngineInteropCApi() {
     void* handle = nw_engine_create();
     TEST_ASSERT(handle != nullptr);
 
@@ -952,14 +1010,17 @@ void TestEngineInteropC_API() {
     TEST_ASSERT(nw_engine_get_state(handle) == 1);
 
     nw_engine_set_player_pos(handle, 4.5f, 3.5f, 1.57f);
-    float px = 0.0f, py = 0.0f, pAngle = 0.0f;
+    float px = 0.0f;
+    float py = 0.0f;
+    float pAngle = 0.0f;
     nw_engine_get_player_pos(handle, &px, &py, &pAngle);
     TEST_ASSERT_NEAR(px, 4.5f, 0.0001f);
     TEST_ASSERT_NEAR(py, 3.5f, 0.0001f);
     TEST_ASSERT_NEAR(pAngle, 1.57f, 0.0001f);
 
     nw_engine_set_player_stats(handle, 80, 42);
-    int health = 0, ammo = 0;
+    int health = 0;
+    int ammo = 0;
     nw_engine_get_player_stats(handle, &health, &ammo);
     TEST_ASSERT(health == 80);
     TEST_ASSERT(ammo == 42);
@@ -968,8 +1029,11 @@ void TestEngineInteropC_API() {
     TEST_ASSERT(spawnedId > 0);
     TEST_ASSERT(nw_engine_get_entity_count(handle) >= 1);
 
-    int entId = 0, entType = 0, entActive = 0;
-    float entX = 0.0f, entY = 0.0f;
+    int entId = 0;
+    int entType = 0;
+    int entActive = 0;
+    float entX = 0.0f;
+    float entY = 0.0f;
     TEST_ASSERT(nw_engine_get_entity(handle, 0, &entId, &entType, &entX, &entY, &entActive) == 1);
 
     // Send Interop Command
@@ -984,6 +1048,7 @@ void TestEngineInteropC_API() {
 
     nw_engine_destroy(handle);
 }
+
 // A fresh, empty directory under the system temp folder; removed when the object dies.
 class ScratchDir {
 public:
@@ -999,6 +1064,8 @@ public:
     }
     ScratchDir(const ScratchDir&) = delete;
     ScratchDir& operator=(const ScratchDir&) = delete;
+    ScratchDir(ScratchDir&&) = delete;
+    ScratchDir& operator=(ScratchDir&&) = delete;
 
     const std::filesystem::path& Path() const { return path_; }
 
@@ -1017,15 +1084,25 @@ std::filesystem::path MakeReferenceContentRoot(const std::filesystem::path& dir)
     return dir;
 }
 
-// Headless engine options on a reference content root inside `scratch` (see above);
+// Options for a headless engine (no window, no error dialogs) on the content root `dataDir`;
 // `startLevel` as for --level (0 = the main menu).
-EngineOptions ReferenceEngineOptions(const ScratchDir& scratch, int startLevel) {
+EngineOptions HeadlessEngineOptions(const std::filesystem::path& dataDir, int startLevel = 0) {
     EngineOptions options{};
-    options.dataDir = PathToUtf8(MakeReferenceContentRoot(scratch.Path() / "content"));
+    options.dataDir = PathToUtf8(dataDir);
     options.headless = true;
     options.errorDialogs = false;
     options.startLevel = startLevel;
     return options;
+}
+
+// Headless engine options on the shipped content (the repository root).
+EngineOptions ShippedEngineOptions(int startLevel = 0) {
+    return HeadlessEngineOptions(RepoRoot(), startLevel);
+}
+
+// Headless engine options on a reference content root inside `scratch` (see above).
+EngineOptions ReferenceEngineOptions(const ScratchDir& scratch, int startLevel) {
+    return HeadlessEngineOptions(MakeReferenceContentRoot(scratch.Path() / "content"), startLevel);
 }
 
 // The shipped campaign manifest, game/defs/campaign.json (no levels if it does not load).
@@ -1039,23 +1116,22 @@ CampaignDefinition ShippedCampaign() {
     return campaign;
 }
 
+// An empty content root in `dir`: the game/maps and game/defs folders the content-root
+// search looks for.
 void MakeContentRoot(const std::filesystem::path& dir) {
     std::filesystem::create_directories(dir / "game" / "maps");
     std::filesystem::create_directories(dir / "game" / "defs");
 }
 
 bool CandidateListContains(const std::vector<ContentRootCandidate>& list, const std::filesystem::path& dir) {
-    for (const ContentRootCandidate& candidate : list) {
-        if (candidate.directory == dir.lexically_normal()) {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(list.begin(), list.end(), [&dir](const ContentRootCandidate& candidate) {
+        return candidate.directory == dir.lexically_normal();
+    });
 }
 
 void TestContentRootResolution() {
-    ScratchDir scratch("content-root");
-    const std::filesystem::path base = scratch.Path();
+    const ScratchDir scratch("content-root");
+    const std::filesystem::path& base = scratch.Path();
     // <base>/repo/game/{maps,defs} is content; the "exe" lives in <base>/repo/build/preset/.
     const std::filesystem::path repo = base / "repo";
     MakeContentRoot(repo);
@@ -1268,7 +1344,7 @@ void TestCommandLineParsing() {
 
 std::string ReadWholeFile(const std::string& path) {
     std::ifstream file(PathFromUtf8(path), std::ios::binary);
-    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
 // Writes `text` with every "\n" turned into "\r\n" (binary mode, so nothing is translated).
@@ -1287,7 +1363,7 @@ void WriteWithCrlf(const std::filesystem::path& path, const std::string& text) {
 }
 
 void TestCrlfContentLoading() {
-    ScratchDir scratch("crlf");
+    const ScratchDir scratch("crlf");
     std::vector<std::string> errors;
 
     // Map: the reference level 1 plus a comment and a blank line, in LF and CRLF form.
@@ -1307,7 +1383,7 @@ void TestCrlfContentLoading() {
     TEST_ASSERT(LoadMapFromFile(PathToUtf8(lfMapPath), lfMap, errors));
     TEST_ASSERT(LoadMapFromFile(PathToUtf8(crlfMapPath), crlfMap, errors));
     TEST_ASSERT(errors.empty());
-    TEST_ASSERT(lfMap.Width() == 16 && lfMap.Height() == 12);
+    TEST_ASSERT(lfMap.Width() == ReferenceLevel1::kWidth && lfMap.Height() == ReferenceLevel1::kHeight);
     TEST_ASSERT(crlfMap.Width() == lfMap.Width() && crlfMap.Height() == lfMap.Height());
     for (int y = 0; y < lfMap.Height(); ++y) {
         for (int x = 0; x < lfMap.Width(); ++x) {
@@ -1326,7 +1402,7 @@ void TestCrlfContentLoading() {
         TEST_ASSERT(LoadEntityPlacementsFromFile(lfEntitiesPath, lfPlacements, errors, warnings));
         TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(crlfEntitiesPath), crlfPlacements, errors, warnings));
         TEST_ASSERT(errors.empty() && warnings.empty());
-        TEST_ASSERT(lfPlacements.size() == 7);
+        TEST_ASSERT(lfPlacements.size() == ReferenceLevel1::kPlacementCount);
         TEST_ASSERT(crlfPlacements.size() == lfPlacements.size());
         for (std::size_t i = 0; i < lfPlacements.size(); ++i) {
             TEST_ASSERT(crlfPlacements[i].type == lfPlacements[i].type);
@@ -1381,7 +1457,7 @@ void TestCrlfContentLoading() {
 }
 
 void TestLogFileRotation() {
-    ScratchDir scratch("log-rotation");
+    const ScratchDir scratch("log-rotation");
     const std::string logPath = PathToUtf8(scratch.Path() / "neowolf.log");
     const std::string prevPath = PathToUtf8(scratch.Path() / "neowolf.prev.log");
 
@@ -1430,8 +1506,11 @@ bool AnyMessageContains(const std::vector<std::string>& messages, std::initializ
     return false;
 }
 
-const Entity* FindFirstEntity(const EntityManager& manager, EntityType type) {
-    for (const Entity& entity : manager.Entities()) {
+// The first entity of `type` in creation order, or nullptr. The result is const when the
+// manager is.
+template <typename Manager>
+auto FindFirstEntity(Manager& manager, EntityType type) -> decltype(&manager.Entities().front()) {
+    for (auto& entity : manager.Entities()) {
         if (entity.type == type) {
             return &entity;
         }
@@ -1527,7 +1606,7 @@ void TestGameplayDefinitionsInvalid() {
         const char* json;
         const char* expected;  // must appear in an error message
     };
-    const Case cases[] = {
+    const std::vector<Case> cases = {
         {"{\"player\": {\"moveSpeed\": 3.0,}}", "invalid JSON"},
         {"", "invalid JSON"},
         {"[1, 2]", "the top level must be an object"},
@@ -1613,19 +1692,19 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(warnings.empty());
 
     // level01: exactly these seven, in file order.
-    const PlacementType expectedTypes[] = {PlacementType::Player, PlacementType::Enemy,   PlacementType::Pickup,
-                                           PlacementType::Door,   PlacementType::Trigger, PlacementType::Decoration,
-                                           PlacementType::Pickup};
-    TEST_ASSERT(fromJson.size() == 7);
+    const std::array<PlacementType, ReferenceLevel1::kPlacementCount> expectedTypes = {
+        PlacementType::Player,  PlacementType::Enemy,      PlacementType::Pickup, PlacementType::Door,
+        PlacementType::Trigger, PlacementType::Decoration, PlacementType::Pickup};
+    TEST_ASSERT(fromJson.size() == ReferenceLevel1::kPlacementCount);
     for (std::size_t i = 0; i < fromJson.size(); ++i) {
         TEST_ASSERT(fromJson[i].type == expectedTypes[i]);
     }
-    TEST_ASSERT_NEAR(fromJson[0].position.x, 2.5f, 1e-6f);
+    TEST_ASSERT_NEAR(fromJson[0].position.x, ReferenceLevel1::kSpawnX, 1e-6f);
     TEST_ASSERT_NEAR(fromJson[0].angleDegrees, 0.0f, 1e-6f);
     TEST_ASSERT(fromJson[2].pickupKind == PickupType::Health);
     TEST_ASSERT(!fromJson[2].pickupValue.has_value());
-    TEST_ASSERT(fromJson[3].mapX == 8 && fromJson[3].mapY == 7);
-    TEST_ASSERT(fromJson[4].mapX == 13 && fromJson[4].mapY == 8);
+    TEST_ASSERT(fromJson[3].mapX == ReferenceLevel1::kDoorX && fromJson[3].mapY == ReferenceLevel1::kDoorY);
+    TEST_ASSERT(fromJson[4].mapX == ReferenceLevel1::kTriggerX && fromJson[4].mapY == ReferenceLevel1::kTriggerY);
     TEST_ASSERT(fromJson[2].source.find("entities[2]") != std::string::npos);
     TEST_ASSERT(fromJson[1].variant == EnemyVariant::Guard);
     TEST_ASSERT(fromJson[6].pickupKind == PickupType::Ammo);
@@ -1774,8 +1853,8 @@ void TestDecorationsAndSpriteSync() {
     TEST_ASSERT(decorationSprite != nullptr);
     TEST_ASSERT(decorationSprite->type == SpriteType::Decoration);
     TEST_ASSERT(decorationSprite->textureId == 2);
-    TEST_ASSERT(map.GetCell(13, 8) == TileType::Trigger);
-    TEST_ASSERT(map.GetCell(8, 7) == TileType::Door);
+    TEST_ASSERT(map.GetCell(ReferenceLevel1::kTriggerX, ReferenceLevel1::kTriggerY) == TileType::Trigger);
+    TEST_ASSERT(map.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) == TileType::Door);
 
     // Standing on the decoration does nothing (it used to be a Trigger and won the level).
     Player player = level.player;
@@ -1784,7 +1863,7 @@ void TestDecorationsAndSpriteSync() {
     int health = 100;
     int ammo = 24;
     GameplayEvents events{};
-    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, true, events);
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, events);
     TEST_ASSERT(!events.triggerActivated);
     TEST_ASSERT(!events.pickupCollected);
     TEST_ASSERT(!events.doorToggled);
@@ -1800,13 +1879,14 @@ void TestDecorationsAndSpriteSync() {
     TEST_ASSERT(pickup != nullptr && enemy != nullptr);
     player.position = pickup->position;
     GameplayEvents pickupEvents{};
-    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, pickupEvents);
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             pickupEvents);
     TEST_ASSERT(pickupEvents.pickupCollected);
     enemy->position = {7.0f, 2.5f};
     for (int tick = 0; tick < 3; ++tick) {
         SyncSpritesWithEntities(level.entities, level.sprites);
     }
-    TEST_ASSERT(level.sprites.size() == 4);
+    TEST_ASSERT(level.sprites.size() == ReferenceLevel1::kSpriteCount);
     decorationSprite = FindSpriteFor(level.sprites, decorationId);
     TEST_ASSERT(decorationSprite != nullptr && decorationSprite->active && decorationSprite->visible);
     const SpriteEntity* pickupSprite = FindSpriteFor(level.sprites, pickup->id);
@@ -1823,7 +1903,7 @@ void TestDecorationsAndSpriteSync() {
     TEST_ASSERT(FindSpriteFor(level.sprites, enemyId) == nullptr);
     const SpriteEntity* spawnedSprite = FindSpriteFor(level.sprites, spawnedId);
     TEST_ASSERT(spawnedSprite != nullptr && spawnedSprite->type == SpriteType::Decoration);
-    TEST_ASSERT(level.sprites.size() == 4);
+    TEST_ASSERT(level.sprites.size() == ReferenceLevel1::kSpriteCount);
     TEST_ASSERT(FindSpriteFor(level.sprites, decorationId) != nullptr);
 }
 
@@ -1867,12 +1947,14 @@ void TestPickupKindFromData() {
     int health = 90;
     int ammo = 10;
     GameplayEvents events{};
-    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, events);
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             events);
     TEST_ASSERT(events.pickupCollected && events.pickupType == PickupType::Ammo && events.pickupValue == 7);
     TEST_ASSERT(ammo == 17);
     player.position = pickups[3]->position;
     GameplayEvents healthEvents{};
-    UpdateEntityInteractions(level.entities, map, player, health, ammo, 100, 99, false, healthEvents);
+    UpdateEntityInteractions(level.entities, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             healthEvents);
     TEST_ASSERT(healthEvents.pickupValue == 30);
     TEST_ASSERT(health == 100);
 }
@@ -1889,7 +1971,7 @@ void WriteContentRoot(const std::filesystem::path& root, const std::string& game
 }
 
 void TestEditedDataChangesGame() {
-    ScratchDir scratch("edited-data");
+    const ScratchDir scratch("edited-data");
     const std::filesystem::path root = scratch.Path() / "content";
     const std::string gameplay = R"({
   "player": { "initialHealth": 50, "maxHealth": 150, "moveSpeed": 4.5 },
@@ -1941,7 +2023,7 @@ void TestEditedDataChangesGame() {
     // One frame: the player stands on the health pickup.
     engine.running_ = true;
     engine.SetState(GameState::Gameplay);
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.GetState() == GameState::Gameplay);
     TEST_ASSERT(engine.playerHealth_ == 90);
     TEST_ASSERT(engine.hudMessage_ == "HEALTH RESTORED (+40 HP)");
@@ -1976,7 +2058,7 @@ void TestEditedDataChangesGame() {
 }
 
 void TestLevelLoadFailures() {
-    ScratchDir scratch("level-load-failures");
+    const ScratchDir scratch("level-load-failures");
     const std::filesystem::path root = scratch.Path() / "content";
     WriteContentRoot(root, ReadWholeFile(ResolveRepoPath("game/defs/gameplay.json")),
                      ReadWholeFile(ReferencePath("game/defs/level01.entities.json")));
@@ -1988,16 +2070,16 @@ void TestLevelLoadFailures() {
     TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
     const std::string mapPath = "game/maps/level01.map";
     TEST_ASSERT(engine.LoadLevel(mapPath, "game/defs/level01.entities.json"));
-    TEST_ASSERT(engine.entityManager_.Entities().size() == 7);
+    TEST_ASSERT(engine.entityManager_.Entities().size() == ReferenceLevel1::kPlacementCount);
     TEST_ASSERT(engine.LoadLevel(mapPath, "game/defs/level01.entities.csv"));  // legacy format still loads
-    TEST_ASSERT(engine.entityManager_.Entities().size() == 7);
+    TEST_ASSERT(engine.entityManager_.Entities().size() == ReferenceLevel1::kPlacementCount);
 
     const auto writeEntities = [&](const std::string& name, const std::string& text) {
         WriteTextFile(root / "game" / "defs" / name, text);
         return "game/defs/" + name;
     };
     const std::string player = "{\"type\": \"player\", \"x\": 2.5, \"y\": 2.5}";
-    const std::string failing[] = {
+    const std::vector<std::string> failing = {
         "game/defs/missing.entities.json",  // no built-in layout any more
         writeEntities("syntax.entities.json", "{\"entities\": [ {\"type\": \"player\", \"x\": 2.5 "),
         writeEntities("nokind.entities.json",
@@ -2013,9 +2095,9 @@ void TestLevelLoadFailures() {
     for (const std::string& entitiesPath : failing) {
         TEST_ASSERT(!engine.LoadLevel(mapPath, entitiesPath));
         // A failed load leaves the current level as it was.
-        TEST_ASSERT(engine.entityManager_.Entities().size() == 7);
+        TEST_ASSERT(engine.entityManager_.Entities().size() == ReferenceLevel1::kPlacementCount);
         TEST_ASSERT(engine.currentEntitiesPath_ == "game/defs/level01.entities.csv");
-        TEST_ASSERT(engine.map_.GetCell(8, 7) == TileType::Door);
+        TEST_ASSERT(engine.map_.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) == TileType::Door);
     }
     TEST_ASSERT(!engine.LoadLevel("game/maps/missing.map", "game/defs/level01.entities.json"));
 
@@ -2032,7 +2114,8 @@ void TestLevelLoadFailures() {
     TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
     TEST_ASSERT(AnyMessageContains(
         errors, {"badcell.entities.json: entities[1] (door): map cell (16, 7) is outside the 16x12 map"}));
-    TEST_ASSERT(map.GetCell(8, 7) == before.GetCell(8, 7));
+    TEST_ASSERT(map.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) ==
+                before.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY));
     errors.clear();
     TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "noplayer.entities.json"), placements,
                                              errors, warnings));
@@ -2055,24 +2138,17 @@ InputState Press(std::initializer_list<InputAction> pressed) {
 
 const InputState kNoInput{};
 
+// A GameFlow on the main menu for a campaign of `levels` levels, with saved progress up to
+// level `highest` if `hasProgress`.
 GameFlow MakeFlow(int levels, bool hasProgress = false, int highest = 1) {
     GameFlowConfig config{};
     config.levelCount = levels;
     config.initial = PlayerStats{100, 24};
-    config.maximum = PlayerStats{100, 99};
+    config.maximum = PlayerStats{kPlayerMaxHealth, kPlayerMaxAmmo};
     GameFlow flow;
     flow.Configure(config);
     flow.SetProgress(hasProgress, highest);
     return flow;
-}
-
-bool HasRequest(const std::vector<FlowRequest>& requests, FlowRequestType type) {
-    for (const FlowRequest& request : requests) {
-        if (request.type == type) {
-            return true;
-        }
-    }
-    return false;
 }
 
 const FlowRequest* FindRequest(const std::vector<FlowRequest>& requests, FlowRequestType type) {
@@ -2084,7 +2160,12 @@ const FlowRequest* FindRequest(const std::vector<FlowRequest>& requests, FlowReq
     return nullptr;
 }
 
-FlowEvents Completed(int health, int ammo) {
+bool HasRequest(const std::vector<FlowRequest>& requests, FlowRequestType type) {
+    return FindRequest(requests, type) != nullptr;
+}
+
+// The events of a frame in which the current level was completed with `health` and `ammo`.
+FlowEvents LevelCompletedEvents(int health, int ammo) {
     FlowEvents events{};
     events.levelCompleted = true;
     events.stats = PlayerStats{health, ammo};
@@ -2110,10 +2191,10 @@ void TestWallTextureOrientation() {
 
     struct View {
         Vec2 position;
-        float angle;
-        const char* name;
+        float angle = 0.0f;
+        const char* name = nullptr;
     };
-    const View views[] = {
+    const std::vector<View> views = {
         {{3.5f, 2.4f}, kPi / 2.0f, "looking +y at the north face"},
         {{3.5f, 4.6f}, 3.0f * kPi / 2.0f, "looking -y at the south face"},
         {{2.4f, 3.5f}, 0.0f, "looking +x at the west face"},
@@ -2127,10 +2208,10 @@ void TestWallTextureOrientation() {
         std::vector<RaycastHit> hits;
         Raycaster::RenderWalls(map, player, framebuffer, params, hits);
         TEST_ASSERT(hits[16].tileType == TileType::Exit && hits[48].tileType == TileType::Exit);
-        const std::uint32_t left = framebuffer.Data()[24 * 64 + 16];
-        const std::uint32_t right = framebuffer.Data()[24 * 64 + 48];
-        const bool leftIsRed = ((left >> 16) & 0xFFu) > (left & 0xFFu);
-        const bool rightIsBlue = (right & 0xFFu) > ((right >> 16) & 0xFFu);
+        const std::uint32_t left = PixelAt(framebuffer, 16, 24);
+        const std::uint32_t right = PixelAt(framebuffer, 48, 24);
+        const bool leftIsRed = RedOf(left) > BlueOf(left);
+        const bool rightIsBlue = BlueOf(right) > RedOf(right);
         if (!leftIsRed || !rightIsBlue) {
             FailTest(__FILE__, __LINE__, std::string("mirrored wall texture when ") + view.name);
         }
@@ -2195,7 +2276,7 @@ void TestGameFlowProgression() {
     TEST_ASSERT(flow.State() == GameState::Gameplay && flow.EntrySnapshot().health == 100);
 
     // Level 1 complete: results kept, level 2 unlocked and saved.
-    requests = flow.Update(kNoInput, Completed(150, 120));  // above the maxima: clamped
+    requests = flow.Update(kNoInput, LevelCompletedEvents(150, 120));  // above the maxima: clamped
     TEST_ASSERT(flow.State() == GameState::LevelComplete);
     const FlowRequest* save = FindRequest(requests, FlowRequestType::SaveProgress);
     TEST_ASSERT(save != nullptr && save->highestUnlocked == 2);
@@ -2218,7 +2299,7 @@ void TestGameFlowProgression() {
     TEST_ASSERT(flow.EntrySnapshot().health == 100 && flow.EntrySnapshot().ammo == 99);
 
     // Level 2 complete with lower stats: they carry over unchanged.
-    flow.Update(kNoInput, Completed(37, 5));
+    flow.Update(kNoInput, LevelCompletedEvents(37, 5));
     TEST_ASSERT(flow.HighestUnlocked() == 3);
     requests = flow.Update(Press({InputAction::Confirm}), {});
     next = FindRequest(requests, FlowRequestType::LoadLevel);
@@ -2226,7 +2307,7 @@ void TestGameFlowProgression() {
     TEST_ASSERT(flow.IsLastLevel());
 
     // Last level: LevelComplete first, then Enter -> CampaignComplete, then Enter -> Menu.
-    requests = flow.Update(kNoInput, Completed(10, 0));
+    requests = flow.Update(kNoInput, LevelCompletedEvents(10, 0));
     TEST_ASSERT(flow.State() == GameState::LevelComplete);
     save = FindRequest(requests, FlowRequestType::SaveProgress);
     TEST_ASSERT(save != nullptr && save->highestUnlocked == 3);  // never beyond the campaign
@@ -2240,7 +2321,7 @@ void TestGameFlowProgression() {
     // Esc on the level-complete screen returns to the menu (progress is already saved).
     GameFlow escFlow = MakeFlow(3);
     escFlow.Update(Press({InputAction::Select}), {});
-    escFlow.Update(kNoInput, Completed(50, 5));
+    escFlow.Update(kNoInput, LevelCompletedEvents(50, 5));
     escFlow.Update(Press({InputAction::Back, InputAction::Pause}), {});
     TEST_ASSERT(escFlow.State() == GameState::Menu);
 
@@ -2289,7 +2370,7 @@ void TestGameFlowDeathAndPause() {
     // Death: GameOver, then R or Enter restarts with the snapshot taken at level entry.
     GameFlow death = MakeFlow(3);
     death.Update(Press({InputAction::Select}), {});
-    death.Update(kNoInput, Completed(42, 7));
+    death.Update(kNoInput, LevelCompletedEvents(42, 7));
     death.Update(Press({InputAction::Confirm}), {});  // level 2 entered with 42 / 7
     FlowEvents died{};
     died.playerDied = true;
@@ -2323,7 +2404,7 @@ void TestGameFlowDeathAndPause() {
     TEST_ASSERT(direct.type == FlowRequestType::LoadLevel && direct.levelIndex == 1 && direct.stats.health == 100);
     TEST_ASSERT(external.State() == GameState::Gameplay && !external.IsLevelUnlocked(1));
     // Saved progress beyond the campaign is clamped.
-    GameFlow clamped = MakeFlow(3, true, 50);
+    const GameFlow clamped = MakeFlow(3, true, 50);
     TEST_ASSERT(clamped.HighestUnlocked() == 3);
 }
 
@@ -2348,7 +2429,7 @@ void TestCampaignManifestValidation() {
     }
     // The reference campaign (tests/fixtures/reference): exact values.
     {
-        ScratchDir scratch("campaign-reference");
+        const ScratchDir scratch("campaign-reference");
         const std::filesystem::path root = MakeReferenceContentRoot(scratch.Path() / "content");
         CampaignDefinition reference{};
         TEST_ASSERT(
@@ -2369,7 +2450,7 @@ void TestCampaignManifestValidation() {
         std::string json;
         const char* expected;
     };
-    const Case cases[] = {
+    const std::vector<Case> cases = {
         {"{ \"title\": \"T\", \"levels\": [ " + level01 + " ", "invalid JSON"},
         {"[]", "top level must be an object"},
         {R"({"levels": [)" + level01 + "]}", "field \"title\" is required"},
@@ -2442,7 +2523,7 @@ Map MakeExitTestMap() {
 
 void TestExitSwitchActivation() {
     // The map loader reads 'X' as the exit switch.
-    ScratchDir scratch("exit-switch");
+    const ScratchDir scratch("exit-switch");
     WriteTextFile(scratch.Path() / "x.map", "#####\n#..X#\n#####\n");
     Map loaded{};
     std::vector<std::string> errors;
@@ -2451,7 +2532,7 @@ void TestExitSwitchActivation() {
     // The reference level 1 has one, on the east wall; every shipped campaign map has one.
     Map level01{};
     TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), level01, errors));
-    TEST_ASSERT(level01.GetCell(15, 8) == TileType::Exit);
+    TEST_ASSERT(level01.GetCell(ReferenceLevel1::kExitX, ReferenceLevel1::kExitY) == TileType::Exit);
     const CampaignDefinition campaign = ShippedCampaign();
     TEST_ASSERT(!campaign.levels.empty());
     for (const CampaignLevel& level : campaign.levels) {
@@ -2475,7 +2556,7 @@ void TestExitSwitchActivation() {
     // In reach (0.5 cells from the face) and facing it: found.
     player.position = {8.5f, 3.5f};
     player.directionAngleRadians = 0.0f;
-    ExitSwitchHit hit = FindExitSwitchInReach(map, player);
+    const ExitSwitchHit hit = FindExitSwitchInReach(map, player);
     TEST_ASSERT(hit.found && hit.mapX == 9 && hit.mapY == 3);
     TEST_ASSERT_NEAR(hit.distance, 0.5f, 1e-4f);
     // Roughly facing (15 degrees off) still works...
@@ -2508,9 +2589,11 @@ void TestExitSwitchActivation() {
     int health = 100;
     int ammo = 24;
     GameplayEvents events{};
-    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, 100, 99, false, events);
+    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false,
+                             events);
     TEST_ASSERT(!events.exitActivated);
-    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, 100, 99, true, events);
+    UpdateEntityInteractions(manager, interactionMap, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             events);
     TEST_ASSERT(events.exitActivated && events.exitMapX == 9 && events.exitMapY == 3);
 
     // The switch is solid: the player cannot walk into it.
@@ -2526,12 +2609,13 @@ void TestExitSwitchActivation() {
     triggerMap.SetCell(5, 3, TileType::Trigger);
     player.position = {5.5f, 3.5f};
     GameplayEvents triggerEvents{};
-    UpdateEntityInteractions(triggerManager, triggerMap, player, health, ammo, 100, 99, true, triggerEvents);
+    UpdateEntityInteractions(triggerManager, triggerMap, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true,
+                             triggerEvents);
     TEST_ASSERT(triggerEvents.triggerActivated && !triggerEvents.exitActivated);
 }
 
 void TestProgressFileRoundTrip() {
-    ScratchDir scratch("progress");
+    const ScratchDir scratch("progress");
     const std::string path = PathToUtf8(scratch.Path() / "progress.json");
     ProgressData data{};
     std::string message;
@@ -2555,7 +2639,7 @@ void TestProgressFileRoundTrip() {
 
     // Corrupt or foreign files are Invalid (the caller warns and starts without progress);
     // the output value is left untouched.
-    const char* corrupt[] = {
+    const std::vector<const char*> corrupt = {
         "",
         "{ not json",
         "[1, 2]",
@@ -2589,11 +2673,8 @@ void TestProgressFileRoundTrip() {
     WriteTextFile(scratch.Path() / "progress.json", "{ corrupt");
     {
         Engine engine;
-        EngineOptions options{};
-        options.dataDir = PathToUtf8(RepoRoot());
+        EngineOptions options = ShippedEngineOptions();
         options.prefDir = scratch.Path();
-        options.headless = true;
-        options.errorDialogs = false;
         TEST_ASSERT(engine.Init(options));
         TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.MenuItems().size() == 3);
     }
@@ -2603,11 +2684,8 @@ void TestProgressFileRoundTrip() {
     TEST_ASSERT(SaveProgressFile(path, data, error));
     {
         Engine engine;
-        EngineOptions options{};
-        options.dataDir = PathToUtf8(RepoRoot());
+        EngineOptions options = ShippedEngineOptions();
         options.prefDir = scratch.Path();
-        options.headless = true;
-        options.errorDialogs = false;
         TEST_ASSERT(engine.Init(options));
         TEST_ASSERT(engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == unlocked);
         TEST_ASSERT(engine.flow_.MenuItems()[1] == MenuItem::Continue);
@@ -2628,7 +2706,7 @@ void TestPrefDirResolution() {
     TEST_ASSERT(r.directory.empty() && !r.error.empty());
 
     // ResolvePrefDir creates an explicit folder (and never asks SDL for the real one then).
-    ScratchDir scratch("pref-dir");
+    const ScratchDir scratch("pref-dir");
     const std::filesystem::path wanted = scratch.Path() / "nested" / "prefs";
     r = ResolvePrefDir(PathToUtf8(wanted));
     TEST_ASSERT(r.error.empty() && r.source == "--pref-dir");
@@ -2649,7 +2727,7 @@ void TestThemeLoadingAndSwap() {
         }
     }
     // A theme without "exit" is reported.
-    ScratchDir scratch("themes");
+    const ScratchDir scratch("themes");
     WriteTextFile(scratch.Path() / "partial.cfg",
                   "wall=a.ppm\nwall_alt_a=a.ppm\nwall_alt_b=a.ppm\ndoor=a.ppm\nfloor=a.ppm\nceiling=a.ppm\n");
     std::vector<std::string> errors;
@@ -2658,12 +2736,13 @@ void TestThemeLoadingAndSwap() {
     TEST_ASSERT(AnyMessageContains(errors, {"missing required key: exit"}));
 
     // The engine swaps textures in place: the cached pointers stay valid and show the new theme.
+    constexpr int kThemeTextureSize = 32;  // every shipped theme texture is 32x32
     Engine engine;
     engine.contentRoot_ = RepoRoot();
     TEST_ASSERT(engine.ApplyTheme("bunker"));
     const Texture* wallBefore = engine.wallTexture_;
     TEST_ASSERT(wallBefore != nullptr && wallBefore == engine.assets_.GetTexture("wall"));
-    TEST_ASSERT(engine.exitTexture_ != nullptr && engine.exitTexture_->Width() == 32);
+    TEST_ASSERT(engine.exitTexture_ != nullptr && engine.exitTexture_->Width() == kThemeTextureSize);
     Texture bunkerWall{};
     TEST_ASSERT(TextureLoader::LoadPPM(ResolveRepoPath("game/assets/themes/bunker/wall.ppm"), bunkerWall));
     TEST_ASSERT(wallBefore->GetPixel(5, 5) == bunkerWall.GetPixel(5, 5));
@@ -2676,8 +2755,8 @@ void TestThemeLoadingAndSwap() {
     TEST_ASSERT(engine.wallTexture_->GetPixel(5, 5) == stoneWall.GetPixel(5, 5));
     TEST_ASSERT(wallBefore->GetPixel(5, 5) == stoneWall.GetPixel(5, 5));  // same object, new pixels
     bool differs = false;
-    for (int y = 0; y < 32 && !differs; ++y) {
-        for (int x = 0; x < 32 && !differs; ++x) {
+    for (int y = 0; y < kThemeTextureSize && !differs; ++y) {
+        for (int x = 0; x < kThemeTextureSize && !differs; ++x) {
             differs = stoneWall.GetPixel(x, y) != bunkerWall.GetPixel(x, y);
         }
     }
@@ -2689,11 +2768,7 @@ void TestThemeLoadingAndSwap() {
 
     // Campaign levels load their own theme.
     Engine campaignEngine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    TEST_ASSERT(campaignEngine.Init(options));
+    TEST_ASSERT(campaignEngine.Init(ShippedEngineOptions()));
     const CampaignDefinition campaign = ShippedCampaign();
     TEST_ASSERT(!campaign.levels.empty());
     TEST_ASSERT(campaignEngine.currentThemeId_ == campaign.levels[0].theme);
@@ -2730,10 +2805,7 @@ void TestUiLayoutBounds() {
     // Every preview screen, rendered by the real engine (headless).
     for (const PreviewScreen screen : kPreviewScreens) {
         Engine engine;
-        EngineOptions options{};
-        options.dataDir = PathToUtf8(RepoRoot());
-        options.headless = true;
-        options.errorDialogs = false;
+        EngineOptions options = ShippedEngineOptions();
         options.preview = screen;
         TEST_ASSERT(engine.Init(options));
         TEST_ASSERT(engine.framebuffer_.Width() == width && engine.framebuffer_.Height() == height);
@@ -2745,12 +2817,7 @@ void TestUiLayoutBounds() {
     // shipped campaign's last level (the biggest map, so the minimap follows the player).
     {
         Engine engine;
-        EngineOptions options{};
-        options.dataDir = PathToUtf8(RepoRoot());
-        options.headless = true;
-        options.errorDialogs = false;
-        options.startLevel = static_cast<int>(ShippedCampaign().levels.size());
-        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(engine.Init(ShippedEngineOptions(static_cast<int>(ShippedCampaign().levels.size()))));
         engine.minimapVisible_ = true;
         engine.debugOverlayVisible_ = true;
         engine.levelBannerTimer_ = 2.0f;
@@ -2769,7 +2836,7 @@ void TestUiLayoutBounds() {
     for (int i = 1; i <= 25; ++i) {
         select.levels.push_back(UiRenderer::LevelSelectEntry{i, longName, i % 3 != 0});
     }
-    for (int selected : {0, 12, 24}) {
+    for (const int selected : {0, 12, 24}) {
         select.selected = selected;
         framebuffer.ResetDrawBounds();
         UiRenderer::DrawLevelSelectScreen(framebuffer, select);
@@ -2821,6 +2888,17 @@ void TestUiLayoutBounds() {
 }
 
 // --- Scripted play-through ------------------------------------------------------------------
+
+// From now on every engine frame holds only the action `pressed` names at that moment
+// (InputAction::Count: nothing held).
+void HoldOnlyAction(Engine& engine, const InputAction& pressed) {
+    engine.SetInputInjector([&pressed](InputState& input) {
+        for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
+            input.SetActionState(static_cast<InputAction>(i), static_cast<InputAction>(i) == pressed);
+        }
+    });
+}
+
 // The Phase 7 autoplay bot (engine/autoplay/AutoplayBot.h) plays the shipped campaign through
 // Engine::Update with injected input, from the main menu: New Game, every level of
 // game/defs/campaign.json in order -> CampaignComplete, health and ammo carried over. The
@@ -2831,13 +2909,10 @@ void TestCampaignPlaythrough() {
     const CampaignDefinition campaign = ShippedCampaign();
     TEST_ASSERT(!campaign.levels.empty());
     const std::size_t levelCount = campaign.levels.size();
-    ScratchDir prefs("playthrough-prefs");
+    const ScratchDir prefs("playthrough-prefs");
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
+    EngineOptions options = ShippedEngineOptions();
     options.prefDir = prefs.Path();
-    options.headless = true;
-    options.errorDialogs = false;
     TEST_ASSERT(engine.Init(options));
     TEST_ASSERT(engine.GetState() == GameState::Menu && !engine.flow_.HasProgress());
 
@@ -2873,7 +2948,7 @@ void TestCampaignPlaythrough() {
         for (const EntityPlacement& placement : placements) {
             enemies += placement.type == PlacementType::Enemy ? 1 : 0;
             if (placement.type == PlacementType::Door && placement.lock != KeyColor::None) {
-                locks.push_back(KeyColorName(placement.lock));
+                locks.emplace_back(KeyColorName(placement.lock));
             }
         }
         TEST_ASSERT(level.totalEnemies == enemies);
@@ -2894,18 +2969,13 @@ void TestCampaignPlaythrough() {
     TEST_ASSERT(saved.highestUnlocked == static_cast<int>(levelCount));
 
     // Credits -> Enter -> menu, where Continue is offered and starts the last level with fresh stats.
-    constexpr double kDt = 1.0 / 60.0;
     InputAction pressed = InputAction::Count;
-    engine.SetInputInjector([&pressed](InputState& input) {
-        for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
-            input.SetActionState(static_cast<InputAction>(i), static_cast<InputAction>(i) == pressed);
-        }
-    });
+    HoldOnlyAction(engine, pressed);
     const auto tap = [&](InputAction action) {
         pressed = InputAction::Count;
-        engine.Update(kDt);  // release everything first: a press is an edge
+        engine.Update(kFrameSeconds);  // release everything first: a press is an edge
         pressed = action;
-        engine.Update(kDt);
+        engine.Update(kFrameSeconds);
     };
     tap(InputAction::Confirm);
     TEST_ASSERT(engine.GetState() == GameState::Menu);
@@ -2921,33 +2991,26 @@ void TestCampaignPlaythrough() {
 void TestNewGameResetsWorld() {
     // Known issue C7: Game Over -> Menu -> New Game used to keep 0 HP and the old world.
     // On the reference campaign: level 1 has a guard and the spawn at (2.5, 2.5).
-    ScratchDir prefs("new-game-prefs");
-    ScratchDir content("new-game-content");
+    const ScratchDir prefs("new-game-prefs");
+    const ScratchDir content("new-game-content");
     Engine engine;
     EngineOptions options = ReferenceEngineOptions(content, 0);
     options.prefDir = prefs.Path();
     TEST_ASSERT(engine.Init(options));
 
     InputAction pressed = InputAction::Count;
-    engine.SetInputInjector([&pressed](InputState& input) {
-        for (std::size_t i = 0; i < static_cast<std::size_t>(InputAction::Count); ++i) {
-            input.SetActionState(static_cast<InputAction>(i), static_cast<InputAction>(i) == pressed);
-        }
-    });
+    HoldOnlyAction(engine, pressed);
     const auto tap = [&](InputAction action) {
         pressed = action;
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
         pressed = InputAction::Count;
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
     };
 
     tap(InputAction::Select);  // New Game
     TEST_ASSERT(engine.GetState() == GameState::Gameplay);
     // Change the world: collect nothing, kill the enemy, move the player, then die.
-    Entity* enemy = nullptr;
-    for (Entity& entity : engine.entityManager_.Entities()) {
-        enemy = entity.type == EntityType::Enemy ? &entity : enemy;
-    }
+    Entity* enemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
     TEST_ASSERT(enemy != nullptr);
     enemy->enemyState = EnemyState::Dead;
     enemy->active = false;
@@ -2956,7 +3019,7 @@ void TestNewGameResetsWorld() {
     damage.type = InteropCommandType::DamagePlayer;
     damage.intArg1 = 1000;
     engine.bridge_.EnqueueCommand(damage);
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.playerHealth_ == 0 && engine.GetState() == GameState::GameOver);
 
     tap(InputAction::Back);  // Esc: menu
@@ -2965,7 +3028,7 @@ void TestNewGameResetsWorld() {
     TEST_ASSERT(engine.GetState() == GameState::Gameplay);
     TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
     TEST_ASSERT(engine.playerAmmo_ == engine.gameplay_.weapon.initialAmmo);
-    TEST_ASSERT_NEAR(engine.player_.position.x, 2.5f, 0.2f);
+    TEST_ASSERT_NEAR(engine.player_.position.x, ReferenceLevel1::kSpawnX, 0.2f);
     const Entity* freshEnemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
     TEST_ASSERT(freshEnemy != nullptr && freshEnemy->active && freshEnemy->enemyState != EnemyState::Dead);
     TEST_ASSERT(engine.CurrentLevelResults().kills == 0);
@@ -3020,21 +3083,16 @@ void TestKeyBindings() {
 
     // The minimap is off by default and toggles in play.
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 1;
-    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(engine.Init(ShippedEngineOptions(1)));
     TEST_ASSERT(!engine.minimapVisible_);
     bool down = true;
     engine.SetInputInjector([&down](InputState& state) { state.SetActionState(InputAction::ToggleMinimap, down); });
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.minimapVisible_);
     down = false;
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     down = true;
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(!engine.minimapVisible_);
 }
 
@@ -3119,7 +3177,7 @@ void TestEnemyHearing() {
 
     // Through the engine: a shot in the reference level 3 wakes the brute (10 cells along the
     // corridor) but not the guard locked in the room behind the closed door.
-    ScratchDir referenceContent("hearing-reference");
+    const ScratchDir referenceContent("hearing-reference");
     Engine engine;
     const EngineOptions options = ReferenceEngineOptions(referenceContent, 3);
     TEST_ASSERT(engine.Init(options));
@@ -3132,11 +3190,11 @@ void TestEnemyHearing() {
     TEST_ASSERT(guard != nullptr && brute != nullptr);
     const int guardId = guard->id;
     const int bruteId = brute->id;
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.entityManager_.GetEntityById(bruteId)->enemyState == EnemyState::Idle);
     engine.PlayerAttack();
     TEST_ASSERT(engine.pendingNoise_.active);
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(!engine.pendingNoise_.active);  // heard once
     TEST_ASSERT(engine.entityManager_.GetEntityById(bruteId)->enemyState == EnemyState::Alert);
     TEST_ASSERT(engine.entityManager_.GetEntityById(guardId)->enemyState == EnemyState::Idle);
@@ -3200,7 +3258,7 @@ void TestEnemyPathfinding() {
     bool reached = false;
     for (int frame = 0; frame < 400 && !reached; ++frame) {
         GameplayEvents events{};
-        UpdateEnemyAi(manager, map, player, health, 1.0f / 60.0f, events);
+        UpdateEnemyAi(manager, map, player, health, kAiFrameSeconds, events);
         enemy = manager.GetEntityById(id);
         TEST_ASSERT(!IsBlockedByWall(map, enemy->position, kEnemyRadius - 0.01f));
         TEST_ASSERT(enemy->repathTimer <= kEnemyRepathInterval + 1e-5f);
@@ -3216,7 +3274,7 @@ void TestEnemyPathfinding() {
     manager.GetEntityById(id)->path.clear();
     for (int frame = 0; frame < 60 * 9; ++frame) {
         GameplayEvents events{};
-        UpdateEnemyAi(manager, map, player, health, 1.0f / 60.0f, events);
+        UpdateEnemyAi(manager, map, player, health, kAiFrameSeconds, events);
         TEST_ASSERT(manager.GetEntityById(id)->position.x < 5.0f - kEnemyRadius + 1e-4f);
     }
     TEST_ASSERT(manager.GetEntityById(id)->enemyState == EnemyState::Idle);
@@ -3251,18 +3309,18 @@ void TestEnemyArchetypesFromData() {
     std::vector<EntityPlacement> placements(5);
     placements[0].type = PlacementType::Player;
     placements[0].position = {1.5f, 1.5f};
-    const EnemyVariant variants[] = {EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner,
-                                     EnemyVariant::Guard};
-    for (int i = 0; i < 4; ++i) {
-        placements[static_cast<std::size_t>(i + 1)].type = PlacementType::Enemy;
-        placements[static_cast<std::size_t>(i + 1)].position = {2.5f + static_cast<float>(i), 4.5f};
-        placements[static_cast<std::size_t>(i + 1)].variant = variants[i];
+    const std::array<EnemyVariant, 4> variants = {EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner,
+                                                  EnemyVariant::Guard};
+    for (std::size_t i = 0; i < variants.size(); ++i) {
+        placements[i + 1].type = PlacementType::Enemy;
+        placements[i + 1].position = {2.5f + static_cast<float>(i), 4.5f};
+        placements[i + 1].variant = variants[i];
     }
     LevelContents level{};
     TEST_ASSERT(BuildLevelFromPlacements(map, placements, gameplay, level, errors));
-    const SpriteTextureId textures[] = {SpriteTextureId::Guard, SpriteTextureId::Brute, SpriteTextureId::Runner,
-                                        SpriteTextureId::Guard};
-    int index = 0;
+    const std::array<SpriteTextureId, 4> textures = {SpriteTextureId::Guard, SpriteTextureId::Brute,
+                                                     SpriteTextureId::Runner, SpriteTextureId::Guard};
+    std::size_t index = 0;
     for (const Entity& entity : level.entities.Entities()) {
         if (entity.type != EntityType::Enemy) {
             continue;
@@ -3294,14 +3352,14 @@ void TestEnemyArchetypesFromData() {
     TEST_ASSERT(entity.damage == kDefaultEnemyDefinitions.brute.damage);  // not in the file: the default
 
     // The reference campaign: level 3 has one enemy of each type, each with its own texture loaded.
-    ScratchDir referenceContent("archetypes-reference");
+    const ScratchDir referenceContent("archetypes-reference");
     Engine engine;
     const EngineOptions options = ReferenceEngineOptions(referenceContent, 3);
     TEST_ASSERT(engine.Init(options));
-    int counts[kEnemyVariantCount] = {};
+    std::array<int, kEnemyVariantCount> counts{};
     for (const Entity& e : engine.entityManager_.Entities()) {
         if (e.type == EntityType::Enemy) {
-            ++counts[static_cast<int>(e.variant)];
+            ++counts[static_cast<std::size_t>(e.variant)];
         }
     }
     TEST_ASSERT(counts[0] == 1 && counts[1] == 1 && counts[2] == 1);
@@ -3355,7 +3413,7 @@ void TestEntityVariantValidation() {
     TEST_ASSERT(AnyMessageContains(errors, {"v.csv:3 (entity 2) (pickup): field \"key\" must be", "\"teal\""}));
 
     // An unknown variant fails the level load in the engine.
-    ScratchDir scratch("variant-validation");
+    const ScratchDir scratch("variant-validation");
     const std::filesystem::path root = scratch.Path() / "content";
     WriteContentRoot(root, "{}",
                      "{\"entities\": [{\"type\": \"player\", \"x\": 2.5, \"y\": 2.5},"
@@ -3392,7 +3450,7 @@ void TestLockedDoorsAndKeys() {
 
     // Without the key: the door stays shut and says which key it needs.
     GameplayEvents locked{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, keys, locked);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, keys, locked);
     TEST_ASSERT(locked.doorNeedsKey == KeyColor::Red && !locked.doorToggled && !locked.exitActivated);
     TEST_ASSERT(!manager.GetEntityById(redDoor)->doorOpen && map.GetCell(5, 2) == TileType::Door);
 
@@ -3401,41 +3459,47 @@ void TestLockedDoorsAndKeys() {
     card.pickupType = PickupType::Key;
     card.keyColor = KeyColor::Red;
     GameplayEvents pickup{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, false, keys, pickup);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, false, keys, pickup);
     TEST_ASSERT(pickup.pickupCollected && pickup.pickupType == PickupType::Key && pickup.pickupKey == KeyColor::Red);
     TEST_ASSERT(keys.Has(KeyColor::Red) && !keys.Has(KeyColor::Blue) && !keys.Has(KeyColor::Gold));
     TEST_ASSERT(health == 100 && ammo == 10);
 
     // With the key it opens (and closes again like any door).
     GameplayEvents open{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, keys, open);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, keys, open);
     TEST_ASSERT(open.doorToggled && open.doorOpened && open.doorNeedsKey == KeyColor::None);
     TEST_ASSERT(manager.GetEntityById(redDoor)->doorOpen && map.GetCell(5, 2) == TileType::Empty);
 
     // The red key does not open the blue door.
     player.position = {4.5f, 4.5f};
     GameplayEvents wrongKey{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, keys, wrongKey);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, keys,
+                             wrongKey);
     TEST_ASSERT(wrongKey.doorNeedsKey == KeyColor::Blue && !manager.GetEntityById(blueDoor)->doorOpen);
     // Facing an exit switch in reach, Interact uses the switch, not a door that is also in reach.
     map.SetCell(3, 4, TileType::Exit);
     player.directionAngleRadians = kPi;
     GameplayEvents exitPress{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, keys, exitPress);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, keys,
+                             exitPress);
     TEST_ASSERT(exitPress.exitActivated && exitPress.doorNeedsKey == KeyColor::None && !exitPress.doorToggled);
     map.SetCell(3, 4, TileType::Empty);
     // Callers without keys (the old signature) never open locked doors.
     GameplayEvents noKeys{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, noKeys);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, noKeys);
     TEST_ASSERT(noKeys.doorNeedsKey == KeyColor::Blue);
 
     // Through the engine (reference level 2): "NEED BLUE KEY", the key card, the door opens;
-    // keys are cleared when the level restarts.
-    ScratchDir referenceContent("locked-doors-reference");
+    // keys are cleared when the level restarts. Level 2 has an unlocked door at (5, 3), the blue
+    // locked door at (9, 3) and the blue key card at (7.5, 5.3).
+    constexpr int kBlueDoorX = 9;
+    constexpr int kBlueDoorY = 3;
+    const ScratchDir referenceContent("locked-doors-reference");
     Engine engine;
     const EngineOptions options = ReferenceEngineOptions(referenceContent, 2);
     TEST_ASSERT(engine.Init(options));
-    TEST_ASSERT(engine.map_.GetCell(9, 3) == TileType::Door && engine.map_.GetDoorLock(9, 3) == KeyColor::Blue);
+    TEST_ASSERT(engine.map_.GetCell(kBlueDoorX, kBlueDoorY) == TileType::Door &&
+                engine.map_.GetDoorLock(kBlueDoorX, kBlueDoorY) == KeyColor::Blue);
     TEST_ASSERT(engine.map_.GetDoorLock(5, 3) == KeyColor::None);
     for (Entity& entity : engine.entityManager_.Entities()) {
         if (entity.type == EntityType::Enemy) {
@@ -3445,28 +3509,28 @@ void TestLockedDoorsAndKeys() {
     }
     bool interact = false;
     engine.SetInputInjector([&interact](InputState& input) { input.SetActionState(InputAction::Interact, interact); });
-    const auto press = [&]() {
+    const auto press = [&] {
         interact = false;
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
         interact = true;
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
         interact = false;
     };
     engine.player_.position = {8.6f, 3.5f};  // within 1.05 cells of the door's centre
     engine.player_.directionAngleRadians = 0.0f;
     press();
     TEST_ASSERT(engine.hudMessage_ == "NEED BLUE KEY");
-    TEST_ASSERT(engine.map_.GetCell(9, 3) == TileType::Door);
+    TEST_ASSERT(engine.map_.GetCell(kBlueDoorX, kBlueDoorY) == TileType::Door);
     engine.player_.position = {7.5f, 5.3f};  // the blue key card
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.keys_.Has(KeyColor::Blue));
     TEST_ASSERT(engine.hudMessage_ == "BLUE KEY CARD");
     engine.player_.position = {8.6f, 3.5f};
     press();
-    TEST_ASSERT(engine.map_.GetCell(9, 3) == TileType::Empty);
+    TEST_ASSERT(engine.map_.GetCell(kBlueDoorX, kBlueDoorY) == TileType::Empty);
     engine.ResetLevel();
     TEST_ASSERT(!engine.keys_.Has(KeyColor::Blue));
-    TEST_ASSERT(engine.map_.GetCell(9, 3) == TileType::Door);
+    TEST_ASSERT(engine.map_.GetCell(kBlueDoorX, kBlueDoorY) == TileType::Door);
 }
 
 void TestDoorCloseBlocked() {
@@ -3484,7 +3548,7 @@ void TestDoorCloseBlocked() {
     const int enemyId = manager.CreateEntity(EntityType::Enemy, Vec2{5.5f, 2.5f}).id;
     TEST_ASSERT(IsDoorwayOccupied(manager, player, 5, 2));
     GameplayEvents blocked{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, blocked);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, blocked);
     TEST_ASSERT(blocked.doorBlocked && !blocked.doorToggled);
     TEST_ASSERT(manager.GetEntityById(doorId)->doorOpen && map.GetCell(5, 2) == TileType::Empty);
     // Only touching the cell counts: an enemy half outside still blocks.
@@ -3498,36 +3562,33 @@ void TestDoorCloseBlocked() {
     manager.GetEntityById(enemyId)->enemyState = EnemyState::Dead;
     manager.GetEntityById(enemyId)->active = false;
     GameplayEvents closed{};
-    UpdateEntityInteractions(manager, map, player, health, ammo, 100, 99, true, closed);
+    UpdateEntityInteractions(manager, map, player, health, ammo, kPlayerMaxHealth, kPlayerMaxAmmo, true, closed);
     TEST_ASSERT(closed.doorToggled && !closed.doorOpened && !closed.doorBlocked);
     TEST_ASSERT(map.GetCell(5, 2) == TileType::Door);
 
     // Through the engine: the HUD says BLOCKED (reference level 1's door, a guard in the doorway).
-    ScratchDir referenceContent("door-blocked-reference");
+    const ScratchDir referenceContent("door-blocked-reference");
     Engine engine;
     const EngineOptions options = ReferenceEngineOptions(referenceContent, 1);
     TEST_ASSERT(engine.Init(options));
     bool interact = false;
     engine.SetInputInjector([&interact](InputState& input) { input.SetActionState(InputAction::Interact, interact); });
-    engine.player_.position = {7.6f, 7.5f};
+    engine.player_.position = {7.6f, 7.5f};  // west of the door, facing it
     engine.player_.directionAngleRadians = 0.0f;
     interact = true;
-    engine.Update(1.0 / 60.0);
-    TEST_ASSERT(engine.map_.GetCell(8, 7) == TileType::Empty);  // opened
-    Entity* guard = nullptr;
-    for (Entity& entity : engine.entityManager_.Entities()) {
-        guard = entity.type == EntityType::Enemy ? &entity : guard;
-    }
+    engine.Update(kFrameSeconds);
+    TEST_ASSERT(engine.map_.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) == TileType::Empty);  // opened
+    Entity* guard = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
     TEST_ASSERT(guard != nullptr);
-    guard->position = {8.5f, 7.5f};
+    guard->position = {ReferenceLevel1::kDoorX + 0.5f, ReferenceLevel1::kDoorY + 0.5f};  // in the doorway
     guard->enemyState = EnemyState::Alert;  // standing still for its reaction time
     guard->stateTimer = 10.0f;
     interact = false;
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     interact = true;
-    engine.Update(1.0 / 60.0);
+    engine.Update(kFrameSeconds);
     TEST_ASSERT(engine.hudMessage_ == "BLOCKED");
-    TEST_ASSERT(engine.map_.GetCell(8, 7) == TileType::Empty);
+    TEST_ASSERT(engine.map_.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) == TileType::Empty);
 }
 
 void TestCorpseAndHitFlash() {
@@ -3565,14 +3626,14 @@ void TestCorpseAndHitFlash() {
     const auto centrePixel = [&](bool flash) {
         Framebuffer framebuffer(64, 48);
         framebuffer.Clear(0xFF000000u);
-        std::vector<SpriteEntity> one{SpriteEntity{{4.5f, 2.5f}, 0, -1, SpriteType::Enemy, true, true, flash}};
-        SpriteRenderer::Render(map, player, framebuffer, std::vector<float>(64, 100.0f), one, set, 1.04719755f);
-        return framebuffer.Data()[24 * 64 + 32];
+        const std::vector<SpriteEntity> one{SpriteEntity{{4.5f, 2.5f}, 0, -1, SpriteType::Enemy, true, true, flash}};
+        SpriteRenderer::Render(map, player, framebuffer, std::vector<float>(64, 100.0f), one, set, kFieldOfViewRadians);
+        return PixelAt(framebuffer, 32, 24);
     };
     const std::uint32_t normal = centrePixel(false);
     const std::uint32_t flashed = centrePixel(true);
     TEST_ASSERT(normal != 0xFF000000u);
-    TEST_ASSERT(((flashed >> 8) & 0xFFu) > ((normal >> 8) & 0xFFu) + 50);  // green channel: 40 -> much brighter
+    TEST_ASSERT(GreenOf(flashed) > GreenOf(normal) + 50);  // green channel: 40 -> much brighter
 
     // The flash wears off.
     int health = 100;
@@ -3609,11 +3670,6 @@ void TestCorpseAndHitFlash() {
     TEST_ASSERT(FindPath(map, {9, 4}, {2, 2}, path));  // paths cross the corpse's cell
 
     // Every enemy type has its own corpse texture.
-    Entity brute{};
-    brute.type = EntityType::Enemy;
-    brute.variant = EnemyVariant::Brute;
-    brute.enemyState = EnemyState::Dead;
-    brute.active = false;
     EntityManager single{};
     Entity& runner = single.CreateEntity(EntityType::Enemy, Vec2{3.0f, 3.0f});
     runner.variant = EnemyVariant::Runner;
@@ -3626,7 +3682,6 @@ void TestCorpseAndHitFlash() {
     single.Entities()[0].variant = EnemyVariant::Brute;
     SyncSpritesWithEntities(single, runnerSprites);
     TEST_ASSERT(runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::BruteDead));
-    (void)brute;
 }
 
 void TestEnemySeparation() {
@@ -3663,7 +3718,7 @@ void TestEnemySeparation() {
     int health = 100;
     for (int frame = 0; frame < 60 * 5; ++frame) {
         GameplayEvents events{};
-        UpdateEnemyAi(crowd, map, player, health, 1.0f / 60.0f, events);
+        UpdateEnemyAi(crowd, map, player, health, kAiFrameSeconds, events);
     }
     const std::vector<Entity>& all = crowd.Entities();
     for (std::size_t i = 0; i < all.size(); ++i) {
@@ -3679,6 +3734,8 @@ void TestHudKeyIconsLayout() {
     const int width = 320;
     const int height = 240;
     const int barY = height - UiLayout::kMargin - UiLayout::kHudBarHeight;
+    // UiRenderer::DrawHud: the health label is 6 pixels into the bar, the ammo label 80 further
+    // right; the level label ends 6 pixels before the bar's right end.
     const int ammoTextEnd = UiLayout::kMargin + 6 + 80 + UiRenderer::TextWidth("AMMO 10000", 1);
     const int levelLabelStart = width - UiLayout::kMargin - 6 - UiRenderer::TextWidth("LEVEL 99", 1);
     int previousRight = ammoTextEnd;
@@ -3693,7 +3750,9 @@ void TestHudKeyIconsLayout() {
 
     // Every combination of held keys: inside the 4-pixel margin, each held key drawn in its
     // colour, no card for a key that is not held.
-    for (int mask = 0; mask < 8; ++mask) {
+    constexpr unsigned long kKeyCombinations = 8;  // every subset of the three key colours
+    for (unsigned long mask = 0; mask < kKeyCombinations; ++mask) {
+        const std::bitset<kKeyColorCount> heldKeys(mask);
         Framebuffer framebuffer(width, height);
         UiRenderer::HudView view{};
         view.health = 10000;
@@ -3702,7 +3761,7 @@ void TestHudKeyIconsLayout() {
         view.levelName = "KEYS";
         view.message = "NEED GOLD KEY";
         for (int i = 0; i < kKeyColorCount; ++i) {
-            if ((mask & (1 << i)) != 0) {
+            if (heldKeys.test(static_cast<std::size_t>(i))) {
                 view.keys.Add(kKeyColors[i]);
             }
         }
@@ -3711,8 +3770,8 @@ void TestHudKeyIconsLayout() {
         AssertInsideMargin(framebuffer, "HUD with key mask " + std::to_string(mask));
         for (int i = 0; i < kKeyColorCount; ++i) {
             const UiRenderer::UiRect card = UiRenderer::KeyCardRect(width, height, kKeyColors[i]);
-            const std::uint32_t inside = framebuffer.Data()[(card.y + 1) * width + card.x + 1];
-            const bool held = (mask & (1 << i)) != 0;
+            const std::uint32_t inside = PixelAt(framebuffer, card.x + 1, card.y + 1);
+            const bool held = heldKeys.test(static_cast<std::size_t>(i));
             TEST_ASSERT((inside == UiRenderer::KeyCardColor(kKeyColors[i])) == held);
         }
     }
@@ -3723,10 +3782,7 @@ void TestHudKeyIconsLayout() {
 
     // In the engine: the key preview holds all three keys and renders inside the layout.
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
+    EngineOptions options = ShippedEngineOptions();
     options.preview = PreviewScreen::Items;
     TEST_ASSERT(engine.Init(options));
     TEST_ASSERT(engine.keys_.Has(KeyColor::Red) && engine.keys_.Has(KeyColor::Blue) &&
@@ -3734,14 +3790,13 @@ void TestHudKeyIconsLayout() {
     engine.Render();
     AssertInsideMargin(engine.framebuffer_, "items preview");
     const UiRenderer::UiRect gold = UiRenderer::KeyCardRect(width, height, KeyColor::Gold);
-    TEST_ASSERT(engine.framebuffer_.Data()[(gold.y + 1) * width + gold.x + 1] ==
-                UiRenderer::KeyCardColor(KeyColor::Gold));
+    TEST_ASSERT(PixelAt(engine.framebuffer_, gold.x + 1, gold.y + 1) == UiRenderer::KeyCardColor(KeyColor::Gold));
 }
 
 void TestAiStress20Enemies() {
     // Performance sanity check: 20 enemies chasing in a 48x48 map with pillars, 600 frames of
     // Engine::Update + Engine::Render (headless, the real 320x240 renderer).
-    ScratchDir scratch("ai-stress");
+    const ScratchDir scratch("ai-stress");
     const std::filesystem::path root = scratch.Path() / "content";
     std::string mapText;
     constexpr int kSize = 48;
@@ -3755,10 +3810,13 @@ void TestAiStress20Enemies() {
         mapText += '\n';
     }
     std::string entities = "{\"entities\": [{\"type\": \"player\", \"x\": 12.5, \"y\": 24.5, \"angle\": 0}";
+    const std::array<const char*, 3> variants = {"guard", "brute", "runner"};
     for (int i = 0; i < 20; ++i) {
-        const char* variants[] = {"guard", "brute", "runner"};
-        entities += ",{\"type\": \"enemy\", \"x\": " + std::to_string(30.5 + (i % 5) * 3) +
-                    ", \"y\": " + std::to_string(8.5 + (i / 5) * 9) + ", \"variant\": \"" + variants[i % 3] + "\"}";
+        const int column = i % 5;  // five enemies per row, rows 9 cells apart
+        const int row = i / 5;
+        entities += ",{\"type\": \"enemy\", \"x\": " + std::to_string(30.5 + column * 3) +
+                    ", \"y\": " + std::to_string(8.5 + row * 9) + ", \"variant\": \"" +
+                    variants[static_cast<std::size_t>(i % 3)] + "\"}";
     }
     entities += "]}";
     MakeContentRoot(root);
@@ -3766,12 +3824,7 @@ void TestAiStress20Enemies() {
     WriteTextFile(root / "game" / "defs" / "stress.entities.json", entities);
 
     Engine engine;
-    EngineOptions options{};
-    options.dataDir = PathToUtf8(RepoRoot());
-    options.headless = true;
-    options.errorDialogs = false;
-    options.startLevel = 1;
-    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(engine.Init(ShippedEngineOptions(1)));
     engine.contentRoot_ = root;
     TEST_ASSERT(engine.LoadLevel("game/maps/stress.map", "game/defs/stress.entities.json"));
     engine.SetState(GameState::Gameplay);
@@ -3794,7 +3847,7 @@ void TestAiStress20Enemies() {
     constexpr int kFrames = 600;
     for (frame = 0; frame < kFrames; ++frame) {
         const auto start = std::chrono::steady_clock::now();
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
         engine.Render();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         totalMs += ms;
@@ -3868,10 +3921,12 @@ const char* const kAutoplayFixtureEntities = R"({ "entities": [
 ] })";
 
 void TestAutoplayFixtureLevel() {
-    ScratchDir scratch("autoplay-fixture");
+    const ScratchDir scratch("autoplay-fixture");
     const std::filesystem::path root = scratch.Path() / "content";
+    // The fixture's gameplay.json only lowers the starting health; everything else is a default.
+    constexpr int kStartHealth = 30;
     WriteAutoplayFixture(root, {{"keys", kAutoplayFixtureMap, kAutoplayFixtureEntities}},
-                         R"({ "player": { "initialHealth": 30 } })");
+                         R"({ "player": { "initialHealth": )" + std::to_string(kStartHealth) + " } }");
     AutoplayRunOptions options{};
     options.dataDir = PathToUtf8(root);
     options.prefDir = scratch.Path() / "prefs";
@@ -3884,14 +3939,17 @@ void TestAutoplayFixtureLevel() {
     const AutoplayLevelReport& level = first.levels[0];
     TEST_ASSERT(level.result == AutoplayResult::Complete && level.reason.empty());
     TEST_ASSERT(level.id == "keys" && level.levelNumber == 1);
-    TEST_ASSERT(level.healthStart == 30);
+    TEST_ASSERT(level.healthStart == kStartHealth);
     TEST_ASSERT(level.keysCollected == std::vector<std::string>{"blue"});
     TEST_ASSERT(level.keysUsed == std::vector<std::string>{"blue"});
     TEST_ASSERT(level.kills == 1 && level.totalEnemies == 1);
     TEST_ASSERT(level.pickups == 2 && level.totalPickups == 2);  // the health detour and the key
     TEST_ASSERT(level.doorsOpened >= 2);
-    TEST_ASSERT(level.shotsFired >= 2 && level.shotsFired == 24 - level.ammoEnd);  // a guard takes 2 hits
-    TEST_ASSERT(level.healthEnd == std::min(100, 30 + 25) - level.damageTaken);
+    TEST_ASSERT(level.shotsFired >= 2 &&
+                level.shotsFired == kDefaultWeaponDefinition.initialAmmo - level.ammoEnd);  // a guard takes 2 hits
+    TEST_ASSERT(level.healthEnd ==
+                std::min(kDefaultPlayerDefinition.maxHealth, kStartHealth + kDefaultPickupDefinitions.health.value) -
+                    level.damageTaken);
     TEST_ASSERT(level.frames > 0 && level.gameSeconds > 1.0);
     TEST_ASSERT_NEAR(level.gameSeconds, static_cast<double>(level.frames) / 60.0, 1e-6);
 
@@ -3911,7 +3969,7 @@ void TestAutoplayFixtureLevel() {
 void TestAutoplayUnwinnableLevels() {
     // The committed fixture (also checked by the DevKit validator): the exit is walled off.
     AutoplayRunOptions options{};
-    ScratchDir scratch("autoplay-unwinnable");
+    const ScratchDir scratch("autoplay-unwinnable");
     options.dataDir = PathToUtf8(RepoRoot() / "tests" / "fixtures" / "unwinnable");
     options.prefDir = scratch.Path() / "prefs";
     options.level = 1;
@@ -3986,7 +4044,7 @@ void TestAutoplayCommandLine() {
     AutoplayRunReport report{};
     report.campaignTitle = "T";
     report.campaignLevels = 1;
-    report.fixedStepSeconds = 1.0 / 60.0;
+    report.fixedStepSeconds = kFrameSeconds;
     report.timeLimitSeconds = 300.0;
     AutoplayLevelReport entry{};
     entry.levelNumber = 1;
@@ -4015,7 +4073,7 @@ void TestPlayerEnemyCollision() {
     const std::vector<BodyObstacle> body{{Vec2{6.0f, 2.5f}, kEnemyRadius}};
 
     // Walking into an enemy stops at contact distance.
-    Vec2 position = MoveWithSlidingAndBodies(map, {2.5f, 2.5f}, {5.0f, 0.0f}, radius, body);
+    const Vec2 position = MoveWithSlidingAndBodies(map, {2.5f, 2.5f}, {5.0f, 0.0f}, radius, body);
     TEST_ASSERT(position.x < 6.0f - contact + 1e-3f && position.x > 6.0f - contact - 0.06f);
     // Without bodies (or past a corpse) the same move goes all the way.
     TEST_ASSERT(MoveWithSlidingAndBodies(map, {2.5f, 2.5f}, {5.0f, 0.0f}, radius, {}).x > 7.4f);
@@ -4029,7 +4087,7 @@ void TestPlayerEnemyCollision() {
 
     // The enemy side: an enemy pushed into the player is moved back out (the player stays).
     EntityManager manager{};
-    Entity& guard = manager.CreateEntity(EntityType::Enemy, Vec2{3.0f, 2.5f});
+    const Entity& guard = manager.CreateEntity(EntityType::Enemy, Vec2{3.0f, 2.5f});
     Entity& corpse = manager.CreateEntity(EntityType::Enemy, Vec2{2.6f, 2.5f});
     corpse.enemyState = EnemyState::Dead;
     corpse.active = false;
@@ -4044,28 +4102,25 @@ void TestPlayerEnemyCollision() {
     // In the engine: walk the reference level 1's hall straight at its guard. The player never
     // gets closer than the two radii, the guard attacks; once it is dead the player walks over
     // its corpse.
-    ScratchDir prefs("c15-prefs");
-    ScratchDir referenceContent("c15-reference");
+    const ScratchDir prefs("c15-prefs");
+    const ScratchDir referenceContent("c15-reference");
     Engine engine;
     EngineOptions options = ReferenceEngineOptions(referenceContent, 1);
     options.prefDir = prefs.Path();
     TEST_ASSERT(engine.Init(options));
-    Entity* enemy = nullptr;
-    for (Entity& entity : engine.entityManager_.Entities()) {
-        enemy = entity.type == EntityType::Enemy ? &entity : enemy;
-    }
+    const Entity* enemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
     TEST_ASSERT(enemy != nullptr);
     const int enemyId = enemy->id;
-    engine.player_.directionAngleRadians = 0.0f;  // east, along row 2 towards the guard at (6.5, 2.7)
+    engine.player_.directionAngleRadians = 0.0f;  // east, along row 2 towards the guard
     engine.SetInputInjector([](InputState& input) { input.SetActionState(InputAction::MoveForward, true); });
     float closest = 100.0f;
     for (int frame = 0; frame < 240; ++frame) {
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
         closest =
             std::min(closest, Length(engine.entityManager_.GetEntityById(enemyId)->position - engine.player_.position));
     }
     TEST_ASSERT(closest >= contact - 0.01f);
-    TEST_ASSERT(engine.player_.position.x < 6.5f);
+    TEST_ASSERT(engine.player_.position.x < ReferenceLevel1::kGuardX);
     // Kill it the way a shot does; its corpse no longer blocks.
     Entity* dead = engine.entityManager_.GetEntityById(enemyId);
     dead->enemyState = EnemyState::Dead;
@@ -4073,7 +4128,7 @@ void TestPlayerEnemyCollision() {
     const float corpseX = dead->position.x;
     TEST_ASSERT(std::fabs(dead->position.y - engine.player_.position.y) < contact);  // still in the way
     for (int frame = 0; frame < 120 && engine.GetState() == GameState::Gameplay; ++frame) {
-        engine.Update(1.0 / 60.0);
+        engine.Update(kFrameSeconds);
     }
     if (!(engine.player_.position.x > corpseX + 0.3f)) {
         std::ostringstream out;
@@ -4098,28 +4153,33 @@ void TestSpriteVerticalCrop() {
     Player player{};
     player.position = {2.0f, 4.0f};
     player.directionAngleRadians = 0.0f;
-    Framebuffer framebuffer(320, 240);
-    const std::vector<float> depth(320, 100.0f);
-    const auto channel = [&](int x, int y, int shift) {
-        return static_cast<int>(
-            (framebuffer.Data()[static_cast<std::size_t>(y) * 320u + static_cast<std::size_t>(x)] >> shift) & 0xFFu);
-    };
+    constexpr int kWidth = 320;
+    constexpr int kHeight = 240;
+    Framebuffer framebuffer(kWidth, kHeight);
+    const std::vector<float> depth(kWidth, 100.0f);
     const auto render = [&](float distance) {
         framebuffer.Clear(0);
         SpriteEntity sprite{};
         sprite.position = {2.0f + distance, 4.0f};
         sprite.textureId = static_cast<int>(SpriteTextureId::Decoration);
-        SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures, 1.04719755f);
+        SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures, kFieldOfViewRadians);
     };
+    const int centreX = kWidth / 2;
     // 960 pixels tall: the screen shows texture rows 0.37..0.62, i.e. green at the top and blue
     // at the bottom (the old code squeezed the whole texture in: red at the top, white below).
     render(0.25f);
-    TEST_ASSERT(channel(160, 0, 8) > 150 && channel(160, 0, 16) < 60);     // green
-    TEST_ASSERT(channel(160, 239, 0) > 150 && channel(160, 239, 8) < 60);  // blue
+    const std::uint32_t top = PixelAt(framebuffer, centreX, 0);
+    const std::uint32_t bottom = PixelAt(framebuffer, centreX, kHeight - 1);
+    TEST_ASSERT(GreenOf(top) > 150 && RedOf(top) < 60);         // green
+    TEST_ASSERT(BlueOf(bottom) > 150 && GreenOf(bottom) < 60);  // blue
     // A sprite that fits on screen still shows the whole texture, red on top and white below.
+    // It is 120 pixels tall at this distance: rows 58 above and below the centre are just
+    // inside its first and last texture rows.
     render(2.0f);
-    TEST_ASSERT(channel(160, 120 - 58, 16) > 150 && channel(160, 120 - 58, 8) < 60);
-    TEST_ASSERT(channel(160, 120 + 58, 0) > 150 && channel(160, 120 + 58, 8) > 150);
+    const std::uint32_t nearTop = PixelAt(framebuffer, centreX, kHeight / 2 - 58);
+    const std::uint32_t nearBottom = PixelAt(framebuffer, centreX, kHeight / 2 + 58);
+    TEST_ASSERT(RedOf(nearTop) > 150 && GreenOf(nearTop) < 60);
+    TEST_ASSERT(BlueOf(nearBottom) > 150 && GreenOf(nearBottom) > 150);
 }
 
 void TestContentParityFixtures() {
@@ -4153,6 +4213,7 @@ void TestContentParityFixtures() {
         }
         if (ok) {
             std::vector<std::string> types;
+            types.reserve(placements.size());
             for (const EntityPlacement& placement : placements) {
                 types.emplace_back(PlacementTypeName(placement.type));
             }
@@ -4314,7 +4375,7 @@ void TestLightZones() {
 
     // The real load path: Engine::LoadLevel applies the zones; a CSV has none; the next level
     // load starts from a fresh, fully lit map.
-    ScratchDir scratch("light-zones");
+    const ScratchDir scratch("light-zones");
     const std::filesystem::path root = scratch.Path() / "content";
     WriteContentRoot(root, "{}", R"({"level": "level01", "entities": [
     { "type": "player", "x": 2.5, "y": 2.5 },
@@ -4356,7 +4417,7 @@ void TestLightZones() {
         std::vector<RaycastHit> hits;
         Raycaster::RenderWalls(split, viewer, framebuffer, params, hits);
         TEST_ASSERT(hits[32].hit && hits[32].mapX == 3);
-        return static_cast<int>((framebuffer.Data()[24 * 64 + 32] >> 16) & 0xFFu);
+        return RedOf(PixelAt(framebuffer, 32, 24));
     };
     const int fromLitSide = wallRed({1.5f, 2.5f}, 0.0f);  // looking +x at the west face
     const int fromDarkSide = wallRed({5.5f, 2.5f}, kPi);  // looking -x at the east face
@@ -4370,83 +4431,93 @@ struct TestCase {
     void (*fn)();
 };
 
-// Keep in sync with NEOWOLF_NATIVE_TESTS in CMakeLists.txt.
-const TestCase kTests[] = {
-    {"vec2_math_helpers", "Vec2 and math helpers", &TestVec2AndMathHelpers},
-    {"input_state_transitions", "InputState transitions", &TestInputStateTransitions},
-    {"map_queries", "Map queries", &TestMapQueries},
-    {"raycast_hit_distance", "Raycast hit distance", &TestRaycastHitDistance},
-    {"texture_loader_fallback", "Texture loader and fallback", &TestTextureLoaderAndFallback},
-    {"entity_manager_basics", "Entity manager basics", &TestEntityManagerBasics},
-    {"player_collision_rules", "Player collision rules", &TestPlayerCollisionRules},
-    {"sprite_distance_sorting", "Sprite distance sorting", &TestSpriteDistanceSorting},
-    {"entity_interaction_rules", "Entity interaction rules", &TestEntityInteractionRules},
-    {"content_file_loaders", "Content file loaders", &TestContentFileLoaders},
-    {"audio_config_loader", "Audio config loader", &TestAudioConfigLoader},
-    {"asset_manager_fallback_load", "Asset manager fallback load", &TestAssetManagerFallbackLoad},
-    {"game_state_transitions", "GameState transitions", &TestGameStateTransitions},
-    {"player_combat_shooting", "Player combat and shooting", &TestPlayerCombatAndShooting},
-    {"enemy_ai_behavior", "Enemy AI behavior", &TestEnemyAiBehavior},
-    {"pickup_collection", "Pickup collection", &TestPickupCollection},
-    {"command_bridge_events", "Command bridge and events", &TestCommandBridgeAndEvents},
-    {"file_logging", "File logging", &TestLogFile},
-    {"level_reset_dynamic_load", "Level reset and dynamic load", &TestLevelResetAndDynamicLoad},
-    {"vertical_slice_simulation", "Playable vertical slice simulation", &TestPlayableVerticalSliceSimulation},
-    {"map_perimeter_reachability", "Map perimeter and reachability validation",
-     &TestMapPerimeterAndReachabilityValidation},
-    {"asset_inventory_resilience", "Asset inventory and error resilience", &TestAssetInventoryAndErrorResilience},
-    {"engine_interop_c_api", "Engine Interop C API", &TestEngineInteropC_API},
-    {"content_root_resolution", "Content root resolution (candidates, sentinel, searched list)",
-     &TestContentRootResolution},
-    {"command_line_parsing", "Command-line parsing", &TestCommandLineParsing},
-    {"crlf_content_loading", "CRLF content files load like LF ones", &TestCrlfContentLoading},
-    {"log_file_rotation", "Log file rotation", &TestLogFileRotation},
-    {"gameplay_definitions_exact", "gameplay.json exact values per section", &TestGameplayDefinitionsExactValues},
-    {"gameplay_definitions_invalid", "Malformed or invalid gameplay.json is rejected", &TestGameplayDefinitionsInvalid},
-    {"entity_placements_json_csv", "JSON entity placements, errors, CSV equivalence", &TestEntityPlacementsJsonAndCsv},
-    {"decorations_and_sprite_sync", "Decorations are not triggers; sprites survive updates",
-     &TestDecorationsAndSpriteSync},
-    {"pickup_kind_from_data", "Pickup kind and value come from data", &TestPickupKindFromData},
-    {"edited_data_changes_game", "Edited gameplay and entity files change the game", &TestEditedDataChangesGame},
-    {"level_load_failures", "Missing or invalid entity files fail the level load", &TestLevelLoadFailures},
-    {"game_flow_menu", "Game flow: main menu, level select, quit, new game", &TestGameFlowMenu},
-    {"game_flow_progression", "Game flow: level complete, carry-over, campaign complete", &TestGameFlowProgression},
-    {"game_flow_death_pause", "Game flow: death snapshot, pause, continue, external states",
-     &TestGameFlowDeathAndPause},
-    {"campaign_manifest_validation", "campaign.json loads and invalid manifests are rejected",
-     &TestCampaignManifestValidation},
-    {"exit_switch_activation", "Exit switch: reach, facing, walls; triggers do not end the level",
-     &TestExitSwitchActivation},
-    {"progress_file_roundtrip", "progress.json round trip, atomic save, corrupt files", &TestProgressFileRoundTrip},
-    {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
-    {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
-    {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
-    {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete",
-     &TestCampaignPlaythrough},
-    {"line_of_sight", "Line of sight: walls and closed doors block, open doors do not", &TestLineOfSight},
-    {"enemy_hearing", "Enemies hear shots through open cells only", &TestEnemyHearing},
-    {"enemy_pathfinding", "Grid path finding and enemies walking round walls", &TestEnemyPathfinding},
-    {"enemy_archetypes_from_data", "Guard, brute and runner stats from gameplay.json", &TestEnemyArchetypesFromData},
-    {"entity_variant_validation", "Unknown variants, key and lock colours are errors", &TestEntityVariantValidation},
-    {"locked_doors_and_keys", "Locked doors open only with their key; keys reset per level", &TestLockedDoorsAndKeys},
-    {"door_close_blocked", "Doors do not close on the player or a living enemy", &TestDoorCloseBlocked},
-    {"corpse_and_hit_flash", "Corpses stay visible and block nothing; hits flash", &TestCorpseAndHitFlash},
-    {"enemy_separation", "Living enemies do not overlap", &TestEnemySeparation},
-    {"hud_key_icons_layout", "HUD key-card icons inside the layout", &TestHudKeyIconsLayout},
-    {"ai_stress_20_enemies", "20 enemies in a 48x48 map: robust and fast", &TestAiStress20Enemies},
-    {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
-    {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
-    {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
-    {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic",
-     &TestAutoplayFixtureLevel},
-    {"autoplay_unwinnable_levels", "Autoplay bot reports unwinnable levels with a reason",
-     &TestAutoplayUnwinnableLevels},
-    {"autoplay_command_line", "neo_wolf_autoplay command line and report formats", &TestAutoplayCommandLine},
-    {"player_enemy_collision", "Living enemies block the player, corpses do not (C15)", &TestPlayerEnemyCollision},
-    {"sprite_vertical_crop", "Close sprites are cropped, not squeezed", &TestSpriteVerticalCrop},
-    {"content_parity_fixtures", "Engine loaders match tests/fixtures/parity/expected.json", &TestContentParityFixtures},
-    {"light_zones", "Entity-file light zones: order, range, bounds, default 1.0, wall faces (C21)", &TestLightZones},
-};
+// Every test case, in run order. Keep in sync with NEOWOLF_NATIVE_TESTS in CMakeLists.txt.
+const std::vector<TestCase>& AllTests() {
+    static const std::vector<TestCase> tests = {
+        {"vec2_math_helpers", "Vec2 and math helpers", &TestVec2AndMathHelpers},
+        {"input_state_transitions", "InputState transitions", &TestInputStateTransitions},
+        {"map_queries", "Map queries", &TestMapQueries},
+        {"raycast_hit_distance", "Raycast hit distance", &TestRaycastHitDistance},
+        {"texture_loader_fallback", "Texture loader and fallback", &TestTextureLoaderAndFallback},
+        {"entity_manager_basics", "Entity manager basics", &TestEntityManagerBasics},
+        {"player_collision_rules", "Player collision rules", &TestPlayerCollisionRules},
+        {"sprite_distance_sorting", "Sprite distance sorting", &TestSpriteDistanceSorting},
+        {"entity_interaction_rules", "Entity interaction rules", &TestEntityInteractionRules},
+        {"content_file_loaders", "Content file loaders", &TestContentFileLoaders},
+        {"audio_config_loader", "Audio config loader", &TestAudioConfigLoader},
+        {"asset_manager_fallback_load", "Asset manager fallback load", &TestAssetManagerFallbackLoad},
+        {"game_state_transitions", "GameState transitions", &TestGameStateTransitions},
+        {"player_combat_shooting", "Player combat and shooting", &TestPlayerCombatAndShooting},
+        {"enemy_ai_behavior", "Enemy AI behavior", &TestEnemyAiBehavior},
+        {"pickup_collection", "Pickup collection", &TestPickupCollection},
+        {"command_bridge_events", "Command bridge and events", &TestCommandBridgeAndEvents},
+        {"file_logging", "File logging", &TestLogFile},
+        {"level_reset_dynamic_load", "Level reset and dynamic load", &TestLevelResetAndDynamicLoad},
+        {"vertical_slice_simulation", "Playable vertical slice simulation", &TestPlayableVerticalSliceSimulation},
+        {"map_perimeter_reachability", "Map perimeter and reachability validation",
+         &TestMapPerimeterAndReachabilityValidation},
+        {"asset_inventory_resilience", "Asset inventory and error resilience", &TestAssetInventoryAndErrorResilience},
+        {"engine_interop_c_api", "Engine Interop C API", &TestEngineInteropCApi},
+        {"content_root_resolution", "Content root resolution (candidates, sentinel, searched list)",
+         &TestContentRootResolution},
+        {"command_line_parsing", "Command-line parsing", &TestCommandLineParsing},
+        {"crlf_content_loading", "CRLF content files load like LF ones", &TestCrlfContentLoading},
+        {"log_file_rotation", "Log file rotation", &TestLogFileRotation},
+        {"gameplay_definitions_exact", "gameplay.json exact values per section", &TestGameplayDefinitionsExactValues},
+        {"gameplay_definitions_invalid", "Malformed or invalid gameplay.json is rejected",
+         &TestGameplayDefinitionsInvalid},
+        {"entity_placements_json_csv", "JSON entity placements, errors, CSV equivalence",
+         &TestEntityPlacementsJsonAndCsv},
+        {"decorations_and_sprite_sync", "Decorations are not triggers; sprites survive updates",
+         &TestDecorationsAndSpriteSync},
+        {"pickup_kind_from_data", "Pickup kind and value come from data", &TestPickupKindFromData},
+        {"edited_data_changes_game", "Edited gameplay and entity files change the game", &TestEditedDataChangesGame},
+        {"level_load_failures", "Missing or invalid entity files fail the level load", &TestLevelLoadFailures},
+        {"game_flow_menu", "Game flow: main menu, level select, quit, new game", &TestGameFlowMenu},
+        {"game_flow_progression", "Game flow: level complete, carry-over, campaign complete", &TestGameFlowProgression},
+        {"game_flow_death_pause", "Game flow: death snapshot, pause, continue, external states",
+         &TestGameFlowDeathAndPause},
+        {"campaign_manifest_validation", "campaign.json loads and invalid manifests are rejected",
+         &TestCampaignManifestValidation},
+        {"exit_switch_activation", "Exit switch: reach, facing, walls; triggers do not end the level",
+         &TestExitSwitchActivation},
+        {"progress_file_roundtrip", "progress.json round trip, atomic save, corrupt files", &TestProgressFileRoundTrip},
+        {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
+        {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
+        {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
+        {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete",
+         &TestCampaignPlaythrough},
+        {"line_of_sight", "Line of sight: walls and closed doors block, open doors do not", &TestLineOfSight},
+        {"enemy_hearing", "Enemies hear shots through open cells only", &TestEnemyHearing},
+        {"enemy_pathfinding", "Grid path finding and enemies walking round walls", &TestEnemyPathfinding},
+        {"enemy_archetypes_from_data", "Guard, brute and runner stats from gameplay.json",
+         &TestEnemyArchetypesFromData},
+        {"entity_variant_validation", "Unknown variants, key and lock colours are errors",
+         &TestEntityVariantValidation},
+        {"locked_doors_and_keys", "Locked doors open only with their key; keys reset per level",
+         &TestLockedDoorsAndKeys},
+        {"door_close_blocked", "Doors do not close on the player or a living enemy", &TestDoorCloseBlocked},
+        {"corpse_and_hit_flash", "Corpses stay visible and block nothing; hits flash", &TestCorpseAndHitFlash},
+        {"enemy_separation", "Living enemies do not overlap", &TestEnemySeparation},
+        {"hud_key_icons_layout", "HUD key-card icons inside the layout", &TestHudKeyIconsLayout},
+        {"ai_stress_20_enemies", "20 enemies in a 48x48 map: robust and fast", &TestAiStress20Enemies},
+        {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
+        {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
+        {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
+        {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic",
+         &TestAutoplayFixtureLevel},
+        {"autoplay_unwinnable_levels", "Autoplay bot reports unwinnable levels with a reason",
+         &TestAutoplayUnwinnableLevels},
+        {"autoplay_command_line", "neo_wolf_autoplay command line and report formats", &TestAutoplayCommandLine},
+        {"player_enemy_collision", "Living enemies block the player, corpses do not (C15)", &TestPlayerEnemyCollision},
+        {"sprite_vertical_crop", "Close sprites are cropped, not squeezed", &TestSpriteVerticalCrop},
+        {"content_parity_fixtures", "Engine loaders match tests/fixtures/parity/expected.json",
+         &TestContentParityFixtures},
+        {"light_zones", "Entity-file light zones: order, range, bounds, default 1.0, wall faces (C21)",
+         &TestLightZones},
+    };
+    return tests;
+}
 
 void PrintUsage(const char* program) {
     std::cout << "Usage: " << program << " [--list] [--help] [TEST...]\n"
@@ -4461,72 +4532,49 @@ bool Matches(const TestCase& test, const std::string& filter) {
     return std::string(test.id).find(filter) != std::string::npos ||
            std::string(test.name).find(filter) != std::string::npos;
 }
-}  // namespace
 
-int main(int argc, char* argv[]) {
-    std::vector<std::string> filters;
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        if (arg == "--list") {
-            for (const TestCase& test : kTests) {
-                std::cout << test.id << '\n';
-            }
-            return 0;
+// Adds the test cases `filter` selects to `selected` (each once): an exact id selects only that
+// test, otherwise every test whose id or description contains it. False if none matches.
+bool SelectByFilter(const std::string& filter, std::vector<const TestCase*>& selected) {
+    std::vector<const TestCase*> matches;
+    for (const TestCase& test : AllTests()) {
+        if (filter == test.id) {
+            matches = {&test};
+            break;
         }
-        if (arg == "--help" || arg == "-h") {
-            PrintUsage(argv[0]);
-            return 0;
-        }
-        if (!arg.empty() && arg[0] == '-') {
-            std::cerr << "Unknown option: " << arg << '\n';
-            PrintUsage(argv[0]);
-            return 2;
-        }
-        filters.push_back(arg);
-    }
-
-    std::vector<const TestCase*> selected;
-    for (const std::string& filter : filters) {
-        std::vector<const TestCase*> matches;
-        for (const TestCase& test : kTests) {
-            if (filter == test.id) {
-                matches = {&test};
-                break;
-            }
-            if (Matches(test, filter)) {
-                matches.push_back(&test);
-            }
-        }
-        if (matches.empty()) {
-            std::cerr << "No test case matches '" << filter << "' (use --list to see test ids).\n";
-            return 1;
-        }
-        for (const TestCase* match : matches) {
-            if (std::find(selected.begin(), selected.end(), match) == selected.end()) {
-                selected.push_back(match);
-            }
+        if (Matches(test, filter)) {
+            matches.push_back(&test);
         }
     }
-    if (filters.empty()) {
-        for (const TestCase& test : kTests) {
-            selected.push_back(&test);
+    for (const TestCase* match : matches) {
+        if (std::find(selected.begin(), selected.end(), match) == selected.end()) {
+            selected.push_back(match);
         }
     }
+    return !matches.empty();
+}
 
+// Runs one test case: its failure message, or an empty string if it passed.
+std::string RunTestCase(const TestCase& test) {
+    try {
+        test.fn();
+    } catch (const TestFailure& failure) {
+        return failure.message;
+    } catch (const std::exception& ex) {
+        return std::string("unexpected exception: ") + ex.what();
+    } catch (...) {
+        return "unexpected non-standard exception";
+    }
+    return "";
+}
+
+// Runs the selected test cases and prints a summary; returns the exit code (0: all passed).
+int RunTestCases(const std::vector<const TestCase*>& selected) {
     int passed = 0;
     std::vector<std::string> failures;
     for (const TestCase* test : selected) {
         std::cout << "[RUN ] " << test->id << " (" << test->name << ")\n" << std::flush;
-        std::string error;
-        try {
-            test->fn();
-        } catch (const TestFailure& failure) {
-            error = failure.message;
-        } catch (const std::exception& ex) {
-            error = std::string("unexpected exception: ") + ex.what();
-        } catch (...) {
-            error = "unexpected non-standard exception";
-        }
+        const std::string error = RunTestCase(*test);
         if (error.empty()) {
             std::cout << "[PASS] " << test->id << '\n';
             ++passed;
@@ -4547,4 +4595,43 @@ int main(int argc, char* argv[]) {
         std::cout << "  " << failure << '\n';
     }
     return 1;
+}
+}  // namespace
+
+// NOLINTNEXTLINE(bugprone-exception-escape): tests run inside RunTestCase; only output can throw here
+int main(int argc, char* argv[]) {
+    std::vector<std::string> filters;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--list") {
+            for (const TestCase& test : AllTests()) {
+                std::cout << test.id << '\n';
+            }
+            return 0;
+        }
+        if (arg == "--help" || arg == "-h") {
+            PrintUsage(argv[0]);
+            return 0;
+        }
+        if (!arg.empty() && arg[0] == '-') {
+            std::cerr << "Unknown option: " << arg << '\n';
+            PrintUsage(argv[0]);
+            return 2;
+        }
+        filters.push_back(arg);
+    }
+
+    std::vector<const TestCase*> selected;
+    for (const std::string& filter : filters) {
+        if (!SelectByFilter(filter, selected)) {
+            std::cerr << "No test case matches '" << filter << "' (use --list to see test ids).\n";
+            return 1;
+        }
+    }
+    if (filters.empty()) {
+        for (const TestCase& test : AllTests()) {
+            selected.push_back(&test);
+        }
+    }
+    return RunTestCases(selected);
 }
