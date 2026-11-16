@@ -140,6 +140,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 
 ## Phase 11 — Final sign-off
 - [ ] Fresh clone on macOS: build, all tests, bot completes 10/10, manual full play-through
+  - Partial (2026-11-16): the owner played the v1.0.0 macOS package up to about level 7. Sound and mechanics worked; the change requests are tracked in [ROADMAP_NEXT.md](ROADMAP_NEXT.md#feedback-from-the-v10-play-test). Levels 8–10 by hand are still open.
 - [ ] Windows CI: build, tests, bot completes 10/10, package (all pass in CI run 43866272111, all six jobs green; re-run on the sign-off commit)
 - [ ] Owner: manual play-through on a real Windows PC
 - **Done when:** all of the above pass (the release tag waits for Phase 12)
