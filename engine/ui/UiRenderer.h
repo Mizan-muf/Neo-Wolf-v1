@@ -66,8 +66,11 @@ std::string FitText(const std::string& text, int maxWidth, int scale);
 struct HudView {
     int health = 0;
     int ammo = 0;
-    int levelNumber = 0;  // 1-based; 0 = not a campaign level (C API load)
+    int levelNumber = 0;  // 1-based; 0 = not a campaign level (C API load, the test level)
     std::string levelName;
+    // Shown in capitals instead of "LEVEL N" in the bar and the banner (the test level's name);
+    // empty = "LEVEL N".
+    std::string levelTitle;
     bool showLevelBanner = false;  // large "LEVEL N / name" banner at level start
     std::string message;           // pickups, hits, checkpoints...
     int reservedLeft =
@@ -111,6 +114,8 @@ void DrawLevelSelectScreen(Framebuffer& framebuffer, const LevelSelectView& view
 
 // "LEVEL 2: NAME", or "" when not a campaign level.
 std::string LevelLabel(int levelNumber, const std::string& levelName);
+// The test level's label (pause and game-over screens, menu item): its name in capitals.
+std::string TestLevelLabel(const std::string& levelName);
 
 void DrawPauseOverlay(Framebuffer& framebuffer, const std::string& levelLabel);
 
@@ -119,6 +124,7 @@ struct LevelCompleteView {
     std::string levelName;
     LevelResults results{};
     bool lastLevel = false;
+    bool testLevel = false;  // the test level (only set from outside): Enter restarts it
 };
 void DrawLevelCompleteScreen(Framebuffer& framebuffer, const LevelCompleteView& view);
 void DrawGameOverScreen(Framebuffer& framebuffer, const std::string& levelLabel);

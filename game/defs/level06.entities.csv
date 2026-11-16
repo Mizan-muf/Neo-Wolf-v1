@@ -1,4 +1,4 @@
-# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message
 door,13.5,15.5,13,15
 door,14.5,4.5,14,4,,,,,,blue
 door,22.5,2.5,22,2

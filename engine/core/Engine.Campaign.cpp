@@ -14,6 +14,7 @@
 #include "engine/core/Paths.h"
 #include "engine/core/Progress.h"
 #include "engine/core/Vec2i.h"
+#include "engine/ui/UiRenderer.h"
 #include "engine/world/LevelBuilder.h"
 
 namespace {
@@ -136,6 +137,11 @@ bool Engine::LoadCampaignDefinition(const std::string& relativePath, std::vector
     }
     LogInfo("Campaign \"" + campaign_.title + "\" loaded from " + resolvedPath + ": " +
             std::to_string(campaign_.levels.size()) + " level(s): " + names);
+    if (campaign_.testLevel) {
+        LogInfo("Test level: \"" + campaign_.testLevel->name + "\" (" + campaign_.testLevel->id + ", " +
+                campaign_.testLevel->theme + "), outside the campaign" +
+                (campaign_.bootIntoTestLevel ? "; bootIntoTestLevel is on" : ""));
+    }
     ConfigureFlow();
     return true;
 }
@@ -145,6 +151,7 @@ void Engine::ConfigureFlow() {
     config.levelCount = static_cast<int>(campaign_.levels.size());
     config.initial = PlayerStats{gameplay_.player.initialHealth, gameplay_.weapon.initialAmmo};
     config.maximum = PlayerStats{gameplay_.player.maxHealth, gameplay_.weapon.maxAmmo};
+    config.hasTestLevel = campaign_.testLevel.has_value();
     const bool hadProgress = flow_.HasProgress();
     const int highest = flow_.HighestUnlocked();
     flow_.Configure(config);
@@ -246,8 +253,31 @@ bool Engine::ApplyTheme(const std::string& themeId) {
     return complete;
 }
 
+bool Engine::LoadLevelEntry(const CampaignLevel& level, int index) {
+    if (!LoadLevelFiles(level.map, level.entities)) {
+        return false;
+    }
+    ApplyTheme(level.theme);
+    currentLevelIndex_ = index;
+    levelBannerTimer_ = kLevelBannerSeconds;
+    return true;
+}
+
 bool Engine::LoadCampaignLevel(int levelIndex, const PlayerStats& stats) {
-    if (levelIndex < 0) {
+    const std::string withStats =
+        " with health " + std::to_string(stats.health) + ", ammo " + std::to_string(stats.ammo);
+    if (levelIndex == kTestLevelIndex) {
+        if (!campaign_.testLevel) {
+            LogError("There is no test level (campaign.json has no \"testLevel\").");
+            return false;
+        }
+        const CampaignLevel& level = *campaign_.testLevel;
+        LogInfo("Starting the test level \"" + level.name + "\" (" + level.id + ")" + withStats +
+                "; outside the campaign, progress is not saved");
+        if (!LoadLevelEntry(level, kTestLevelIndex)) {
+            return false;
+        }
+    } else if (levelIndex < 0) {
         if (!LoadLevel(currentMapPath_, currentEntitiesPath_)) {
             return false;
         }
@@ -258,14 +288,11 @@ bool Engine::LoadCampaignLevel(int levelIndex, const PlayerStats& stats) {
             return false;
         }
         const CampaignLevel& level = campaign_.levels[static_cast<std::size_t>(levelIndex)];
-        LogInfo("Starting level " + std::to_string(levelIndex + 1) + " \"" + level.name + "\" (" + level.id +
-                ") with health " + std::to_string(stats.health) + ", ammo " + std::to_string(stats.ammo));
-        if (!LoadLevel(level.map, level.entities)) {
+        LogInfo("Starting level " + std::to_string(levelIndex + 1) + " \"" + level.name + "\" (" + level.id + ")" +
+                withStats);
+        if (!LoadLevelEntry(level, levelIndex)) {
             return false;
         }
-        ApplyTheme(level.theme);
-        currentLevelIndex_ = levelIndex;
-        levelBannerTimer_ = kLevelBannerSeconds;
     }
     playerHealth_ = stats.health;
     playerAmmo_ = stats.ammo;
@@ -277,6 +304,13 @@ const CampaignLevel* Engine::CurrentCampaignLevel() const {
         return nullptr;
     }
     return &campaign_.levels[static_cast<std::size_t>(currentLevelIndex_)];
+}
+
+std::string Engine::MenuItemText(MenuItem item) const {
+    if (item == MenuItem::TestLevel && campaign_.testLevel) {
+        return UiRenderer::TestLevelLabel(campaign_.testLevel->name);
+    }
+    return MenuItemLabel(item);
 }
 
 LevelResults Engine::CurrentLevelResults() const {
@@ -304,7 +338,7 @@ void Engine::ExecuteFlowRequests(const std::vector<FlowRequest>& requests) {
             case FlowRequestType::RestartLevel:
                 if (!LoadCampaignLevel(request.levelIndex, request.stats)) {
                     LogError("Could not start the level; back to the main menu.");
-                    flow_.ForceState(GameState::Menu);
+                    flow_.CancelLevelStart();  // the previous level is still loaded
                 }
                 break;
             case FlowRequestType::SaveProgress:

@@ -42,12 +42,12 @@ The owner's play test on macOS (2026-11-16) found sound and mechanics working. E
 - [ ] More in-depth options: mouse sensitivity, key rebinding, separate music and sound volumes, difficulty, window size and fullscreen, render resolution, brightness, screen shake, head bob, crosshair, minimap default
 - [ ] The mouse works in every menu and screen
 - [ ] A controls screen (from the main menu and the pause menu) and tutorial hints in the first level
-- [ ] A test level the game opens straight into during development (the Test Chamber)
+- [x] A test level the game opens straight into during development (the Test Chamber) (see the Engine section)
 
 ### Engine
 
 - [x] Configurable internal render resolution: default 640×360 (16:9), `--render-size WxH`, the same vertical field of view at every aspect ratio, UI scaled by whole pixels, gameplay unchanged (the bot's report stays identical) (commit `60e3e38`; CI run 43927263488, all seven jobs green)
-- [ ] Test Chamber: a development level outside the campaign that grows with every feature (enemy gallery, pickups, keys and doors, props, weapon range, dark room)
+- [x] Test Chamber: a development level outside the campaign that grows with every feature (enemy gallery, pickups, keys and doors, props, weapon range, dark room); [levels/testchamber.md](levels/testchamber.md)
 - [ ] Engine/game boundary inside this repository:
   - [ ] engine built as a library target with public headers
   - [ ] a game manifest supplies the content folder, window title and start-up settings

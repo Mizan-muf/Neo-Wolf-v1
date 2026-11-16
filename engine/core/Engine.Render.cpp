@@ -13,6 +13,8 @@
 #include "engine/ui/UiRenderer.h"
 
 namespace {
+// The second line of the test level's start banner (under its name).
+constexpr const char* kTestLevelBannerNote = "OUTSIDE THE CAMPAIGN: PROGRESS IS NOT SAVED";
 constexpr float kDegreesPerRadian = 57.2957795f;           // for the debug overlay's heading
 constexpr std::uint32_t kPlainCeilingColor = 0xFF2A2A2Au;  // ARGB, when there is no ceiling texture
 constexpr std::uint32_t kPlainFloorColor = 0xFF3F3F3Fu;    // ARGB, when there is no floor texture
@@ -90,31 +92,36 @@ void Engine::RenderWorld() {
     ParticleRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, particleManager_.Particles());
 }
 
+void Engine::RenderMenu() {
+    if (flow_.Page() == MenuPage::Main) {
+        UiRenderer::MenuView view{};
+        view.campaignTitle = campaign_.title;
+        for (const MenuItem item : flow_.MenuItems()) {
+            view.items.push_back(MenuItemText(item));
+        }
+        view.selected = flow_.MenuCursor();
+        UiRenderer::DrawMenuScreen(framebuffer_, view);
+        return;
+    }
+    UiRenderer::LevelSelectView view{};
+    view.campaignTitle = campaign_.title;
+    for (std::size_t i = 0; i < campaign_.levels.size(); ++i) {
+        view.levels.push_back(UiRenderer::LevelSelectEntry{static_cast<int>(i) + 1, campaign_.levels[i].name,
+                                                           flow_.IsLevelUnlocked(static_cast<int>(i))});
+    }
+    view.selected = flow_.LevelCursor();
+    UiRenderer::DrawLevelSelectScreen(framebuffer_, view);
+}
+
 void Engine::RenderUi() {
     const GameState state = flow_.State();
     const CampaignLevel* level = CurrentCampaignLevel();
+    const CampaignLevel* testLevel = InTestLevel() ? TestLevelDefinition() : nullptr;
     const int levelNumber = level != nullptr ? currentLevelIndex_ + 1 : 0;
     const std::string levelName = level != nullptr ? level->name : std::string();
 
     if (state == GameState::Menu) {
-        if (flow_.Page() == MenuPage::Main) {
-            UiRenderer::MenuView view{};
-            view.campaignTitle = campaign_.title;
-            for (const MenuItem item : flow_.MenuItems()) {
-                view.items.emplace_back(MenuItemLabel(item));
-            }
-            view.selected = flow_.MenuCursor();
-            UiRenderer::DrawMenuScreen(framebuffer_, view);
-        } else {
-            UiRenderer::LevelSelectView view{};
-            view.campaignTitle = campaign_.title;
-            for (std::size_t i = 0; i < campaign_.levels.size(); ++i) {
-                view.levels.push_back(UiRenderer::LevelSelectEntry{static_cast<int>(i) + 1, campaign_.levels[i].name,
-                                                                   flow_.IsLevelUnlocked(static_cast<int>(i))});
-            }
-            view.selected = flow_.LevelCursor();
-            UiRenderer::DrawLevelSelectScreen(framebuffer_, view);
-        }
+        RenderMenu();
         return;
     }
     if (state == GameState::CampaignComplete) {
@@ -136,6 +143,10 @@ void Engine::RenderUi() {
     hud.ammo = playerAmmo_;
     hud.levelNumber = levelNumber;
     hud.levelName = levelName;
+    if (testLevel != nullptr) {
+        hud.levelTitle = testLevel->name;
+        hud.levelName = kTestLevelBannerNote;
+    }
     hud.showLevelBanner = state == GameState::Gameplay && levelBannerTimer_ > 0.0f;
     hud.message = state == GameState::Gameplay ? hudMessage_ : std::string();
     hud.reservedLeft = reservedLeft;
@@ -150,7 +161,8 @@ void Engine::RenderUi() {
                                      static_cast<int>(std::floor(player_.position.y)));
     }
 
-    const std::string label = UiRenderer::LevelLabel(levelNumber, levelName);
+    const std::string label = testLevel != nullptr ? UiRenderer::TestLevelLabel(testLevel->name)
+                                                   : UiRenderer::LevelLabel(levelNumber, levelName);
     if (state == GameState::Paused) {
         UiRenderer::DrawPauseOverlay(framebuffer_, label);
     } else if (state == GameState::GameOver) {
@@ -161,6 +173,12 @@ void Engine::RenderUi() {
         view.levelName = levelName;
         view.results = flow_.LastResults();
         view.lastLevel = flow_.IsLastLevel();
+        if (testLevel != nullptr) {
+            // Only set from outside (its exit switch restarts it): the results so far, no carry-over.
+            view.levelName = testLevel->name;
+            view.results = CurrentLevelResults();
+            view.testLevel = true;
+        }
         UiRenderer::DrawLevelCompleteScreen(framebuffer_, view);
     }
 }

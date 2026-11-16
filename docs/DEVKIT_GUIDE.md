@@ -125,7 +125,8 @@ exactly like the engine (`tools/devkit/engine_formats.py`):
   numbers in C `strtod`/`strtoll` syntax (so `1_5`, a no-break space or a lone CR are errors, as in
   the engine). Then the placement rules: valid `type`; `x`/`y` finite numbers; `mapX`/`mapY`
   integers 0–100000 on doors and triggers; `kind` on pickups, `key` on key pickups, `value`
-  1–10000, `variant`, `lock`; fields that do not apply and unknown fields are warnings
+  1–10000, `variant`, `lock`, a trigger's `message` (1–40 bytes of UTF-8; no comma, control character or space at either end); fields that do
+  not apply and unknown fields are warnings
   ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#2-entity-placements-levelentitiesjson)).
   Light zones (the optional top-level `lights` array, JSON only): integers `x`, `y` ≥ 0 and
   `w`, `h` ≥ 1, `level` a number from 0.2 to 1.0, each zone fully inside the map
@@ -143,13 +144,18 @@ exactly like the engine (`tools/devkit/engine_formats.py`):
   are warnings, with a hint for the keys that moved in Phase 4. A missing file is an error.
 - **`campaign.json`** (`CampaignConfig`): a non-empty `title`, a non-empty `levels` array, every
   level an object with non-empty `id`, `name`, `map`, `entities`, `theme`; ids and themes use
-  only `a-z 0-9 _ -`; ids are unique; the map, entity and theme files exist. Unknown keys and
-  names longer than 32 bytes are warnings.
+  only `a-z 0-9 _ -`; ids are unique; the map, entity and theme files exist. The optional
+  `testLevel` follows the same rules (its id must differ from every level's), and the optional
+  `bootIntoTestLevel` must be `true` or `false` (`true` needs a `testLevel`;
+  [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#test-level)). Unknown keys and names longer
+  than 32 bytes are warnings.
 - **Assets**: every `.ppm` under `game/assets/` (P3, header, pixel count, value range; a size that
   is not a power of two is a warning) and every `.wav` in `game/assets/` (RIFF/WAVE, PCM, 1 or 2
   channels).
 
-**DevKit rules** (stricter than the engine, so a level that validates can be finished):
+**DevKit rules** (stricter than the engine, so a level that validates can be finished). They
+apply to every campaign level and to the test level (the Test Chamber); messages name the test
+level `campaign.json: testLevel (<id>)`:
 
 | Rule | Level |
 |---|---|
@@ -163,8 +169,8 @@ exactly like the engine (`tools/devkit/engine_formats.py`):
 | At least one exit switch `X` per level, with a reachable floor cell beside it, when every key is collected before the door it opens (breadth-first search from the spawn; a locked door opens once its key's cell was reached) | error |
 | Every lock colour has a key in the level, and that key can be collected before the door it opens | error |
 | Every pickup and enemy can be reached (with all collectable keys) | warning |
-| A map or entity file in `game/` that no campaign level uses (an orphan; a `.csv` export of a used `.json` is fine) | warning |
-| `--require-levels N` and the campaign does not have `N` levels | error |
+| A map or entity file in `game/` that no campaign level (and not the test level) uses (an orphan; a `.csv` export of a used `.json` is fine) | warning |
+| `--require-levels N` and the campaign does not have `N` levels (the test level does not count) | error |
 
 Warnings fail with `--strict`; CTest's `content_validation` runs `validate --strict`. The `info`
 lines list, per level, the reachable exits and the order in which the keys become reachable.
@@ -176,6 +182,7 @@ lines list, per level, the reachable exits and the order in which the keys becom
 ```bash
 ./tools/devkit/neo_devkit inspect-map --level level02          # a campaign level by id ...
 ./tools/devkit/neo_devkit inspect-map --level 2                # ... or by number
+./tools/devkit/neo_devkit inspect-map --level testchamber      # the test level, by its id
 ./tools/devkit/neo_devkit inspect-map game/maps/level01.map    # finds the level's entity file
 ./tools/devkit/neo_devkit inspect-map my.map --entities my.entities.csv
 ./tools/devkit/neo_devkit inspect-map my.map --no-entities --spawn-x 1.5 --spawn-y 1.5
@@ -279,13 +286,14 @@ every file under `game/assets` is reproduced by them ([ASSET_CREDITS.md](ASSET_C
 ./tools/devkit/neo_devkit sync-entities              # every game/defs/<level>.entities.json -> .csv
 ./tools/devkit/neo_devkit sync-entities --from-csv   # the reverse: overwrites the JSON files
 ./tools/devkit/neo_devkit sync-entities --level level03   # only campaign level level03
+./tools/devkit/neo_devkit sync-entities --level testchamber   # only the test level
 ./tools/devkit/neo_devkit sync-entities --level 3 --from-csv   # only level 3, CSV -> JSON
 ```
 
 | Option | Meaning |
 |---|---|
 | `--from-csv` | Convert CSV to JSON instead (overwrites every `<level>.entities.json` that has a CSV). |
-| `--level ID\|N` | Only one campaign level: its id from `campaign.json` (e.g. `level03`) or its 1-based number, as for `inspect-map --level`. The pair is the level's `entities` file and the `.entities.csv` next to it; no other file is written. An unknown id, a number outside 1…N, or a missing source file (the JSON, or the CSV with `--from-csv`) is an `Error:` with exit code 1 and nothing written. |
+| `--level ID\|N` | Only one campaign level: its id from `campaign.json` (e.g. `level03`) or its 1-based number, as for `inspect-map --level`; or the test level by its id. The pair is the level's `entities` file and the `.entities.csv` next to it; no other file is written. An unknown id, a number outside 1…N, or a missing source file (the JSON, or the CSV with `--from-csv`) is an `Error:` with exit code 1 and nothing written. |
 
 The JSON files are canonical (the game loads them); the CSV files are an optional, **lossy**
 export: they cannot hold light zones. JSON → CSV prints a `Warning:` line for every level with

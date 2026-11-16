@@ -6,8 +6,9 @@ carry-over), `engine/world/InteractionRules.cpp` (exit switch, triggers, doors, 
 and `engine/world/EnemyAi.cpp` with `engine/world/Navigation.cpp` (enemy AI, line of sight,
 path finding).
 Every transition below is covered by the native tests `game_flow_menu`,
-`game_flow_progression` and `game_flow_death_pause`; `campaign_playthrough` plays the whole
-campaign through the real engine with simulated input. Keys per screen: [CONTROLS.md](CONTROLS.md).
+`game_flow_progression`, `game_flow_death_pause` and `game_flow_test_level`;
+`campaign_playthrough` plays the whole campaign through the real engine with simulated input,
+and `test_level` checks the Test Chamber in the real engine. Keys per screen: [CONTROLS.md](CONTROLS.md).
 
 ![Main menu](images/screens/menu.png)
 
@@ -31,6 +32,31 @@ level has its own page:
 | 8 | [`level08`](levels/level08.md) | Reactor Spine | `tech` | 10/3/6 | blue → red → gold | Three keys in a chain; mixed squads along a spine |
 | 9 | [`level09`](levels/level09.md) | Sunken Archive | `stone` | 12/4/8 | red, blue (either order), gold | A non-linear hub with three wings; an optional sealed vault |
 | 10 | [`level10`](levels/level10.md) | Wolf's Den | `classic` | 12/5/8 | red → blue → gold | Finale: a gauntlet of the earlier ideas, a supply room with a checkpoint, a throne-room arena |
+
+## The Test Chamber
+
+During the 1.5 development the game opens straight into the **Test Chamber**
+([levels/testchamber.md](levels/testchamber.md)): a development level **outside the campaign**
+with one signposted area per thing to test, reachable from a central hub (enemy gallery,
+pickups row, lock test, props row, weapon range, dark room). Walking into an area's entrance
+shows its name on the HUD, once per start of the level (signs are triggers, which fire once; a
+restart shows them again). It is set up in `campaign.json` (`"testLevel"`, and
+`"bootIntoTestLevel": true` for starting in it; [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#test-level)).
+
+- It starts with the initial health and ammo of `gameplay.json` and no keys, every time.
+- The HUD shows `TEST CHAMBER` instead of `LEVEL N`, and the start banner says that progress is
+  not saved.
+- **The exit switch restarts it** (a quick way to reset everything: enemies, doors, pickups,
+  signs); the HUD then says `EXIT SWITCH: TEST CHAMBER RESTARTED`. Restarting is clearer than leaving: the Test Chamber is where development happens, and the
+  main menu is one key press away (below).
+- Dying shows the game-over screen as in any level: `R` or `Enter` restarts the Test Chamber,
+  `Esc` goes to the main menu. `R` during play restarts it too.
+- `P` or `Esc` pauses as in any level; on the pause panel `Q` quits to the main menu.
+- **To play the campaign:** `Esc`, `Q`, then **New Game** (or **Continue**) on the main menu.
+  The main menu's **TEST CHAMBER** item comes back.
+- It never changes saved progress: nothing is unlocked or saved, it is not in Level Select,
+  and the campaign plays exactly as without it.
+- `--level N` still starts campaign level N, and `--preview` still shows its screen.
 
 ## States and transitions
 
@@ -70,12 +96,14 @@ level has its own page:
 | Menu (main) | Enter/Space on **New Game** | Gameplay | Level 1 is loaded from its files (a full reset of the world: known issue C7) with the `gameplay.json` initial health and ammo |
 | Menu (main) | Enter/Space on **Continue** | Gameplay | The highest unlocked level, with the initial health and ammo (see below). Shown when saved progress exists or a level was completed in this session |
 | Menu (main) | Enter/Space on **Level Select** | Menu (level select) | Lists every level by number and name; locked ones are dimmed **and** marked `LOCKED` |
+| Menu (main) | Enter/Space on **Test Chamber** | Gameplay | The [Test Chamber](#the-test-chamber) with the initial health and ammo. Shown when `campaign.json` has a `testLevel` |
 | Menu (main) | Enter/Space on **Quit**, or Esc | (exit) | The game closes (exit code 0) |
 | Menu (level select) | Enter/Space on an unlocked level | Gameplay | That level, with the initial health and ammo. Locked levels do nothing |
 | Menu (level select) | Esc | Menu (main) | |
 | Gameplay | `P` or Esc, or the window loses focus | Paused | |
 | Gameplay | `R` | Gameplay | The level restarts with its level-entry health and ammo |
 | Gameplay | `E` facing an exit switch in reach | LevelComplete | Progress is saved; health and ammo are remembered for the next level |
+| Gameplay (Test Chamber) | `E` facing its exit switch | Gameplay | The Test Chamber restarts with the initial health and ammo; nothing is saved |
 | Gameplay | health reaches 0 | GameOver | |
 | Paused | Esc, `P` or Enter | Gameplay | |
 | Paused | `R` | Gameplay | Restart with the level-entry health and ammo |
@@ -90,6 +118,11 @@ level has its own page:
 `--level N` (development and tests) skips the menu: it starts campaign level N directly in
 Gameplay with the initial health and ammo and ignores the unlock state. Completing a level
 started that way still unlocks the next one in the save.
+
+With `"bootIntoTestLevel": true` in `campaign.json` the game starts in Gameplay in the
+[Test Chamber](#the-test-chamber) instead of on the main menu (unless `--level` or `--preview`
+is given); the main page's items are then New Game, Continue (with progress), Level Select,
+Test Chamber and Quit.
 
 ## Winning and losing a level
 
@@ -256,8 +289,9 @@ before they can reach the exit ([TESTING.md](TESTING.md#autoplay-bot)).
 ## Triggers
 
 A `T` tile with a `trigger` entity is a walk-over marker. Stepping within 0.8 cells of the
-trigger entity shows `CHECKPOINT REACHED` in the HUD and sends the `TriggerActivated` interop
-event, once. **It no longer ends the level** (before Phase 5 it did); only the exit switch does.
+trigger entity shows its `message` in the HUD for 3 seconds (a sign, such as `WEAPON RANGE` in
+the Test Chamber), or `CHECKPOINT REACHED` for 2 seconds when it has none, and sends the
+`TriggerActivated` interop event, once. **It no longer ends the level** (before Phase 5 it did); only the exit switch does.
 
 ## Health and ammo between levels
 
@@ -288,7 +322,7 @@ event, once. **It no longer ends the level** (before Phase 5 it did); only the e
   out-of-range value is ignored with a warning in the log, and the game starts without
   progress (no Continue, only level 1 unlocked). A saved level beyond the campaign is clamped.
 - Level 1 is always unlocked. Completing level N unlocks level N+1. New Game does not erase
-  the save.
+  the save. The [Test Chamber](#the-test-chamber) never saves or unlocks anything.
 - `--pref-dir <dir>` or the `NEOWOLF_PREF_DIR` environment variable moves the log and the save
   to another folder; all automated runs use a temporary folder (known issue B15).
 - Through the C API (`nw_engine_init`, [C_API.md](C_API.md)) no per-user folder is set, so progress is neither
@@ -304,7 +338,8 @@ stands still; the HUD stays visible behind the pause panel.
 ## HUD and minimap
 
 - The bottom bar shows health (red at 25 or less), ammo (red at 0), the key cards you hold
-  (see [Keys and locked doors](#keys-and-locked-doors)) and the level number.
+  (see [Keys and locked doors](#keys-and-locked-doors)) and the level number (`TEST CHAMBER`
+  in the Test Chamber).
 - At the start of a level a banner shows the level number and name for 3 seconds.
 - Messages (pickups, hits, checkpoints) appear above the bar.
 - `M` or `Tab` toggles the minimap (off by default). It sits in a square panel in the top-left

@@ -1,4 +1,4 @@
-# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message
 player,1.5,2.5,,,,,0
 door,10.5,6.5,10,6
 enemy,17.5,5.5,,,,,,guard

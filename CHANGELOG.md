@@ -14,6 +14,40 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ### Added
 
+- **The Test Chamber** ([docs/levels/testchamber.md](docs/levels/testchamber.md)): a development
+  level outside the campaign that the game opens straight into during 1.5 development. A hub
+  with signposted areas: an enemy gallery (a cell per enemy type behind its own door, and a
+  mixed group), a pickups row (health, ammo, the three key cards), a lock test (red, blue and
+  gold doors in a row; the gold room holds the exit switch), a props row (seven vases), an
+  18-cell weapon range with guards at 9, 11 and 15 cells from a firing booth (out of their sight
+  and hearing until hit; the weapon reaches 12) and wall markers every 3 cells, and a dark room
+  at light level 0.2. Its exit switch restarts it; it never writes `progress.json`
+  or unlocks a level; the HUD shows `TEST CHAMBER` instead of a level number. Files:
+  `game/maps/testchamber.map`, `game/defs/testchamber.entities.json` (and its CSV export).
+- **`campaign.json` `"testLevel"` and `"bootIntoTestLevel"`**: a level outside the campaign (the
+  fields of a campaign level) and a flag to start the game in it. Both are validated by the
+  engine and by `validate` (bad definitions are errors; the test level gets the campaign
+  level rules), and documented in [CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md#test-level).
+  `--level N` and `--preview` still start where they say; the C API, the native tests and the
+  autoplay bot ignore the flag (`EngineOptions::testLevelBoot`), so the bot's campaign report is
+  unchanged. The main menu gets a **TEST CHAMBER** item (the test level's name) whenever a test
+  level is defined.
+- **A trigger's `"message"`**: the HUD text a walk-over trigger shows instead of
+  `CHECKPOINT REACHED` (1–40 bytes of well-formed UTF-8; no comma, control character or space
+  at either end, so that the CSV export holds it unchanged), used for the Test Chamber's signs. The
+  entity CSV export gained a twelfth column, `message` (the ten campaign CSVs were regenerated:
+  only their header comment changed).
+- The DevKit finds the test level by id (`inspect-map --level testchamber`,
+  `sync-entities --level testchamber`) and checks its page with `level_docs`;
+  `create-map --register` refuses the test level's id. `package --expect-version` (release tags)
+  fails while `"bootIntoTestLevel"` is `true`, and other packages warn. `neo_wolf --help` says
+  when the game starts in the test level.
+- Tests: native `game_flow_test_level` and `test_level`; `campaign_manifest_validation`,
+  `entity_placements_json_csv` and the parity fixtures cover bad test-level definitions and
+  trigger messages; game tests `game_test_level_boot`, `game_test_level_not_with_level` and
+  `game_test_level_not_with_preview` (`cmake/RunGame.cmake` gained `EXPECT_NO_REGEX` and
+  `EXPECT_NO_FILE`; the boot test checks that no `progress.json` is written); DevKit
+  `test_campaign_rules.TestTestLevel` (119 CTest tests).
 - **`--render-size <W>x<H>`**: the size of the image the game draws (even width 320–1920, even
   height 200–1080, width:height from 5:4 to 64:27, the shape of 2560×1080; anything else is a usage error with exit
   code 2). `EngineOptions::renderSize`
@@ -29,6 +63,10 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ### Changed
 
+- The game starts in the Test Chamber while `campaign.json` sets `"bootIntoTestLevel": true`
+  (the shipped setting during 1.5 development; the release checklist turns it off). With five
+  menu items (saved progress and a test level) the main menu at 16:9 uses a tighter vertical
+  spacing so that its three-line controls summary still fits (`ui_layout_bounds`).
 - **Default internal resolution 640×360** (16:9) instead of a fixed 320×240. The initial window is
   the largest whole multiple of the render size that fits in 1280×960 (1280×720 by default),
   shrunk with the same shape on a smaller desktop; letterboxing and fullscreen work as before.
@@ -50,6 +88,18 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 - On the development Mac (Release build, headless, no frame cap) a frame of `Update` + `Render`
   takes about 0.45 ms at 320×240, 1.3 ms at 640×360 and 5.2 ms at 1280×720
   ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) C28).
+
+### Fixed
+
+- A byte that is not UTF-8 in a text cell of an entity CSV (for example `lock`) made the engine
+  abort while it wrote the error message; the message now shows the byte as U+FFFD. In a trigger
+  `message` such a byte is an error in the engine and in the DevKit (whose `validate` crashed on
+  it).
+- A level that fails to load from the menu or a restart (an invalid entity file is only found
+  at load time) left the game flow on the failed level while the engine kept the previous one:
+  through the C API the previous level's exit switch then completed the failed level. The flow
+  now goes back to the level that is still loaded (`GameFlow::CancelLevelStart`), so the Test
+  Chamber stays the Test Chamber and saves nothing.
 
 ## [1.0.0] - 2026-11-16
 

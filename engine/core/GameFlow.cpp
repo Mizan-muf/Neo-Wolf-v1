@@ -29,6 +29,8 @@ const char* MenuItemLabel(MenuItem item) {
             return "CONTINUE";
         case MenuItem::LevelSelect:
             return "LEVEL SELECT";
+        case MenuItem::TestLevel:
+            return "TEST LEVEL";  // the engine shows the test level's name instead (Engine::MenuItemText)
         case MenuItem::Quit:
             return "QUIT";
     }
@@ -40,7 +42,9 @@ void GameFlow::Configure(const GameFlowConfig& config) {
     config_.levelCount = std::max(1, config.levelCount);
     highestUnlocked_ = std::clamp(highestUnlocked_, 1, config_.levelCount);
     currentLevel_ = -1;
+    previousLevel_ = -1;
     entrySnapshot_ = config_.initial;
+    previousSnapshot_ = config_.initial;
     carried_ = config_.initial;
     lastResults_ = {};
     GoToMenu();
@@ -68,6 +72,9 @@ std::vector<MenuItem> GameFlow::MenuItems() const {
         items.push_back(MenuItem::Continue);
     }
     items.push_back(MenuItem::LevelSelect);
+    if (config_.hasTestLevel) {
+        items.push_back(MenuItem::TestLevel);
+    }
     items.push_back(MenuItem::Quit);
     return items;
 }
@@ -90,6 +97,12 @@ FlowRequest GameFlow::StartLevelDirect(int levelIndex) {
     return requests.front();
 }
 
+FlowRequest GameFlow::StartTestLevel() {
+    std::vector<FlowRequest> requests;
+    StartLevel(kTestLevelIndex, config_.initial, FlowRequestType::LoadLevel, requests);
+    return requests.front();
+}
+
 void GameFlow::ForceState(GameState state) {
     if (state == GameState::Victory) {
         state = GameState::LevelComplete;  // deprecated alias (C API compatibility)
@@ -101,6 +114,12 @@ void GameFlow::ForceState(GameState state) {
     state_ = state;
 }
 
+void GameFlow::CancelLevelStart() {
+    currentLevel_ = previousLevel_;
+    entrySnapshot_ = previousSnapshot_;
+    GoToMenu();
+}
+
 void GameFlow::GoToMenu() {
     state_ = GameState::Menu;
     page_ = MenuPage::Main;
@@ -109,6 +128,8 @@ void GameFlow::GoToMenu() {
 
 void GameFlow::StartLevel(int levelIndex, const PlayerStats& stats, FlowRequestType type,
                           std::vector<FlowRequest>& requests) {
+    previousLevel_ = currentLevel_;
+    previousSnapshot_ = entrySnapshot_;
     currentLevel_ = levelIndex;
     entrySnapshot_ = stats;  // what a restart after death goes back to
     state_ = GameState::Gameplay;
@@ -150,15 +171,7 @@ std::vector<FlowRequest> GameFlow::Update(const InputState& input, const FlowEve
             break;
         case GameState::LevelComplete:
         case GameState::Victory:  // never stored (ForceState maps it); handled like LevelComplete
-            if (input.WasPressed(InputAction::Confirm)) {
-                if (IsLastLevel() || currentLevel_ < 0) {
-                    state_ = GameState::CampaignComplete;
-                } else {
-                    StartLevel(currentLevel_ + 1, carried_, FlowRequestType::LoadLevel, requests);
-                }
-            } else if (input.WasPressed(InputAction::Back)) {
-                GoToMenu();
-            }
+            UpdateLevelComplete(input, requests);
             break;
         case GameState::CampaignComplete:
             if (input.WasPressed(InputAction::Confirm) || input.WasPressed(InputAction::Back)) {
@@ -191,6 +204,9 @@ void GameFlow::UpdateMainMenu(const InputState& input, std::vector<FlowRequest>&
             page_ = MenuPage::LevelSelect;
             levelCursor_ = highestUnlocked_ - 1;
             break;
+        case MenuItem::TestLevel:
+            StartLevel(kTestLevelIndex, config_.initial, FlowRequestType::LoadLevel, requests);
+            break;
         case MenuItem::Quit:
             RequestQuit(requests);
             break;
@@ -208,7 +224,27 @@ void GameFlow::UpdateLevelSelect(const InputState& input, std::vector<FlowReques
     }
 }
 
+void GameFlow::UpdateLevelComplete(const InputState& input, std::vector<FlowRequest>& requests) {
+    if (input.WasPressed(InputAction::Confirm)) {
+        if (InTestLevel()) {
+            // Only set from outside (the exit switch restarts the test level): Enter does the same.
+            StartLevel(kTestLevelIndex, config_.initial, FlowRequestType::RestartLevel, requests);
+        } else if (IsLastLevel() || currentLevel_ < 0) {
+            state_ = GameState::CampaignComplete;
+        } else {
+            StartLevel(currentLevel_ + 1, carried_, FlowRequestType::LoadLevel, requests);
+        }
+    } else if (input.WasPressed(InputAction::Back)) {
+        GoToMenu();
+    }
+}
+
 void GameFlow::UpdateGameplay(const InputState& input, const FlowEvents& events, std::vector<FlowRequest>& requests) {
+    if (events.levelCompleted && InTestLevel()) {
+        // Outside the campaign: the exit switch starts the test level afresh; nothing is unlocked or saved.
+        StartLevel(kTestLevelIndex, config_.initial, FlowRequestType::RestartLevel, requests);
+        return;
+    }
     if (events.levelCompleted) {
         lastResults_ = events.results;
         carried_ = ClampCarried(events.stats);

@@ -55,6 +55,7 @@ class TestDefTools(unittest.TestCase):
             {"type": "pickup", "x": 11.8, "y": 6.6, "kind": "ammo", "value": 30},
             {"type": "pickup", "x": 3.0, "y": 3.0, "kind": "health"},
             {"type": "door", "x": 8.5, "y": 7.5, "mapX": 8, "mapY": 7},
+            {"type": "trigger", "x": 9.5, "y": 7.5, "mapX": 9, "mapY": 7, "message": "WEAPON RANGE"},
         ]
         json_file = self.dir_path / "lvl.entities.json"
         csv_file = self.dir_path / "lvl.entities.csv"
@@ -62,9 +63,10 @@ class TestDefTools(unittest.TestCase):
         json_to_csv(json_file, csv_file)
 
         lines = csv_file.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(lines[0], "# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock")
+        self.assertEqual(lines[0], "# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message")
         self.assertEqual(lines[3], "pickup,11.8,6.6,,,ammo,30")
         self.assertEqual(lines[4], "pickup,3.0,3.0,,,health")
+        self.assertEqual(lines[6], "trigger,9.5,7.5,9,7,,,,,,,WEAPON RANGE")  # a trigger's message: column 12
         self.assertEqual(load_entity_csv(csv_file), entities)
 
     def test_sync_defaults_to_json_to_csv(self) -> None:

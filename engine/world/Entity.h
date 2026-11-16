@@ -4,6 +4,7 @@
 // manager that owns them and hands out their ids.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "engine/core/Vec2.h"
@@ -80,6 +81,7 @@ struct Entity {
     int pickupValue = kDefaultPickupDefinitions.health.value;
     KeyColor keyColor = KeyColor::None;  // pickup of kind Key: which key
     KeyColor doorLock = KeyColor::None;  // door: the key needed to open it (None = unlocked)
+    std::string triggerMessage;          // trigger: the HUD message it shows (empty = "CHECKPOINT REACHED")
 };
 
 class EntityManager {

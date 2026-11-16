@@ -3,7 +3,7 @@
 The JSON entity files (``<level>.entities.json``) are canonical: the engine loads them.
 The CSV files are an optional export in the legacy table format, which the engine also reads:
 
-    type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+    type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message
 
 Trailing columns may be left out, and an empty column means "not given"
 (e.g. ``pickup,11.8,6.6,,,health``). See docs/CONTENT_DEFINITIONS.md.

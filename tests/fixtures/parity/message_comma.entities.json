@@ -1,0 +1,7 @@
+{
+  "level": "parity",
+  "entities": [
+    { "type": "player", "x": 1.5, "y": 1.5 },
+    { "type": "trigger", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "message": "LEFT, RIGHT" }
+  ]
+}

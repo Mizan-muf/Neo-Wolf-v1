@@ -46,6 +46,10 @@ struct EngineOptions {
     // --level N: campaign level to start in (1-based), skipping the menu and the unlock
     // state. 0 = start on the main menu (level 1 is loaded behind it).
     int startLevel = 0;
+    // Start in the test level when campaign.json sets "bootIntoTestLevel" and neither
+    // startLevel nor preview is set. Only the game executable sets it: the C API, the tests and
+    // the autoplay bot start on the main menu (or startLevel) as before.
+    bool testLevelBoot = false;
     // Folder for progress.json (App resolves --pref-dir / NEOWOLF_PREF_DIR / SDL_GetPrefPath).
     // Empty = progress is neither loaded nor saved (C API, tests).
     std::filesystem::path prefDir;
@@ -91,15 +95,16 @@ public:
     GameState GetState() const;
     // External state change (C API, command bridge). Victory (deprecated) means LevelComplete.
     void SetState(GameState state);
-    // Restarts the current level: a campaign level with its level-entry health and ammo, a
-    // level loaded by path with the gameplay.json initial values. State becomes Gameplay.
+    // Restarts the current level: a campaign level or the test level with its level-entry health
+    // and ammo, a level loaded by path with the gameplay.json initial values. State becomes Gameplay.
     void ResetLevel();
     void SetInputInjector(InputInjector injector) { inputInjector_ = std::move(injector); }
     // Loads game/defs/campaign.json (content-relative) into campaign_ and configures the game
     // flow. On error the previous campaign stays and false is returned (errors logged).
     bool LoadCampaignDefinition(const std::string& relativePath, std::vector<std::string>* outErrors = nullptr);
-    // Loads campaign level `levelIndex` (0-based) with its texture theme and starts it with
-    // `stats` (health/ammo). A negative index reloads the level loaded by path.
+    // Loads campaign level `levelIndex` (0-based), or the test level for kTestLevelIndex, with its
+    // texture theme and starts it with `stats` (health/ammo). Another negative index reloads the
+    // level loaded by path.
     bool LoadCampaignLevel(int levelIndex, const PlayerStats& stats);
     // Loads game/defs/themes/<themeId>.cfg and swaps the wall, door, floor, ceiling and exit
     // textures (only when the theme differs from the current one). A missing or broken
@@ -114,13 +119,22 @@ public:
     // Loads a map and its entity file (content-relative paths) and builds the level with the
     // current gameplay_ values. On any error (missing/invalid map or entity file, invalid
     // placement) the current level stays as it was and false is returned (errors logged).
+    // Loaded in place of the test level, it stops being the test level for the game flow too.
     bool LoadLevel(const std::string& mapPath, const std::string& entitiesPath);
     void ShowMessage(const std::string& message, float duration = 2.0f);
     PlayerStats CurrentStats() const { return PlayerStats{playerHealth_, playerAmmo_}; }
     // Kills, pickups and time of the current level so far.
     LevelResults CurrentLevelResults() const;
-    // The loaded campaign level, or nullptr for a level loaded by path.
+    // The loaded campaign level, or nullptr for a level loaded by path and for the test level.
     const CampaignLevel* CurrentCampaignLevel() const;
+    // The test level's definition (campaign.json "testLevel"), or nullptr if there is none.
+    const CampaignLevel* TestLevelDefinition() const {
+        return campaign_.testLevel.has_value() ? &*campaign_.testLevel : nullptr;
+    }
+    // True while the test level is loaded.
+    bool InTestLevel() const { return currentLevelIndex_ == kTestLevelIndex && campaign_.testLevel.has_value(); }
+    // A main-menu item as shown: the test level's item shows its name ("TEST CHAMBER").
+    std::string MenuItemText(MenuItem item) const;
     void PlayerAttack();
     // Content-relative path (e.g. "game/maps/level01.map") -> path under the content root
     // (UTF-8). Without a content root (tests, C API before Init) the path is returned as is,
@@ -172,7 +186,7 @@ public:
     GameFlow flow_{};
     std::filesystem::path prefDir_;  // where progress.json lives; empty = not saved
     std::string currentThemeId_;
-    int currentLevelIndex_ = -1;     // campaign index of the loaded level; -1 = loaded by path
+    int currentLevelIndex_ = -1;     // campaign index of the loaded level; -1 = loaded by path; or kTestLevelIndex
     float levelBannerTimer_ = 0.0f;  // "LEVEL N / name" banner at level start
     double levelTimeSeconds_ = 0.0;  // time spent in Gameplay on this level
     int levelEnemyTotal_ = 0;
@@ -194,6 +208,8 @@ private:
     bool InitWindow(const EngineOptions& options);
     void InitAssets();  // sprite and audio definitions, sprite textures, sounds
     bool InitFirstLevel(const EngineOptions& options);
+    // Whether this start goes straight into the test level (EngineOptions::testLevelBoot).
+    bool BootsIntoTestLevel(const EngineOptions& options) const;
     void LoadSpriteTextures(const SpriteTextureDefinitions& definitions);
     void LoadSoundEffects(const AudioEffectDefinitions& definitions);
 
@@ -214,6 +230,12 @@ private:
     // start of a level (LoadLevel, Shutdown).
     void ResetLevelState();
     void ExecuteFlowRequests(const std::vector<FlowRequest>& requests);
+    // LoadLevel without telling the game flow (the campaign and test level loads, whose flow
+    // request already names the level).
+    bool LoadLevelFiles(const std::string& mapPath, const std::string& entitiesPath);
+    // Loads `level`'s map, entities and theme and shows its banner; `index` becomes
+    // currentLevelIndex_ (a campaign index or kTestLevelIndex).
+    bool LoadLevelEntry(const CampaignLevel& level, int index);
     void SaveProgress(int highestUnlocked) const;
     void LoadSavedProgress();
     void ConfigureFlow();
@@ -225,4 +247,5 @@ private:
     bool SetupShowcase(bool enemies);
     void RenderWorld();
     void RenderUi();
+    void RenderMenu();  // the main menu or the level select page
 };

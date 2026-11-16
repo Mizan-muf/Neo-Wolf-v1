@@ -15,7 +15,7 @@ that every level can be finished.
 ## Features
 
 - **Campaign:** 10 levels in four texture themes, a main menu (New Game, Continue, Level
-  Select, Quit), health and ammo carried between levels, restart from the level start on death,
+  Select, Test Chamber, Quit), health and ammo carried between levels, restart from the level start on death,
   saved progress and unlocked levels ([GAMEPLAY.md](docs/GAMEPLAY.md)).
 - **Combat and AI:** a hitscan weapon with limited ammo; three enemy types (guard, brute,
   runner) that see you only with a clear line of sight, hear your shots through open doors,
@@ -76,6 +76,12 @@ configure needs internet access.
 ./build/macos/neo_wolf      # play; works from any directory
 ```
 
+During the 1.5 development the game starts in the **Test Chamber**, a development level with
+one signposted area per thing to test (enemies, pickups, keys and locks, props, a weapon range,
+a dark room); it never touches your saved progress. To play the campaign: `Esc`, `Q`, then
+**New Game** on the main menu; `--level N` starts campaign level N directly
+([GAMEPLAY.md](docs/GAMEPLAY.md#the-test-chamber), [the Test Chamber's map](docs/levels/testchamber.md)).
+
 **Windows** (Visual Studio 2022 or newer with *Desktop development with C++*, Python 3;
 [BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md); built and tested in CI, not yet on a Windows PC):
 
@@ -123,6 +129,7 @@ level's map and walkthrough: [docs/levels/README.md](docs/levels/README.md).
 | [GAMEPLAY.md](docs/GAMEPLAY.md) | How the game plays: states, rules, enemies, keys, saves |
 | [CONTROLS.md](docs/CONTROLS.md) | Every key, per screen |
 | [levels/README.md](docs/levels/README.md) | The campaign design, with one page per level |
+| [levels/testchamber.md](docs/levels/testchamber.md) | The Test Chamber: the development level the game starts in during 1.5 |
 | [levels/BUILD_NOTES.md](docs/levels/BUILD_NOTES.md) | History: the level builders' briefs |
 | [BUILD_MACOS.md](docs/BUILD_MACOS.md) | Building and running on macOS |
 | [BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) | Building and running on Windows |

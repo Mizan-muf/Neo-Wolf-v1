@@ -209,11 +209,39 @@ class TestPackagerFailures(PackagerTestCase):
         self.assertIn("cmake --install failed", res.errors[-1])
 
     def test_expect_version(self) -> None:
-        res = self.package(FakeCMake(package_info("linux", version="0.9.0")), expect_version="1.0.0")
-        self.assertFalse(res.success)
-        self.assertIn("version mismatch", res.errors[-1])
-        res = self.package(FakeCMake(package_info("linux", version="1.0.0")), expect_version="1.0.0")
-        self.assertTrue(res.success, res.errors)
+        with mock.patch.object(packager, "boots_into_test_level", return_value=False):
+            res = self.package(FakeCMake(package_info("linux", version="0.9.0")), expect_version="1.0.0")
+            self.assertFalse(res.success)
+            self.assertIn("version mismatch", res.errors[-1])
+            res = self.package(FakeCMake(package_info("linux", version="1.0.0")), expect_version="1.0.0")
+            self.assertTrue(res.success, res.errors)
+
+    def test_release_must_not_boot_into_the_test_level(self) -> None:
+        """A v* tag build (--expect-version) fails before building while campaign.json starts the game
+        in the test level; any other package only warns."""
+        with mock.patch.object(packager, "boots_into_test_level", return_value=True):
+            fake = FakeCMake(package_info("linux", version="1.0.0"))
+            res = self.package(fake, expect_version="1.0.0")
+            self.assertFalse(res.success)
+            self.assertIn('"bootIntoTestLevel": true', res.errors[-1])
+            self.assertEqual(fake.commands, [])
+            res = self.package(FakeCMake(package_info("linux", version="1.0.0")))
+            self.assertTrue(res.success, res.errors)
+            self.assertTrue(any("bootIntoTestLevel" in w for w in res.warnings), res.warnings)
+
+    def test_boots_into_test_level_reads_campaign_json(self) -> None:
+        root = self.base / "content"
+        defs = root / "game" / "defs"
+        defs.mkdir(parents=True)
+        self.assertFalse(packager.boots_into_test_level(root))  # no campaign.json
+        for document, expected in (
+            ({"levels": []}, False),
+            ({"levels": [], "bootIntoTestLevel": False}, False),
+            ({"levels": [], "bootIntoTestLevel": True}, True),
+            ({"levels": [], "bootIntoTestLevel": "yes"}, False),
+        ):
+            (defs / "campaign.json").write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(packager.boots_into_test_level(root), expected, document)
 
     def test_unconfigured_build_dir_and_missing_info(self) -> None:
         empty = self.base / "empty"

@@ -71,5 +71,13 @@
       "entities": "game/defs/level10.entities.json",
       "theme": "classic"
     }
-  ]
+  ],
+  "testLevel": {
+    "id": "testchamber",
+    "name": "Test Chamber",
+    "map": "game/maps/testchamber.map",
+    "entities": "game/defs/testchamber.entities.json",
+    "theme": "bunker"
+  },
+  "bootIntoTestLevel": true
 }

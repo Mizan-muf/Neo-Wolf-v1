@@ -84,5 +84,7 @@ std::string DescribeJsonValue(const nlohmann::json& value) {
     if (value.is_null()) {
         return "null";
     }
-    return value.dump();  // numbers, strings (quoted) and booleans
+    // Numbers, strings (quoted) and booleans. A CSV cell is not checked for UTF-8, so invalid
+    // bytes are shown as U+FFFD instead of making dump() throw.
+    return value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }

@@ -78,6 +78,7 @@ EngineOptions MakeEngineOptions(const CommandLineOptions& options, const PrefDir
     EngineOptions engineOptions{};
     engineOptions.dataDir = options.dataDir;
     engineOptions.startLevel = options.level;
+    engineOptions.testLevelBoot = true;  // campaign.json "bootIntoTestLevel" applies to the game itself
     engineOptions.prefDir = prefDir.directory;
     engineOptions.preview = options.preview;
     engineOptions.renderSize = options.renderSize;

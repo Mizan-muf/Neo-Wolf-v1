@@ -10,13 +10,15 @@ All paths inside the files are relative to the content root and use `/`.
 ```text
 game/
 |-- maps/
-|   `-- level01.map ... level10.map  level grids (format: MAP_FORMAT.md)
+|   |-- level01.map ... level10.map  level grids (format: MAP_FORMAT.md)
+|   `-- testchamber.map           the Test Chamber, a development level outside the campaign
 |-- defs/
-|   |-- campaign.json             the level list and order                     (required)
+|   |-- campaign.json             the level list and order, and the test level (required)
 |   |-- gameplay.json             player, weapon, enemy type and pickup values (required)
 |   |-- level01.entities.json     level 1 entity placements, canonical         (required by the campaign)
 |   |-- level01.entities.csv      the same placements as a CSV export          (optional)
 |   |-- level02..10.entities.*    the same for levels 2 to 10
+|   |-- testchamber.entities.*    the same for the Test Chamber
 |   |-- themes/<id>.cfg           texture themes: bunker, stone, tech, classic
 |   |-- sprites.cfg               billboard sprite textures (enemies, corpses, pickups, keys)
 |   `-- audio.cfg                 sound effects and master volume
@@ -30,6 +32,7 @@ game/
 | `defs/gameplay.json` | `engine/assets/GameplayConfig.cpp` | `Engine::Init`, before the window opens | **Fatal**: error message (and an error box, except with `--frames`), exit code 1 |
 | `defs/campaign.json` | `engine/assets/CampaignConfig.cpp` | `Engine::Init`, before the window opens | **Fatal**: error message, exit code 1 |
 | `maps/levelNN.map` | `engine/world/MapLoader.cpp` | every level load | The level load fails. For the first level: fatal, exit code 1; later: back to the menu |
+| `maps/testchamber.map`, `defs/testchamber.entities.json` | as above | every load of the test level | **Missing**: `campaign.json` is invalid (the test level's files are checked with it), so startup is fatal, exit code 1, even with `bootIntoTestLevel` off. **Present but invalid**: the test level's load fails: fatal when the game starts in it, otherwise back to the menu |
 | `defs/levelNN.entities.json` | `engine/world/EntityPlacementLoader.cpp` | every level load | The level load fails (as above) |
 | `defs/themes/<id>.cfg` | `engine/assets/ContentConfig.cpp` (`LoadThemeTextureAssignments`) | every level load whose theme differs from the current one | Warning; affected textures are drawn as a checkerboard |
 | `defs/sprites.cfg` | `engine/assets/ContentConfig.cpp` | `Engine::Init` | Warning; affected sprites are drawn as a checkerboard |
@@ -39,7 +42,8 @@ game/
 the menu and the unlocked-level check; it is meant for development and tests. A number larger
 than the campaign is a startup error (exit code 1); a value outside 1–99 is a command-line error
 (exit code 2). Without `--level` the game starts on the
-main menu ([GAMEPLAY.md](GAMEPLAY.md)).
+main menu ([GAMEPLAY.md](GAMEPLAY.md)), or in the test level when `campaign.json` sets
+`"bootIntoTestLevel": true` ([Test level](#test-level)).
 
 Every loader accepts LF and CRLF line endings. The JSON loaders and the entity CSV loader also
 skip a UTF-8 byte order mark.
@@ -200,6 +204,7 @@ centre of cell `(cx, cy)` is `(cx + 0.5, cy + 0.5)`, x grows to the right and y 
 | `key` | `"red"`, `"blue"` or `"gold"` | `pickup` of kind `key` | **yes**, for key pickups | Which key card it is |
 | `lock` | `"red"`, `"blue"` or `"gold"` | `door` | no (default: unlocked) | The key needed to open the door ([GAMEPLAY.md](GAMEPLAY.md#keys-and-locked-doors)) |
 | `variant` | `"guard"`, `"brute"` or `"runner"` | `enemy` | no (default `"guard"`) | The enemy type: its stats come from `gameplay.json` `enemies.<variant>`. Any other value is an **error** (the level does not load) |
+| `message` | string, 1–40 characters (bytes of UTF-8; in a CSV, bytes that are not UTF-8 are an error), no comma, no control character, no space at either end | `trigger` | no (default: `CHECKPOINT REACHED`) | The HUD message the trigger shows (in capitals; shortened with `..` if the screen is too narrow). A sign naming an area, as in the [Test Chamber](levels/testchamber.md). The limits keep the CSV export exact: it has no quoting (a comma would split the cell, a line break the row) and trims every cell. Anything else is an **error** |
 
 A field that does not apply to the entity's type (e.g. `kind` on an enemy), and an unknown
 field, are warnings: logged and ignored.
@@ -215,7 +220,7 @@ level:
 | `enemy` | `Enemy` entity + the sprite of its type | Stats from `gameplay.json` `enemies.<variant>`. Sees, hears, chases and attacks the player ([GAMEPLAY.md](GAMEPLAY.md#enemy-ai)); can be shot; when killed it stays as a corpse sprite that blocks nothing. |
 | `pickup` | `Pickup` entity + a sprite per kind (health, ammo, each key colour) | Collected by walking within 0.6 cells of `x`/`y`. A key adds its colour to the keys held in this level. |
 | `door` | `Door` entity; the map cell `(mapX, mapY)` becomes a closed door, drawn with the theme's locked-door texture when it has a `lock` | The interact key (`E`) within 1.05 cells of `x`/`y` opens or closes it instantly; a locked door opens only with its key. It does not close while the player or a living enemy overlaps the cell. |
-| `trigger` | `Trigger` entity; the cell `(mapX, mapY)` becomes a `T` tile | Walking within 0.8 cells of `x`/`y` shows `CHECKPOINT REACHED` and sends the `TriggerActivated` interop event, once. It does **not** end the level (since Phase 5); the exit switch, an `X` map tile, does ([MAP_FORMAT.md](MAP_FORMAT.md)). |
+| `trigger` | `Trigger` entity; the cell `(mapX, mapY)` becomes a `T` tile | Walking within 0.8 cells of `x`/`y` shows its `message` (default `CHECKPOINT REACHED`) and sends the `TriggerActivated` interop event, once. It does **not** end the level (since Phase 5); the exit switch, an `X` map tile, does ([MAP_FORMAT.md](MAP_FORMAT.md)). |
 | `decoration` | `Decoration` entity + decoration sprite | Nothing: not solid, not collectable, no interaction. Its sprite stays visible. |
 
 Entity ids are assigned in file order, starting at 1. The C API reports the entity type as a
@@ -246,6 +251,7 @@ Every message names the file, the entity and the field, for example:
 .../level01.entities.csv:5 (entity 3) (door): fields "mapX" and "mapY" are required (...)
 .../level03.entities.json: entities[7] (enemy): field "variant" must be "guard", "brute" or "runner", got "ninja"
 .../level02.entities.json: entities[6] (pickup): field "key" must be "red", "blue" or "gold", got "green"
+.../testchamber.entities.json: entities[2] (trigger): field "message" must be a non-empty string of at most 40 characters without a comma, a control character or a space at either end, got "LEFT, RIGHT"
 ```
 
 The engine does not check that a locked door's key exists in the level or can be reached;
@@ -314,20 +320,21 @@ leave the CSVs out. If `campaign.json` names a `.csv`, the engine loads it (full
 The example below is illustrative, like the JSON one above.
 
 ```text
-# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message
 player,2.5,2.5,,,,,0
 enemy,6.5,2.7,,,,,,guard
 pickup,11.8,6.6,,,health
 door,8.5,7.5,8,7
 pickup,7.5,5.3,,,key,,,,blue
 door,9.5,3.5,9,3,,,,,,blue
+trigger,13.5,8.5,13,8,,,,,,,WEAPON RANGE
 ```
 
-- Columns, in order: `type,x,y,mapX,mapY,kind,value,angle,variant,key,lock` (`key` and `lock`
-  were appended in Phase 6). At least `type,x,y`; trailing columns may be left out; an empty
-  column means "not given".
+- Columns, in order: `type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message` (`key` and
+  `lock` were appended in Phase 6, `message` in 1.5). At least `type,x,y`; trailing columns may
+  be left out; an empty column means "not given".
 - Lines starting with `#` (after leading spaces) and blank lines are skipped. Columns after
-  the eleventh are ignored with a warning.
+  the twelfth are ignored with a warning.
 - There is no quoting: values cannot contain commas.
 - **The CSV is a lossy export: it cannot hold light zones.** A level loaded from its CSV (a campaign
   entry that names the `.csv`, or the C API) is fully lit.
@@ -348,11 +355,12 @@ light zones), so fix the JSON or delete it first.
 
 `validate --strict` checks both files with the engine's rules (types, required `kind`,
 `mapX`/`mapY` for doors and triggers, value ranges, bounds, exactly one player, `variant`,
-`key` and `lock` values). For every campaign level it also checks that each lock colour has a
+`key`, `lock` and `message` values). For every campaign level, and for the test level, it also checks that each lock colour has a
 key of that colour in the level and that the keys can be collected before the doors they open:
 a breadth-first search from the spawn treats a locked door as passable only once its key has
 been reached, and the exit switch must be reachable at the end. Test
-`entity_placements_json_csv` checks that the shipped JSON and CSV are equivalent.
+`entity_placements_json_csv` checks that the shipped JSON and CSV are equivalent (the test
+level's too).
 
 ---
 
@@ -481,10 +489,13 @@ three. Test `campaign_manifest_validation`; the DevKit's `validate` checks it to
 | `levels[].map` | content-relative path | The file must exist |
 | `levels[].entities` | content-relative path | The file must exist (`.json`, or a `.csv` export) |
 | `levels[].theme` | theme id | `a-z`, `0-9`, `_`, `-`; `game/defs/themes/<theme>.cfg` must exist |
+| `testLevel` | object (optional) | The test level, outside the campaign: the same five fields and rules as a level; its id must differ from every level's ([Test level](#test-level)) |
+| `bootIntoTestLevel` | `true` or `false` (optional, default `false`) | The game starts in the test level; `true` needs a `testLevel` |
 
 Errors: the file cannot be read; invalid JSON or a repeated key; a missing or mistyped field;
-an empty `levels`; a repeated or malformed id; a missing map, entity or theme file. Unknown keys
-are warnings. A title or name longer than 32 characters is a warning and is shortened on
+an empty `levels`; a repeated or malformed id; a missing map, entity or theme file; a
+`testLevel` that is not an object or breaks a level rule; a `bootIntoTestLevel` that is not a
+boolean, or is `true` without a `testLevel`. Unknown keys are warnings. A title or name longer than 32 characters is a warning and is shortened on
 screen. The shipped campaign has its final 10 levels (ids `level01` to `level10`, names and
 themes from the Phase 8 design, [levels/README.md](levels/README.md)), all built in Phase 8
 (one page per level in `docs/levels/`). CTest
@@ -492,6 +503,61 @@ themes from the Phase 8 design, [levels/README.md](levels/README.md)), all built
 
 Every campaign level must contain at least one exit switch (`X`) that the player can reach
 (DevKit rule, [MAP_FORMAT.md](MAP_FORMAT.md#devkit-rules-stricter-than-the-engine)).
+
+## Test level
+
+A development level **outside the campaign**: during 1.5 development it is the
+[Test Chamber](levels/testchamber.md), a hub with one signposted area per thing to test (enemy
+gallery, pickups, locks, props, weapon range, dark room). It is declared next to the levels in
+`campaign.json`:
+
+```json
+{
+  "title": "Operation Neo-Wolf",
+  "levels": [ ... ],
+  "testLevel": {
+    "id": "testchamber",
+    "name": "Test Chamber",
+    "map": "game/maps/testchamber.map",
+    "entities": "game/defs/testchamber.entities.json",
+    "theme": "bunker"
+  },
+  "bootIntoTestLevel": true
+}
+```
+
+- `testLevel` has the fields of a campaign level and the same rules (above); its id must not be
+  a level's id. The engine checks it when `campaign.json` loads (`engine/assets/CampaignConfig.cpp`,
+  a problem is fatal like any other), and `validate` checks it like a campaign level: the map
+  and entity files with the engine's rules, the placements, and that the exit switch can be
+  reached with every key collected before its lock. Its files are not orphans.
+- `bootIntoTestLevel: true`: the game (`neo_wolf`) starts in the test level instead of on the
+  main menu. `--level N` and `--preview` still start where they say. The C API
+  (`nw_engine_init`), the native tests and the autoplay bot ignore the flag
+  (`EngineOptions::testLevelBoot`): they start on the main menu as before, so the bot's
+  campaign run is unchanged.
+- Whenever `testLevel` is there, the main menu has an item with its name in capitals
+  (**TEST CHAMBER**), between Level Select and Quit.
+- The test level never changes saved progress: completing it does not unlock or save anything,
+  and it is not in Level Select. Its exit switch restarts it; dying shows the game-over screen,
+  whose restart starts it again ([GAMEPLAY.md](GAMEPLAY.md#the-test-chamber)). The HUD shows its
+  name instead of `LEVEL N`; the C API's `LevelCompleted` event reports level 0.
+- It starts with the `gameplay.json` initial health and ammo and no keys, every time.
+- A missing test-level map, entity file or theme makes `campaign.json` invalid, so the game
+  does not start at all (the campaign included), whatever `bootIntoTestLevel` says. Remove
+  `testLevel` rather than its files.
+- Before a release, set `bootIntoTestLevel` to `false` (or remove it), so that the game starts
+  on the main menu ([RELEASE.md](RELEASE.md)). The release packaging refuses a release build
+  (`package --expect-version`, used for `v*` tags) while it is `true`, and warns otherwise.
+
+The startup log says which: `Test level: "Test Chamber" (testchamber, bunker), outside the
+campaign; bootIntoTestLevel is on` when `campaign.json` is loaded, then, only when the game
+really starts there (no `--level`, no `--preview`), `Booting into the test level` and
+`Starting the test level "Test Chamber" (testchamber) with health 100, ammo 24; outside the
+campaign, progress is not saved`.
+Tests: native `campaign_manifest_validation` (bad definitions), `game_flow_test_level`,
+`test_level`; game tests `game_test_level_boot`, `game_test_level_not_with_level`,
+`game_test_level_not_with_preview`; DevKit `test_campaign_rules.TestTestLevel`.
 
 ## Themes
 

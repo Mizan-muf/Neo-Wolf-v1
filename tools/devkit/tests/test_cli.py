@@ -135,6 +135,20 @@ class TestCreateMap(CliTest):
         campaign = json.loads((self.root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
         self.assertEqual([lvl["id"] for lvl in campaign["levels"]], ["alpha", "beta", "gamma"])
 
+    def test_register_refuses_the_test_levels_id(self) -> None:
+        # The engine rejects a campaign level with the test level's id, so --force does not help.
+        campaign_path = self.root / "game" / "defs" / "campaign.json"
+        campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+        campaign["testLevel"] = dict(campaign["levels"][0], id="sandbox", name="Sandbox")
+        campaign_path.write_text(json.dumps(campaign, indent=2), encoding="utf-8")
+        before = campaign_path.read_text(encoding="utf-8")
+        for extra in ((), ("--force",)):
+            code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "sandbox", "--register", *extra)
+            self.assertEqual(code, 1, out)
+            self.assertIn("'sandbox' is the test level's id", out)
+            self.assertFalse((self.root / "game" / "maps" / "sandbox.map").exists())  # nothing written
+        self.assertEqual(campaign_path.read_text(encoding="utf-8"), before)
+
     def test_register_reports_the_campaign_position(self) -> None:
         # --force on an existing id names that entry's own position, not the last one's.
         code, out = run_cli("--root", str(self.root), "create-map", "--level-id", "alpha", "--register", "--force")

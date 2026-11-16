@@ -405,7 +405,7 @@ def _validate_entity_file(
 def validate_entity_csv(
     file_path: Path, map_dimensions: Optional[Tuple[int, int]] = None
 ) -> Tuple[ValidationReport, List[dict]]:
-    """Validate an entity CSV export (type,x,y,mapX,mapY,kind,value,angle,variant,key,lock)."""
+    """Validate an entity CSV export (type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message)."""
     return _validate_entity_file(file_path, "CSV", map_dimensions)
 
 
@@ -906,16 +906,36 @@ def is_content_id(value: str) -> bool:
 
 @dataclass
 class CampaignLevelInfo:
-    index: int
+    index: int  # 0-based campaign index; -1 for the test level
     id: str
     map: str
     entities: str
     theme: str
+    is_test_level: bool = False
+
+    @property
+    def label(self) -> str:
+        """How messages name the level: "campaign.json: levels[2] (level03)" or "campaign.json: testLevel (id)"."""
+        where = "testLevel" if self.is_test_level else f"levels[{self.index}]"
+        return f"campaign.json: {where} ({self.id})"
 
 
-def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List[CampaignLevelInfo]]:
-    """campaign.json with the engine's rules. Returns the levels whose fields are all valid, or
-    None when the manifest itself cannot be used."""
+@dataclass
+class CampaignInfo:
+    """What read_campaign_manifest found: the levels whose fields are all valid, the test level
+    ("testLevel", outside the campaign) and whether the game starts in it ("bootIntoTestLevel")."""
+
+    levels: List[CampaignLevelInfo]
+    test_level: Optional[CampaignLevelInfo] = None
+    boot_into_test_level: bool = False
+
+
+CAMPAIGN_KEYS = ("title", "levels", "testLevel", "bootIntoTestLevel")
+
+
+def read_campaign_manifest(project_root: Path, report: ValidationReport) -> Optional[CampaignInfo]:
+    """campaign.json with the engine's rules (CampaignConfig.cpp): its levels, test level and boot
+    flag, or None when the manifest itself cannot be used."""
     root = Path(project_root)
     path = root / "game" / "defs" / "campaign.json"
     label = path.name
@@ -932,20 +952,45 @@ def read_campaign(project_root: Path, report: ValidationReport) -> Optional[List
         return None
     _check_campaign_title(document, label, report)
     for key in document:
-        if key not in ("title", "levels"):
+        if key not in CAMPAIGN_KEYS:
             report.add_warning(f'{label}: unknown key "{key}" ignored')
     levels = document.get("levels")
     if not isinstance(levels, list) or not levels:
         report.add_error(f"{label}: 'levels' must be a non-empty array")
         return None
 
-    result: List[CampaignLevelInfo] = []
+    campaign = CampaignInfo(levels=[])
     seen_ids: Set[str] = set()
     for index, level in enumerate(levels):
         info = _read_campaign_level(root, index, level, f"{label}: levels[{index}]", seen_ids, report)
         if info is not None:
-            result.append(info)
-    return result
+            campaign.levels.append(info)
+    campaign.test_level = _read_test_level(root, document, label, seen_ids, report)
+    campaign.boot_into_test_level = _read_boot_into_test_level(document, label, report)
+    return campaign
+
+
+def _read_test_level(
+    root: Path, document: dict, label: str, seen_ids: Set[str], report: ValidationReport
+) -> Optional[CampaignLevelInfo]:
+    """The optional "testLevel": a level object outside the campaign, with an id no campaign level uses."""
+    if "testLevel" not in document:
+        return None
+    info = _read_campaign_level(root, -1, document["testLevel"], f"{label}: testLevel", seen_ids, report)
+    if info is not None:
+        info.is_test_level = True
+    return info
+
+
+def _read_boot_into_test_level(document: dict, label: str, report: ValidationReport) -> bool:
+    """The optional "bootIntoTestLevel" (default false): a boolean; true needs a "testLevel"."""
+    value = document.get("bootIntoTestLevel", False)
+    if not isinstance(value, bool):
+        report.add_error(f"{label}: 'bootIntoTestLevel' must be true or false, got {_describe(value)}")
+        return False
+    if value and "testLevel" not in document:
+        report.add_error(f"{label}: 'bootIntoTestLevel' is true, but there is no 'testLevel' to start in")
+    return value
 
 
 def _check_campaign_title(document: dict, label: str, report: ValidationReport) -> None:
@@ -1004,9 +1049,9 @@ def _read_campaign_level(
 def validate_level(
     project_root: Path, level: CampaignLevelInfo, report: ValidationReport, player_radius: float = DEFAULT_PLAYER_RADIUS
 ) -> None:
-    """Everything one campaign level needs to load and to be completable."""
+    """Everything one campaign level (or the test level) needs to load and to be completable."""
     root = Path(project_root)
-    label = f"campaign.json: levels[{level.index}] ({level.id})"
+    label = level.label
     map_report, rows = validate_map(root / level.map)
     if rows is None:
         for error in map_report.errors:
@@ -1062,8 +1107,9 @@ def validate_level(
 def validate_campaign(
     project_root: Path, require_levels: Optional[int] = None, player_radius: Optional[float] = None
 ) -> ValidationReport:
-    """campaign.json like the engine (fields, ids, files, themes), the level count when
-    `require_levels` is given, and every level's layout and progress (validate_level)."""
+    """campaign.json like the engine (fields, ids, files, themes, the test level and its boot flag),
+    the level count when `require_levels` is given, and the layout and progress of every level and
+    of the test level (validate_level)."""
     report = ValidationReport()
     root = Path(project_root)
     if player_radius is None:
@@ -1073,9 +1119,10 @@ def validate_campaign(
             gameplay_report, values = validate_gameplay(gameplay_path)
             if gameplay_report.is_valid:
                 player_radius = values["player"]["collisionRadius"]
-    levels = read_campaign(root, report)
-    if levels is None:
+    campaign = read_campaign_manifest(root, report)
+    if campaign is None:
         return report
+    levels = campaign.levels
     count = _campaign_level_count(root)
     if require_levels is not None and count != require_levels:
         report.add_error(
@@ -1084,6 +1131,10 @@ def validate_campaign(
     for level in levels:
         validate_level(root, level, report, player_radius)
     report.add_info(f"Campaign: {count} level(s)")
+    if campaign.test_level is not None:
+        validate_level(root, campaign.test_level, report, player_radius)
+        boot = "; bootIntoTestLevel is on: a plain launch starts in it" if campaign.boot_into_test_level else ""
+        report.add_info(f"Test level: {campaign.test_level.id}, outside the campaign{boot}")
     return report
 
 
@@ -1095,10 +1146,11 @@ def _campaign_level_count(project_root: Path) -> int:
 
 
 def find_orphans(project_root: Path) -> List[str]:
-    """Maps and entity files under game/ that campaign.json does not use."""
+    """Maps and entity files under game/ that campaign.json (its levels and test level) does not use."""
     root = Path(project_root)
     scratch = ValidationReport()
-    levels = read_campaign(root, scratch) or []
+    campaign = read_campaign_manifest(root, scratch)
+    levels = [] if campaign is None else campaign.levels + ([campaign.test_level] if campaign.test_level else [])
     used = {(root / level.map).resolve() for level in levels} | {(root / level.entities).resolve() for level in levels}
     orphans: List[str] = []
     for map_file in sorted((root / "game" / "maps").glob("*.map")):

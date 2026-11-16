@@ -58,8 +58,9 @@ void Engine::ShowMessage(const std::string& message, float duration) {
 
 void Engine::ResetLevel() {
     LogInfo("Resetting level...");
-    const bool loaded = currentLevelIndex_ >= 0 ? LoadCampaignLevel(currentLevelIndex_, flow_.EntrySnapshot())
-                                                : LoadLevel(currentMapPath_, currentEntitiesPath_);
+    const bool loaded = currentLevelIndex_ >= 0 || InTestLevel()
+                            ? LoadCampaignLevel(currentLevelIndex_, flow_.EntrySnapshot())
+                            : LoadLevel(currentMapPath_, currentEntitiesPath_);
     if (!loaded) {
         LogError("Level reset failed (see above); continuing with the current level state.");
     }
@@ -91,6 +92,14 @@ bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::stri
 }
 
 bool Engine::LoadLevel(const std::string& mapPath, const std::string& entitiesPath) {
+    if (!LoadLevelFiles(mapPath, entitiesPath)) {
+        return false;
+    }
+    flow_.LeaveTestLevel();  // else its exit switch and restarts would load the test level again
+    return true;
+}
+
+bool Engine::LoadLevelFiles(const std::string& mapPath, const std::string& entitiesPath) {
     LogInfo("Loading level map: " + mapPath + ", entities: " + entitiesPath);
 
     // Everything is loaded and built into locals first: a level that fails to load leaves

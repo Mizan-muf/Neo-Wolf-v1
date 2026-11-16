@@ -3,7 +3,8 @@
 The package is defined by CMake (cmake/Packaging.cmake: install rules, the app bundle, icons, the
 README.txt); this module only drives it and checks the result:
 
-  1. validate the content (`validate --strict` rules: errors and warnings fail);
+  1. validate the content (`validate --strict` rules: errors and warnings fail); a release build
+     (expect_version, the v* tags) must not start in the test level ("bootIntoTestLevel");
   2. configure and build the package preset for this OS (package-macos, package-windows-msvc,
      package-linux), or build an existing build tree given with build_dir (e.g. a cross-compile);
   3. `cmake --install` into a staging folder named after the package;
@@ -170,6 +171,16 @@ def read_package_info(build_dir: Path) -> Dict[str, object]:
     if info["format"] not in ("zip", "tar.gz"):
         raise ValueError(f"{path}: unknown archive format {info['format']!r}")
     return info
+
+
+def boots_into_test_level(project_root: Path) -> bool:
+    """True if game/defs/campaign.json has "bootIntoTestLevel": true (the game opens in the
+    development level instead of on the main menu)."""
+    try:
+        document = json.loads((Path(project_root) / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False  # validation reports a missing or broken campaign.json
+    return isinstance(document, dict) and document.get("bootIntoTestLevel") is True
 
 
 def _relative_files(tree: Path) -> List[str]:
@@ -419,6 +430,16 @@ def create_release_package(
         if report.errors or report.warnings:
             result.errors.extend([*report.errors, *(f"(strict) {w}" for w in report.warnings)])
             return fail("content validation failed (as `validate --strict`): nothing was packaged")
+    if boots_into_test_level(project_root):
+        if expect_version:
+            return fail(
+                'game/defs/campaign.json has "bootIntoTestLevel": true, so the release would open in the test '
+                "level: set it to false (docs/RELEASE.md, Release checklist)"
+            )
+        result.warnings.append(
+            'game/defs/campaign.json has "bootIntoTestLevel": true: this package opens in the test level '
+            "(a release build with --expect-version refuses it)"
+        )
 
     # 2. Configure and build.
     cmake = cmake or find_cmake(system)

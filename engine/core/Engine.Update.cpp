@@ -14,6 +14,8 @@
 #include "engine/world/MovementRules.h"
 
 namespace {
+constexpr float kTriggerMessageSeconds = 3.0f;  // a trigger's own message (a sign) stays a little longer
+
 // A random offset in [-spread / 2, spread / 2), in steps of spread / 100.
 float RandomDustOffset(float spread) {
     // NOLINTNEXTLINE(misc-predictable-rand): decoration only; another generator would change the dust layout
@@ -80,7 +82,13 @@ void Engine::Update(double deltaSeconds) {
     if (flowEvents.focusLost && flow_.State() == GameState::Gameplay) {
         LogInfo("Window lost focus: pausing.");
     }
+    const bool testLevelExit = flowEvents.levelCompleted && InTestLevel();
     ExecuteFlowRequests(flow_.Update(input_, flowEvents));
+    const CampaignLevel* testLevel = TestLevelDefinition();
+    if (testLevelExit && InTestLevel() && testLevel != nullptr) {
+        // The restart cleared the HUD message: say why the level started again.
+        ShowMessage("Exit switch: " + testLevel->name + " restarted", kTriggerMessageSeconds);
+    }
     PublishStateChange();
 }
 
@@ -200,8 +208,12 @@ void Engine::ReportInteractionEvents(const GameplayEvents& events) {
     }
 
     if (events.triggerActivated) {
-        // A walk-over marker: an interop event and a HUD message. It does not end the level.
-        ShowMessage("CHECKPOINT REACHED", 2.0f);
+        // A walk-over marker: an interop event and a HUD message (its own "message", or the
+        // checkpoint text). It does not end the level.
+        const Entity* trigger = entityManager_.GetEntityById(events.triggerId);
+        const bool hasMessage = trigger != nullptr && !trigger->triggerMessage.empty();
+        ShowMessage(hasMessage ? trigger->triggerMessage : "CHECKPOINT REACHED",
+                    hasMessage ? kTriggerMessageSeconds : 2.0f);
         PushInteropEvent(InteropEventType::TriggerActivated, events.triggerId);
     }
 }
@@ -214,9 +226,12 @@ void Engine::CompleteLevel(const GameplayEvents& events, FlowEvents& flowEvents)
             std::to_string(results.totalPickups) + ", score " + std::to_string(results.score) + ", health " +
             std::to_string(playerHealth_) + ", ammo " + std::to_string(playerAmmo_) + ").");
     ShowMessage("EXIT SWITCH ACTIVATED", 2.0f);
+    if (InTestLevel()) {
+        LogInfo("Test level: the exit switch restarts it; no progress is saved.");
+    }
     InteropEvent levelEvent{};
     levelEvent.type = InteropEventType::LevelCompleted;
-    levelEvent.intArg1 = currentLevelIndex_ + 1;
+    levelEvent.intArg1 = CurrentCampaignLevel() != nullptr ? currentLevelIndex_ + 1 : 0;
     levelEvent.intArg2 = playerHealth_;
     levelEvent.floatArg1 = static_cast<float>(results.seconds);
     bridge_.PushEvent(levelEvent);

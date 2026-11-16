@@ -1,5 +1,6 @@
 #include "engine/world/EntityPlacementLoader.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cerrno>
@@ -272,6 +273,92 @@ bool ReadDoorFields(const json& object, const std::string& at, EntityPlacement& 
     return ReadKeyColorField(object, at, "lock", false, out.lock, diag);
 }
 
+// The UTF-8 sequence a lead byte starts: its length (0 if the byte cannot start one: a
+// continuation byte, C0/C1 (overlong) or F5-FF) and the allowed range of its second byte, which
+// excludes overlong forms (E0 80-9F, F0 80-8F), surrogates (ED A0-BF) and code points above
+// U+10FFFF (F4 90 and up).
+struct Utf8Lead {
+    std::size_t length = 0;
+    unsigned char low = 0x80;
+    unsigned char high = 0xBF;
+};
+
+Utf8Lead DescribeUtf8Lead(unsigned char lead) {
+    if (lead < 0x80) {
+        return {1, 0x80, 0xBF};
+    }
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        return {2, 0x80, 0xBF};
+    }
+    if (lead >= 0xE0 && lead <= 0xEF) {
+        return {3, static_cast<unsigned char>(lead == 0xE0 ? 0xA0 : 0x80),
+                static_cast<unsigned char>(lead == 0xED ? 0x9F : 0xBF)};
+    }
+    if (lead >= 0xF0 && lead <= 0xF4) {
+        return {4, static_cast<unsigned char>(lead == 0xF0 ? 0x90 : 0x80),
+                static_cast<unsigned char>(lead == 0xF4 ? 0x8F : 0xBF)};
+    }
+    return {};
+}
+
+// Whether text is well-formed UTF-8, by the rules of Python's "utf-8" codec, which the DevKit
+// uses.
+bool IsValidUtf8(const std::string& text) {
+    std::size_t i = 0;
+    while (i < text.size()) {
+        const Utf8Lead lead = DescribeUtf8Lead(static_cast<unsigned char>(text[i]));
+        if (lead.length == 0 || text.size() - i < lead.length) {
+            return false;
+        }
+        for (std::size_t k = 1; k < lead.length; ++k) {
+            const auto byte = static_cast<unsigned char>(text[i + k]);
+            const unsigned char low = k == 1 ? lead.low : 0x80;
+            const unsigned char high = k == 1 ? lead.high : 0xBF;
+            if (byte < low || byte > high) {
+                return false;
+            }
+        }
+        i += lead.length;
+    }
+    return true;
+}
+
+// A trigger's message as the CSV export can hold it: well-formed UTF-8 (so that the JSON twin
+// holds the same text), no comma (the separator), no control character (a line break would end
+// the row) and no space at either end (cells are trimmed).
+bool IsTriggerMessage(const std::string& message) {
+    if (message.empty() || message.size() > kMaxTriggerMessageLength || message.front() == ' ' ||
+        message.back() == ' ' || !IsValidUtf8(message)) {
+        return false;
+    }
+    return std::none_of(message.begin(), message.end(), [](char c) {
+        const auto byte = static_cast<unsigned char>(c);
+        return c == ',' || byte < 0x20 || byte == 0x7F;
+    });
+}
+
+// Trigger: "message" (optional), a non-empty string of at most kMaxTriggerMessageLength
+// characters (IsTriggerMessage).
+bool ReadTriggerFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
+    if (out.type != PlacementType::Trigger) {
+        WarnInapplicable(object, at, "message", "trigger", diag);
+        return true;
+    }
+    const auto messageIt = object.find("message");
+    if (messageIt == object.end()) {
+        return true;
+    }
+    if (!messageIt->is_string() || !IsTriggerMessage(messageIt->get<std::string>())) {
+        diag.Error(at + ": field \"message\" must be a non-empty string of at most " +
+                   std::to_string(kMaxTriggerMessageLength) +
+                   " characters without a comma, a control character or a space at either end, got " +
+                   DescribeJsonValue(*messageIt));
+        return false;
+    }
+    out.message = messageIt->get<std::string>();
+    return true;
+}
+
 bool ReadEnemyFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
     if (out.type != PlacementType::Enemy) {
         WarnInapplicable(object, at, "variant", "enemy", diag);
@@ -307,8 +394,10 @@ bool ReadPlacement(const json& object, const std::string& where, EntityPlacement
     ok = ReadPickupFields(object, at, out, diag) && ok;
     ok = ReadDoorFields(object, at, out, diag) && ok;
     ok = ReadEnemyFields(object, at, out, diag) && ok;
+    ok = ReadTriggerFields(object, at, out, diag) && ok;
     WarnUnknownFields(object, at,
-                      {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock"}, diag);
+                      {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock", "message"},
+                      diag);
     return ok;
 }
 
@@ -418,7 +507,7 @@ struct CsvColumn {
     CsvColumnType type;
 };
 
-constexpr std::size_t kCsvColumnCount = 11;
+constexpr std::size_t kCsvColumnCount = 12;
 constexpr std::array<CsvColumn, kCsvColumnCount> kCsvColumns = {{
     {"type", CsvColumnType::Text},
     {"x", CsvColumnType::Number},
@@ -431,6 +520,7 @@ constexpr std::array<CsvColumn, kCsvColumnCount> kCsvColumns = {{
     {"variant", CsvColumnType::Text},
     {"key", CsvColumnType::Text},
     {"lock", CsvColumnType::Text},
+    {"message", CsvColumnType::Text},
 }};
 
 bool ConvertCsvCell(const std::string& cell, const CsvColumn& column, const std::string& where, json& out,
@@ -485,7 +575,7 @@ void ReadCsvRow(const std::vector<std::string>& cells, const std::string& where,
     }
     if (cells.size() > kCsvColumnCount) {
         diag.Warning(where + ": " + std::to_string(cells.size() - kCsvColumnCount) +
-                     " extra column(s) after \"lock\" ignored");
+                     " extra column(s) after \"message\" ignored");
     }
 
     json object = json::object();

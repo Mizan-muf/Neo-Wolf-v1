@@ -1,6 +1,7 @@
 #include "engine/assets/CampaignConfig.h"
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <system_error>
@@ -99,9 +100,9 @@ CampaignLevel ReadLevel(const json& entry, std::string label, const std::filesys
     return level;
 }
 
-// "levels": a non-empty array of level objects.
+// "levels": a non-empty array of level objects. Their ids are added to `seenIds`.
 void ReadLevels(const json& document, const std::string& sourceName, const std::filesystem::path& contentRoot,
-                std::vector<CampaignLevel>& outLevels, std::vector<std::string>& errors,
+                std::set<std::string>& seenIds, std::vector<CampaignLevel>& outLevels, std::vector<std::string>& errors,
                 std::vector<std::string>& warnings) {
     const auto levelsIt = document.find("levels");
     if (levelsIt == document.end()) {
@@ -116,7 +117,6 @@ void ReadLevels(const json& document, const std::string& sourceName, const std::
         errors.push_back(sourceName + ": \"levels\" is empty; the campaign needs at least one level");
         return;
     }
-    std::set<std::string> seenIds;
     for (std::size_t i = 0; i < levelsIt->size(); ++i) {
         const json& entry = (*levelsIt)[i];
         const std::string label = sourceName + ": levels[" + std::to_string(i) + "]";
@@ -125,6 +125,41 @@ void ReadLevels(const json& document, const std::string& sourceName, const std::
             continue;
         }
         outLevels.push_back(ReadLevel(entry, label, contentRoot, seenIds, errors, warnings));
+    }
+}
+
+// "testLevel" (optional): one level object, outside the campaign; its id must differ from every
+// campaign level's (`seenIds`).
+void ReadTestLevel(const json& document, const std::string& sourceName, const std::filesystem::path& contentRoot,
+                   std::set<std::string>& seenIds, std::optional<CampaignLevel>& outTestLevel,
+                   std::vector<std::string>& errors, std::vector<std::string>& warnings) {
+    const auto it = document.find("testLevel");
+    if (it == document.end()) {
+        return;
+    }
+    const std::string label = sourceName + ": testLevel";
+    if (!it->is_object()) {
+        errors.push_back(label + " must be an object, got " + DescribeJsonValue(*it));
+        return;
+    }
+    outTestLevel = ReadLevel(*it, label, contentRoot, seenIds, errors, warnings);
+}
+
+// "bootIntoTestLevel" (optional, default false): a boolean; true needs a "testLevel".
+void ReadBootIntoTestLevel(const json& document, const std::string& sourceName, bool hasTestLevel, bool& out,
+                           std::vector<std::string>& errors) {
+    const auto it = document.find("bootIntoTestLevel");
+    if (it == document.end()) {
+        return;
+    }
+    if (!it->is_boolean()) {
+        errors.push_back(sourceName + ": field \"bootIntoTestLevel\" must be true or false, got " +
+                         DescribeJsonValue(*it));
+        return;
+    }
+    out = it->get<bool>();
+    if (out && !hasTestLevel) {
+        errors.push_back(sourceName + ": \"bootIntoTestLevel\" is true, but there is no \"testLevel\" to start in");
     }
 }
 }  // namespace
@@ -156,9 +191,12 @@ bool ParseCampaign(const std::string& jsonText, const std::string& sourceName, c
     if (ReadString(document, "title", sourceName, campaign.title, errors)) {
         WarnLongName(campaign.title, sourceName + ": title", warnings);
     }
-    WarnUnknownKeys(document, {"title", "levels"}, sourceName, warnings);
+    WarnUnknownKeys(document, {"title", "levels", "testLevel", "bootIntoTestLevel"}, sourceName, warnings);
 
-    ReadLevels(document, sourceName, contentRoot, campaign.levels, errors, warnings);
+    std::set<std::string> seenIds;
+    ReadLevels(document, sourceName, contentRoot, seenIds, campaign.levels, errors, warnings);
+    ReadTestLevel(document, sourceName, contentRoot, seenIds, campaign.testLevel, errors, warnings);
+    ReadBootIntoTestLevel(document, sourceName, document.contains("testLevel"), campaign.bootIntoTestLevel, errors);
 
     if (errors.size() != errorsBefore) {
         return false;

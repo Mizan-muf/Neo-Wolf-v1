@@ -198,6 +198,7 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
                 entity.mapX = placement.mapX;
                 entity.mapY = placement.mapY;
                 entity.triggerActivated = false;
+                entity.triggerMessage = placement.message;
                 break;
             }
             case PlacementType::Decoration: {

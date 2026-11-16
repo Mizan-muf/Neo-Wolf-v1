@@ -128,6 +128,104 @@ class TestCampaignManifest(CampaignRuleTest):
         self.assertEqual(self.strict_cli(), 1)
 
 
+# The test level of TestTestLevel: a hall with a sign and the exit; a gold door down to a room with a runner.
+LAB_GRID = "########\n#..T...X\n###D####\n#......#\n########\n"
+LAB_ENTITIES = [
+    {"type": "player", "x": 1.5, "y": 1.5, "angle": 0},
+    {"type": "trigger", "x": 3.5, "y": 1.5, "mapX": 3, "mapY": 1, "message": "LAB SIGN"},
+    {"type": "door", "x": 3.5, "y": 2.5, "mapX": 3, "mapY": 2, "lock": "gold"},
+    {"type": "pickup", "x": 2.5, "y": 1.5, "kind": "key", "key": "gold"},
+    {"type": "enemy", "x": 5.5, "y": 3.5, "variant": "runner"},
+]
+
+
+class TestTestLevel(CampaignRuleTest):
+    """campaign.json "testLevel" (a development level outside the campaign) and "bootIntoTestLevel"."""
+
+    def set_test_level(self, entry: Optional[dict] = None, boot=True) -> None:
+        """The good campaign plus a test level "lab" (fields overridden by `entry`)."""
+        self.set_level("lab", LAB_GRID, copy.deepcopy(LAB_ENTITIES))
+        manifest_path = self.root / "game" / "defs" / "campaign.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        test_level = {
+            "id": "lab",
+            "name": "Lab",
+            "map": "game/maps/lab.map",
+            "entities": "game/defs/lab.entities.json",
+            "theme": "fx",
+        }
+        test_level.update(entry or {})
+        manifest["testLevel"] = test_level
+        if boot is not None:
+            manifest["bootIntoTestLevel"] = boot
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    def test_a_good_test_level_passes_strict_and_is_not_counted(self) -> None:
+        self.set_test_level()
+        report = self.validate(require_levels=3)
+        self.assertEqual(report.errors, [])
+        self.assertEqual(report.warnings, [])  # its files are not orphans
+        self.assertIn("Campaign: 3 level(s)", report.info)
+        self.assertTrue(contains(report.info, "testLevel (lab): 1 of 1 exit switch(es) reachable; keys in order: gold"))
+        self.assertTrue(
+            contains(
+                report.info,
+                "Test level: lab, outside the campaign; bootIntoTestLevel is on: a plain launch starts in it",
+            )
+        )
+        self.assertEqual(self.strict_cli("--require-levels", "3"), 0)
+
+    def test_the_test_level_gets_the_level_rules(self) -> None:
+        self.set_test_level()
+        entities = copy.deepcopy(LAB_ENTITIES)
+        entities[3].update(x=1.5, y=3.5)  # the gold key behind the gold door
+        self.set_level("lab", entities=entities)
+        errors = self.validate().errors
+        self.assertTrue(contains(errors, "campaign.json: testLevel (lab)", "gold key cannot be reached"), errors)
+
+    def test_bad_test_level_definitions(self) -> None:
+        self.set_test_level({"id": "alpha"})
+        self.assertTrue(contains(self.validate().errors, "testLevel (alpha): id is used by an earlier level"))
+        self.set_test_level({"map": "game/maps/nope.map"})
+        self.assertTrue(contains(self.validate().errors, "testLevel (lab): map file not found: game/maps/nope.map"))
+        self.set_test_level({"theme": "missing"})
+        self.assertTrue(contains(self.validate().errors, "testLevel (lab): theme 'missing' not found"))
+        self.set_test_level({"name": ""})
+        self.assertTrue(contains(self.validate().errors, "testLevel: missing or empty field(s): name"))
+        self.set_test_level(boot="yes")
+        self.assertTrue(contains(self.validate().errors, "'bootIntoTestLevel' must be true or false"))
+
+    def test_boot_flag_needs_a_test_level_and_test_level_must_be_an_object(self) -> None:
+        manifest_path = self.root / "game" / "defs" / "campaign.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["bootIntoTestLevel"] = True
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertTrue(contains(self.validate().errors, "'bootIntoTestLevel' is true, but there is no 'testLevel'"))
+        manifest["testLevel"] = 3
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertTrue(contains(self.validate().errors, "testLevel must be an object"))
+
+    def test_inspect_map_finds_the_test_level_by_id(self) -> None:
+        self.set_test_level()
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cli.main(["--no-color", "--root", str(self.root), "inspect-map", "--level", "lab"])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("lab.map", out.getvalue())
+
+    def test_bad_trigger_messages_are_errors(self) -> None:
+        self.set_test_level()
+        # A space at either end, a tab or a line break would not survive the CSV export.
+        for message in ("", "A, B", 7, "X" * 41, " ARMORY", "ARMORY ", "   ", "A\tB", "TWO\nLINES"):
+            entities = copy.deepcopy(LAB_ENTITIES)
+            entities[1]["message"] = message
+            self.set_level("lab", entities=entities)
+            self.assertTrue(
+                contains(self.validate().errors, "(trigger): message must be a non-empty string of at most 40"),
+                message,
+            )
+
+
 class TestPlayersAndPlacements(CampaignRuleTest):
     def test_exactly_one_player(self) -> None:
         self.set_level("alpha", entities=[e for e in self.entities("alpha") if e["type"] != "player"])

@@ -195,6 +195,11 @@ these to players.
 
 1. Phase gates: Roadmap Phases 9–12 done (Phase 11 sign-off, Phase 12 clean-code review).
 2. `CHANGELOG` / docs updated (Roadmap Phase 10).
+   Content: `"bootIntoTestLevel"` is `false` or absent in `game/defs/campaign.json`, so the game
+   starts on the main menu and not in the Test Chamber
+   ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#test-level)); remove `"testLevel"` too if
+   the release should not offer the Test Chamber on the menu. `package --expect-version` (step
+   3 and the `v*` tag build in CI) fails while the flag is `true`; other packages only warn.
 3. In one commit: set `project(NeoWolf VERSION X.Y.Z)` in `CMakeLists.txt` (Phase 12: `1.0.0`),
    update version mentions in the docs if any, run the full verification
    (`./build.sh`, `ctest --preset ci-macos` after `cmake --build --preset ci-macos`,

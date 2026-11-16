@@ -1336,8 +1336,9 @@ void TestCommandLineParsing() {
     // Version and usage text.
     TEST_ASSERT(VersionString() == std::string("Neo-Wolf ") + NW_EXPECTED_VERSION);
     const std::string usage = CommandLineUsage("neo_wolf");
-    for (const char* option : {"--help", "--version", "--data", "--pref-dir", "--level", "--frames", "--windowed",
-                               "--fullscreen", "--render-size", "--preview", "--screenshot", "campaign"}) {
+    for (const char* option :
+         {"--help", "--version", "--data", "--pref-dir", "--level", "--frames", "--windowed", "--fullscreen",
+          "--render-size", "--preview", "--screenshot", "campaign", "bootIntoTestLevel"}) {
         TEST_ASSERT(usage.find(option) != std::string::npos);
     }
 }
@@ -1723,6 +1724,7 @@ void TestEntityPlacementsJsonAndCsv() {
             TEST_ASSERT(csv[i].pickupValue == json[i].pickupValue);
             TEST_ASSERT(csv[i].variant == json[i].variant);
             TEST_ASSERT(csv[i].key == json[i].key && csv[i].lock == json[i].lock);
+            TEST_ASSERT(csv[i].message == json[i].message);
         }
     };
     expectEquivalent(fromJson, fromCsv);
@@ -1731,7 +1733,11 @@ void TestEntityPlacementsJsonAndCsv() {
     // is up to date (`devkit sync-entities` after editing the JSON).
     const CampaignDefinition campaign = ShippedCampaign();
     TEST_ASSERT(!campaign.levels.empty());
-    for (const CampaignLevel& level : campaign.levels) {
+    std::vector<CampaignLevel> levelsWithExports = campaign.levels;
+    if (campaign.testLevel) {
+        levelsWithExports.push_back(*campaign.testLevel);
+    }
+    for (const CampaignLevel& level : levelsWithExports) {
         const std::string jsonExtension = ".json";
         if (level.entities.size() <= jsonExtension.size() ||
             level.entities.compare(level.entities.size() - jsonExtension.size(), jsonExtension.size(), jsonExtension) !=
@@ -1758,18 +1764,80 @@ void TestEntityPlacementsJsonAndCsv() {
         "{\"type\": \"enemy\", \"x\": 3, \"y\": 1.5, \"variant\": \"brute\"},"
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"ammo\", \"value\": 30},"
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 3, \"kind\": \"key\", \"key\": \"gold\"},"
-        "{\"type\": \"door\", \"x\": 4.5, \"y\": 1.5, \"mapX\": 4, \"mapY\": 1, \"lock\": \"gold\"}]}";
+        "{\"type\": \"door\", \"x\": 4.5, \"y\": 1.5, \"mapX\": 4, \"mapY\": 1, \"lock\": \"gold\"},"
+        "{\"type\": \"trigger\", \"x\": 5.5, \"y\": 1.5, \"mapX\": 5, \"mapY\": 1, \"message\": \"WEAPON RANGE: "
+        "12\"}]}";
     const std::string fullCsv =
-        "# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock\n"
+        "# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message\n"
         "player,1.5,1.5,,,,,90\n"
         "enemy,3,1.5,,,,,,brute\n"
         "pickup,2,2,,,ammo,30\n"
         "pickup,2,3,,,key,,,,gold\n"
-        "door,4.5,1.5,4,1,,,,,,gold\n";
+        "door,4.5,1.5,4,1,,,,,,gold\n"
+        "trigger,5.5,1.5,5,1,,,,,,,WEAPON RANGE: 12\n";
     TEST_ASSERT(ParseEntityPlacementsJson(fullJson, "t.json", fromJson, errors, warnings));
     TEST_ASSERT(ParseEntityPlacementsCsv(fullCsv, "t.csv", fromCsv, errors, warnings));
     TEST_ASSERT(errors.empty() && warnings.empty());
-    TEST_ASSERT(fromJson.size() == 5 && fromCsv.size() == 5);
+    TEST_ASSERT(fromJson.size() == 6 && fromCsv.size() == 6);
+    expectEquivalent(fromJson, fromCsv);
+    TEST_ASSERT(fromJson[5].message == "WEAPON RANGE: 12" && fromJson[4].message.empty());
+
+    // A trigger's "message": a non-empty string of at most 40 characters without a comma, a
+    // control character or a space at either end (the CSV export trims cells); on another type it
+    // is ignored with a warning.
+    const std::vector<std::pair<std::string, const char*>> badMessages = {
+        {"\"\"", "got \"\""},
+        {"\"A, B\"", "without a comma"},
+        {"\" ARMORY\"", "a space at either end"},
+        {"\"   \"", "a space at either end"},
+        {"\"A\\tB\"", "a control character"},
+        {"\"TWO\\nLINES\"", "a control character"},
+        {"7", "got 7"},
+        {"\"" + std::string(kMaxTriggerMessageLength + 1, 'A') + "\"", "at most 40 characters"},
+    };
+    for (const auto& [value, expected] : badMessages) {
+        errors.clear();
+        warnings.clear();
+        std::vector<EntityPlacement> triggers;
+        const std::string text =
+            "{\"entities\": [{\"type\": \"trigger\", \"x\": 1.5, \"y\": 1.5, \"mapX\": 1, "
+            "\"mapY\": 1, \"message\": " +
+            value + "}]}";
+        TEST_ASSERT(!ParseEntityPlacementsJson(text, "m.json", triggers, errors, warnings));
+        if (!AnyMessageContains(errors, {"entities[0] (trigger): field \"message\" must be", expected})) {
+            FailTest(__FILE__, __LINE__, std::string("expected a message error containing: ") + expected);
+        }
+    }
+    // A CSV cell is not checked for UTF-8: a message must be well-formed UTF-8 (the JSON twin
+    // could not hold it otherwise), and invalid bytes in any text cell give an error, not a throw.
+    const std::vector<std::pair<std::string, const char*>> badCsvBytes = {
+        {"trigger,1.5,1.5,1,1,,,,,,,CAF\xE9", "field \"message\" must be"},       // Latin-1 e-acute
+        {"trigger,1.5,1.5,1,1,,,,,,,\xED\xA0\x80", "field \"message\" must be"},  // a surrogate
+        {"trigger,1.5,1.5,1,1,,,,,,,\xC0\xAF", "field \"message\" must be"},      // overlong '/'
+        {"door,1.5,1.5,1,1,,,,,,\xE9", "field \"lock\" must be"},
+    };
+    for (const auto& [row, expected] : badCsvBytes) {
+        errors.clear();
+        warnings.clear();
+        std::vector<EntityPlacement> placements;
+        TEST_ASSERT(!ParseEntityPlacementsCsv("player,1.5,1.5\n" + row + "\n", "u.csv", placements, errors, warnings));
+        if (!AnyMessageContains(errors, {expected})) {
+            FailTest(__FILE__, __LINE__, std::string("expected an error containing: ") + expected);
+        }
+    }
+    errors.clear();
+    warnings.clear();
+    std::vector<EntityPlacement> accented;
+    TEST_ASSERT(ParseEntityPlacementsCsv("player,1.5,1.5\ntrigger,1.5,1.5,1,1,,,,,,,CAF\xC3\xA9 \xF0\x9F\x99\x82\n",
+                                         "u.csv", accented, errors, warnings));
+    TEST_ASSERT(errors.empty() && accented.size() == 2 && accented[1].message == "CAF\xC3\xA9 \xF0\x9F\x99\x82");
+    errors.clear();
+    warnings.clear();
+    std::vector<EntityPlacement> doors;
+    TEST_ASSERT(ParseEntityPlacementsJson(
+        R"({"entities": [{"type": "door", "x": 1.5, "y": 1.5, "mapX": 1, "mapY": 1, "message": "HI"}]})", "m.json",
+        doors, errors, warnings));
+    TEST_ASSERT(AnyMessageContains(warnings, {"field \"message\" only applies to trigger"}));
     for (const std::vector<EntityPlacement>* list : {&fromJson, &fromCsv}) {
         TEST_ASSERT_NEAR((*list)[0].angleDegrees, 90.0f, 1e-6f);
         TEST_ASSERT((*list)[1].variant == EnemyVariant::Brute);
@@ -2427,6 +2495,12 @@ void TestCampaignManifestValidation() {
         TEST_ASSERT(campaign.levels[i].entities == entry["entities"].get<std::string>());
         TEST_ASSERT(campaign.levels[i].theme == entry["theme"].get<std::string>());
     }
+    TEST_ASSERT(campaign.testLevel.has_value() == manifest.contains("testLevel"));
+    if (campaign.testLevel) {
+        TEST_ASSERT(campaign.testLevel->id == manifest["testLevel"]["id"].get<std::string>());
+        TEST_ASSERT(campaign.testLevel->map == manifest["testLevel"]["map"].get<std::string>());
+    }
+    TEST_ASSERT(campaign.bootIntoTestLevel == manifest.value("bootIntoTestLevel", false));
     // The reference campaign (tests/fixtures/reference): exact values.
     {
         const ScratchDir scratch("campaign-reference");
@@ -2481,6 +2555,22 @@ void TestCampaignManifestValidation() {
             "theme": "bunker"}]})",
          "field \"map\" is required"},
         {R"({"title": "T", "levels": [3]})", "must be an object"},
+        // The test level ("testLevel") and "bootIntoTestLevel".
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "testLevel": 3})", "testLevel must be an object"},
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "testLevel": )" + level01 + "}",
+         "testLevel (level01): id \"level01\" is used by an earlier level"},
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "testLevel": {"id": "lab", "name": "Lab",
+            "entities": "game/defs/level01.entities.json", "theme": "bunker"}})",
+         "testLevel (lab): field \"map\" is required"},
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "testLevel": {"id": "lab", "name": "Lab",
+            "map": "game/maps/level01.map", "entities": "game/defs/level01.entities.json", "theme": "marble"}})",
+         "testLevel (lab): theme \"marble\" not found"},
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "bootIntoTestLevel": true})",
+         "\"bootIntoTestLevel\" is true, but there is no \"testLevel\""},
+        {R"({"title": "T", "levels": [)" + level01 + R"(], "testLevel": {"id": "lab", "name": "Lab",
+            "map": "game/maps/level01.map", "entities": "game/defs/level01.entities.json", "theme": "bunker"},
+            "bootIntoTestLevel": "yes"})",
+         "\"bootIntoTestLevel\" must be true or false, got \"yes\""},
     };
     for (const Case& c : cases) {
         errors.clear();
@@ -2505,6 +2595,25 @@ void TestCampaignManifestValidation() {
     TEST_ASSERT(AnyMessageContains(warnings, {"unknown key \"music\""}));
     TEST_ASSERT(AnyMessageContains(warnings, {"shortened on screen"}));
     TEST_ASSERT(loose.levels.size() == 1);
+
+    // A valid test level, outside the campaign; bootIntoTestLevel defaults to false.
+    errors.clear();
+    warnings.clear();
+    CampaignDefinition withTestLevel{};
+    const std::string lab = R"("testLevel": {"id": "lab", "name": "Lab", "map": "game/maps/level01.map",
+        "entities": "game/defs/level01.entities.json", "theme": "stone"})";
+    std::string labCampaign = R"({"title": "T", "levels": [)";
+    labCampaign += level01;
+    labCampaign += "], ";
+    labCampaign += lab;
+    TEST_ASSERT(ParseCampaign(labCampaign + "}", "campaign.json", RepoRoot(), withTestLevel, errors, warnings));
+    TEST_ASSERT(errors.empty() && warnings.empty());
+    TEST_ASSERT(withTestLevel.levels.size() == 1 && withTestLevel.testLevel.has_value());
+    TEST_ASSERT(withTestLevel.testLevel->id == "lab" && withTestLevel.testLevel->theme == "stone");
+    TEST_ASSERT(!withTestLevel.bootIntoTestLevel);
+    TEST_ASSERT(ParseCampaign(labCampaign + R"(, "bootIntoTestLevel": true})", "campaign.json", RepoRoot(),
+                              withTestLevel, errors, warnings));
+    TEST_ASSERT(errors.empty() && withTestLevel.bootIntoTestLevel);
 
     // A missing manifest.
     errors.clear();
@@ -2676,7 +2785,8 @@ void TestProgressFileRoundTrip() {
         EngineOptions options = ShippedEngineOptions();
         options.prefDir = scratch.Path();
         TEST_ASSERT(engine.Init(options));
-        TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.MenuItems().size() == 3);
+        const std::size_t testLevelItems = ShippedCampaign().testLevel.has_value() ? 1 : 0;
+        TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.MenuItems().size() == 3 + testLevelItems);
     }
     // Level 3 unlocked (or the last level of a shorter campaign: a save beyond it is clamped).
     const int unlocked = std::min(3, static_cast<int>(ShippedCampaign().levels.size()));
@@ -2875,6 +2985,23 @@ void CheckExtremeScreensInsideMargin(const RenderSize& size) {
     framebuffer.ResetDrawBounds();
     UiRenderer::DrawMenuScreen(framebuffer, menu);
     AssertInsideMargin(framebuffer, "menu with a long item" + at);
+    // The game's longest menu (saved progress and a test level: five items) keeps its controls
+    // summary, the only text in the dim colour.
+    menu.campaignTitle = "OPERATION NEO-WOLF";
+    menu.items = {"NEW GAME", "CONTINUE", "LEVEL SELECT", "TEST CHAMBER", "QUIT"};
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawMenuScreen(framebuffer, menu);
+    AssertInsideMargin(framebuffer, "menu with five items" + at);
+    const std::uint32_t dimText = PackARGB32(MakeColor(105, 115, 130));
+    bool controlsShown = false;
+    for (int y = 0; y < framebuffer.Height() && !controlsShown; ++y) {
+        for (int x = 0; x < framebuffer.Width() && !controlsShown; ++x) {
+            controlsShown = PixelAt(framebuffer, x, y) == dimText;
+        }
+    }
+    if (!controlsShown) {
+        FailTest(__FILE__, __LINE__, "the five-item menu leaves out its controls summary" + at);
+    }
     UiRenderer::LevelCompleteView complete{};
     complete.levelNumber = 99;
     complete.levelName = longName;
@@ -2887,6 +3014,20 @@ void CheckExtremeScreensInsideMargin(const RenderSize& size) {
     UiRenderer::DrawPauseOverlay(framebuffer, UiRenderer::LevelLabel(99, longName));
     UiRenderer::DrawCampaignCompleteScreen(framebuffer, longName, 99);
     AssertInsideMargin(framebuffer, "game over, pause, campaign complete with a long name" + at);
+    // The test level's HUD: its title instead of "LEVEL N" (fitted beside the key cards) and in
+    // the banner.
+    UiRenderer::HudView hud{};
+    hud.health = 10000;
+    hud.ammo = 10000;
+    hud.levelTitle = longName;
+    hud.levelName = longName;
+    hud.showLevelBanner = true;
+    for (const KeyColor color : kKeyColors) {
+        hud.keys.Add(color);
+    }
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawHud(framebuffer, hud);
+    AssertInsideMargin(framebuffer, "HUD with a long test-level title" + at);
 }
 
 // Minimap: a small map is scaled to fill the panel; a big one follows the player and is cut
@@ -3248,6 +3389,290 @@ void TestNewGameResetsWorld() {
     TEST_ASSERT(engine.flow_.MenuItems()[static_cast<std::size_t>(engine.flow_.MenuCursor())] == MenuItem::Quit);
     tap(InputAction::Select);
     TEST_ASSERT(!engine.IsRunning());
+}
+
+// The test level (campaign.json "testLevel", the Test Chamber) in the game flow: its menu item,
+// its exit switch restarts it, and it never unlocks a level or asks for progress to be saved.
+void TestGameFlowTestLevel() {
+    GameFlowConfig config{};
+    config.levelCount = 3;
+    config.initial = PlayerStats{100, 24};
+    config.maximum = PlayerStats{kPlayerMaxHealth, kPlayerMaxAmmo};
+    config.hasTestLevel = true;
+    GameFlow flow;
+    flow.Configure(config);
+    flow.SetProgress(false, 1);
+    TEST_ASSERT(flow.HasTestLevel());
+    std::vector<MenuItem> items = flow.MenuItems();
+    TEST_ASSERT(items.size() == 4 && items[2] == MenuItem::TestLevel && items[3] == MenuItem::Quit);
+    flow.SetProgress(true, 2);
+    items = flow.MenuItems();
+    TEST_ASSERT(items.size() == 5 && items[1] == MenuItem::Continue && items[3] == MenuItem::TestLevel);
+    TEST_ASSERT(std::string(MenuItemLabel(MenuItem::TestLevel)) == "TEST LEVEL");
+
+    // The menu item starts the test level with the initial values.
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    flow.Update(Press({InputAction::MoveBackward}), {});
+    TEST_ASSERT(flow.MenuCursor() == 3);
+    std::vector<FlowRequest> requests = flow.Update(Press({InputAction::Select}), {});
+    const FlowRequest* load = FindRequest(requests, FlowRequestType::LoadLevel);
+    TEST_ASSERT(load != nullptr && load->levelIndex == kTestLevelIndex);
+    TEST_ASSERT(load->stats.health == 100 && load->stats.ammo == 24);
+    TEST_ASSERT(flow.State() == GameState::Gameplay && flow.InTestLevel() && !flow.IsLastLevel());
+
+    // Its exit switch restarts it: no level-complete screen, nothing unlocked or saved.
+    requests = flow.Update(kNoInput, LevelCompletedEvents(37, 5));
+    TEST_ASSERT(requests.size() == 1 && requests[0].type == FlowRequestType::RestartLevel);
+    TEST_ASSERT(requests[0].levelIndex == kTestLevelIndex && requests[0].stats.health == 100);
+    TEST_ASSERT(requests[0].stats.ammo == 24);
+    TEST_ASSERT(!HasRequest(requests, FlowRequestType::SaveProgress));
+    TEST_ASSERT(flow.State() == GameState::Gameplay && flow.InTestLevel());
+    TEST_ASSERT(flow.HighestUnlocked() == 2 && flow.LastResults().kills == 0);
+
+    // Death: the game-over screen; Restart (or Enter) starts it again, Esc goes to the menu.
+    FlowEvents died{};
+    died.playerDied = true;
+    flow.Update(kNoInput, died);
+    TEST_ASSERT(flow.State() == GameState::GameOver);
+    requests = flow.Update(Press({InputAction::Restart}), {});
+    const FlowRequest* restart = FindRequest(requests, FlowRequestType::RestartLevel);
+    TEST_ASSERT(restart != nullptr && restart->levelIndex == kTestLevelIndex && restart->stats.health == 100);
+    TEST_ASSERT(flow.InTestLevel() && flow.State() == GameState::Gameplay);
+
+    // Pause and quit to the main menu, as in any level.
+    flow.Update(Press({InputAction::Pause}), {});
+    TEST_ASSERT(flow.State() == GameState::Paused);
+    flow.Update(Press({InputAction::QuitToMenu}), {});
+    TEST_ASSERT(flow.State() == GameState::Menu && flow.Page() == MenuPage::Main);
+
+    // New Game afterwards is the campaign as usual: level 1, and its exit saves progress.
+    requests = flow.Update(Press({InputAction::Select}), {});
+    TEST_ASSERT(!flow.InTestLevel() && flow.CurrentLevel() == 0);
+    requests = flow.Update(kNoInput, LevelCompletedEvents(80, 20));
+    TEST_ASSERT(flow.State() == GameState::LevelComplete && HasRequest(requests, FlowRequestType::SaveProgress));
+
+    // At boot (campaign.json "bootIntoTestLevel"): straight into play.
+    GameFlow boot;
+    boot.Configure(config);
+    const FlowRequest direct = boot.StartTestLevel();
+    TEST_ASSERT(direct.type == FlowRequestType::LoadLevel && direct.levelIndex == kTestLevelIndex);
+    TEST_ASSERT(boot.State() == GameState::Gameplay && boot.InTestLevel());
+
+    // The level-complete screen set from outside (C API, command bridge): Enter restarts the test
+    // level instead of advancing to the campaign-complete screen.
+    boot.ForceState(GameState::Victory);
+    TEST_ASSERT(boot.State() == GameState::LevelComplete);
+    requests = boot.Update(Press({InputAction::Confirm}), {});
+    TEST_ASSERT(requests.size() == 1 && requests[0].type == FlowRequestType::RestartLevel);
+    TEST_ASSERT(requests[0].levelIndex == kTestLevelIndex && boot.State() == GameState::Gameplay);
+    TEST_ASSERT(!boot.HasProgress());
+
+    // A level loaded by path afterwards is not the test level: its exit ends it as before. After
+    // a campaign level the flow keeps its position (docs/C_API.md, nw_engine_load_level).
+    boot.LeaveTestLevel();
+    TEST_ASSERT(!boot.InTestLevel() && boot.CurrentLevel() == -1);
+    GameFlow campaign;
+    campaign.Configure(config);
+    campaign.StartLevelDirect(1);
+    campaign.LeaveTestLevel();
+    TEST_ASSERT(campaign.CurrentLevel() == 1);
+    requests = boot.Update(kNoInput, LevelCompletedEvents(10, 2));
+    TEST_ASSERT(boot.State() == GameState::LevelComplete && !HasRequest(requests, FlowRequestType::RestartLevel));
+
+    // A level that fails to load leaves the engine on the level before it: CancelLevelStart puts
+    // the flow back on that level (and its restart stats), so the test level stays the test level.
+    GameFlow failed;
+    failed.Configure(config);
+    failed.StartTestLevel();
+    failed.ForceState(GameState::Menu);
+    requests = failed.Update(Press({InputAction::Select}), {});  // New Game
+    TEST_ASSERT(failed.CurrentLevel() == 0 && HasRequest(requests, FlowRequestType::LoadLevel));
+    failed.CancelLevelStart();
+    TEST_ASSERT(failed.State() == GameState::Menu && failed.InTestLevel());
+    TEST_ASSERT(failed.EntrySnapshot().health == 100 && failed.EntrySnapshot().ammo == 24);
+    failed.ForceState(GameState::Gameplay);
+    requests = failed.Update(kNoInput, LevelCompletedEvents(10, 2));
+    TEST_ASSERT(requests.size() == 1 && requests[0].type == FlowRequestType::RestartLevel);
+    TEST_ASSERT(requests[0].levelIndex == kTestLevelIndex && !failed.HasProgress());
+}
+
+// A content root with the reference campaign and a small test level ("sandbox": a room with a
+// sign and an exit switch on the east wall) that the game starts in.
+std::filesystem::path MakeTestLevelContentRoot(const std::filesystem::path& dir) {
+    const std::filesystem::path root = MakeReferenceContentRoot(dir);
+    WriteTextFile(root / "game" / "maps" / "sandbox.map", "#########\n#.......X\n#...T...#\n#########\n");
+    WriteTextFile(root / "game" / "defs" / "sandbox.entities.json",
+                  R"({"level": "sandbox", "entities": [
+                      {"type": "player", "x": 1.5, "y": 1.5, "angle": 0},
+                      {"type": "trigger", "x": 4.5, "y": 2.5, "mapX": 4, "mapY": 2, "message": "Sandbox sign"}]})");
+    nlohmann::json campaign =
+        nlohmann::json::parse(ReadWholeFile(PathToUtf8(root / "game" / "defs" / "campaign.json")));
+    campaign["testLevel"] = {{"id", "sandbox"},
+                             {"name", "Sandbox Room"},
+                             {"map", "game/maps/sandbox.map"},
+                             {"entities", "game/defs/sandbox.entities.json"},
+                             {"theme", "stone"}};
+    campaign["bootIntoTestLevel"] = true;
+    WriteTextFile(root / "game" / "defs" / "campaign.json", campaign.dump(2));
+    return root;
+}
+
+void TestTestLevel() {
+    const ScratchDir scratch("test-level");
+    const std::filesystem::path root = MakeTestLevelContentRoot(scratch.Path() / "content");
+    const std::filesystem::path prefs = scratch.Path() / "prefs";
+    std::filesystem::create_directories(prefs);
+    const std::filesystem::path progressPath = prefs / kProgressFileName;
+
+    // Without EngineOptions::testLevelBoot (the C API, tests, the bot): the main menu as before,
+    // with the test level's item showing its name.
+    {
+        Engine engine;
+        TEST_ASSERT(engine.Init(HeadlessEngineOptions(root)));
+        TEST_ASSERT(engine.GetState() == GameState::Menu && !engine.InTestLevel() && engine.currentLevelIndex_ == 0);
+        const std::vector<MenuItem> items = engine.flow_.MenuItems();
+        TEST_ASSERT(std::find(items.begin(), items.end(), MenuItem::TestLevel) != items.end());
+        TEST_ASSERT(engine.MenuItemText(MenuItem::TestLevel) == "SANDBOX ROOM");
+        TEST_ASSERT(engine.MenuItemText(MenuItem::NewGame) == "NEW GAME");
+    }
+    // --level and --preview win over bootIntoTestLevel.
+    {
+        Engine engine;
+        EngineOptions options = HeadlessEngineOptions(root, 2);
+        options.testLevelBoot = true;
+        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.currentLevelIndex_ == 1);
+        TEST_ASSERT(!engine.InTestLevel() && !engine.flow_.InTestLevel());
+    }
+    {
+        Engine engine;
+        EngineOptions options = HeadlessEngineOptions(root);
+        options.testLevelBoot = true;
+        options.preview = PreviewScreen::Menu;
+        TEST_ASSERT(engine.Init(options));
+        TEST_ASSERT(engine.GetState() == GameState::Menu && !engine.InTestLevel());
+    }
+
+    // The game: straight into the test level, at the initial health and ammo.
+    Engine engine;
+    EngineOptions options = HeadlessEngineOptions(root);
+    options.testLevelBoot = true;
+    options.prefDir = prefs;
+    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel() && engine.flow_.InTestLevel());
+    TEST_ASSERT(engine.CurrentCampaignLevel() == nullptr && engine.currentThemeId_ == "stone");
+    TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
+    TEST_ASSERT(engine.playerAmmo_ == engine.gameplay_.weapon.initialAmmo);
+    TEST_ASSERT(UiRenderer::TestLevelLabel("Sandbox Room") == "SANDBOX ROOM");
+    engine.framebuffer_.ResetDrawBounds();
+    engine.Render();
+    AssertInsideMargin(engine.framebuffer_, "the test level's HUD and banner");
+
+    InputAction pressed = InputAction::Count;
+    HoldOnlyAction(engine, pressed);
+    const auto tap = [&](InputAction action) {
+        pressed = action;
+        engine.Update(kFrameSeconds);
+        pressed = InputAction::Count;
+        engine.Update(kFrameSeconds);
+    };
+
+    // A trigger with a "message" shows it on the HUD.
+    engine.player_.position = {4.5f, 2.5f};
+    engine.Update(kFrameSeconds);
+    TEST_ASSERT(engine.hudMessage_ == "Sandbox sign");
+
+    // The exit switch restarts the test level (and says so) and reports level 0; nothing is saved.
+    InteropEvent event{};
+    while (engine.bridge_.PollEvent(event)) {
+    }
+    engine.playerHealth_ = 40;
+    engine.player_.position = {7.5f, 1.5f};
+    engine.player_.directionAngleRadians = 0.0f;
+    tap(InputAction::Interact);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel());
+    TEST_ASSERT_NEAR(engine.player_.position.x, 1.5f, 0.01f);
+    TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
+    bool completed = false;
+    while (engine.bridge_.PollEvent(event)) {
+        if (event.type == InteropEventType::LevelCompleted) {
+            completed = true;
+            TEST_ASSERT(event.intArg1 == 0);
+        }
+    }
+    TEST_ASSERT(completed);
+    TEST_ASSERT(engine.hudMessage_ == "Exit switch: Sandbox Room restarted");
+    TEST_ASSERT(!std::filesystem::exists(progressPath));
+    TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == 1);
+
+    // Death: game over; R restarts the test level.
+    InteropCommand damage{};
+    damage.type = InteropCommandType::DamagePlayer;
+    damage.intArg1 = 1000;
+    engine.bridge_.EnqueueCommand(damage);
+    engine.Update(kFrameSeconds);
+    TEST_ASSERT(engine.GetState() == GameState::GameOver);
+    tap(InputAction::Restart);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel());
+    TEST_ASSERT(engine.playerHealth_ == engine.gameplay_.player.initialHealth);
+
+    // The C API's reset keeps the test level.
+    engine.ResetLevel();
+    TEST_ASSERT(engine.InTestLevel() && engine.CurrentCampaignLevel() == nullptr);
+
+    // Pause, quit to the menu, and back in through the menu item (New Game, Level Select, the
+    // test level, Quit).
+    tap(InputAction::Pause);
+    TEST_ASSERT(engine.GetState() == GameState::Paused);
+    tap(InputAction::QuitToMenu);
+    TEST_ASSERT(engine.GetState() == GameState::Menu);
+    tap(InputAction::MoveForward);
+    tap(InputAction::MoveForward);
+    TEST_ASSERT(engine.flow_.MenuItems()[static_cast<std::size_t>(engine.flow_.MenuCursor())] == MenuItem::TestLevel);
+    tap(InputAction::Select);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel());
+    TEST_ASSERT(!std::filesystem::exists(progressPath));
+
+    // The level-complete screen set from outside (C API SetGameState): the test level's name and
+    // results so far; Enter restarts it and nothing is saved.
+    engine.SetState(GameState::LevelComplete);
+    engine.framebuffer_.ResetDrawBounds();
+    engine.Render();
+    AssertInsideMargin(engine.framebuffer_, "the test level's level-complete screen");
+    tap(InputAction::Confirm);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel());
+    TEST_ASSERT(!std::filesystem::exists(progressPath));
+
+    // A campaign level that fails to load (an invalid entity file is only found at load time)
+    // leaves the test level loaded, and the flow follows it: back to the menu, and the test
+    // level's exit switch, resumed through the C API, still restarts it and saves nothing.
+    const nlohmann::json manifest =
+        nlohmann::json::parse(ReadWholeFile(PathToUtf8(root / "game" / "defs" / "campaign.json")));
+    const std::filesystem::path level1Entities = root / manifest["levels"][0]["entities"].get<std::string>();
+    const std::string level1Text = ReadWholeFile(PathToUtf8(level1Entities));
+    WriteTextFile(level1Entities, "{ \"entities\": [ }");
+    engine.SetState(GameState::Menu);
+    tap(InputAction::Select);  // New Game: level 1 fails to load
+    TEST_ASSERT(engine.GetState() == GameState::Menu && engine.InTestLevel() && engine.flow_.InTestLevel());
+    WriteTextFile(level1Entities, level1Text);
+    engine.SetState(GameState::Gameplay);
+    engine.player_.position = {7.5f, 1.5f};
+    engine.player_.directionAngleRadians = 0.0f;
+    tap(InputAction::Interact);
+    TEST_ASSERT(engine.GetState() == GameState::Gameplay && engine.InTestLevel());
+    TEST_ASSERT(!std::filesystem::exists(progressPath));
+    TEST_ASSERT(!engine.flow_.HasProgress() && engine.flow_.HighestUnlocked() == 1);
+
+    // A level loaded by path (C API, command bridge) replaces the test level for the flow too:
+    // its exit switch ends that level instead of loading the test level again.
+    TEST_ASSERT(engine.LoadLevel("game/maps/sandbox.map", "game/defs/sandbox.entities.json"));
+    TEST_ASSERT(!engine.InTestLevel() && !engine.flow_.InTestLevel() && engine.flow_.CurrentLevel() == -1);
+    engine.player_.position = {7.5f, 1.5f};
+    engine.player_.directionAngleRadians = 0.0f;
+    tap(InputAction::Interact);
+    TEST_ASSERT(engine.GetState() == GameState::LevelComplete && !engine.InTestLevel());
+    engine.Shutdown();
 }
 
 void TestKeyBindings() {
@@ -4933,6 +5358,9 @@ const std::vector<TestCase>& AllTests() {
         {"hud_key_icons_layout", "HUD key-card icons inside the layout", &TestHudKeyIconsLayout},
         {"ai_stress_20_enemies", "20 enemies in a 48x48 map: robust and fast", &TestAiStress20Enemies},
         {"new_game_resets_world", "Menu -> New Game fully resets the world (C7)", &TestNewGameResetsWorld},
+        {"game_flow_test_level", "Game flow: the test level's menu item, exit restart, no progress",
+         &TestGameFlowTestLevel},
+        {"test_level", "The test level: boot, --level and --preview, exit restart, no progress, menu", &TestTestLevel},
         {"key_bindings", "Key bindings, B13 fullscreen chord, minimap toggle", &TestKeyBindings},
         {"wall_texture_orientation", "Wall textures read left to right from every side", &TestWallTextureOrientation},
         {"autoplay_fixture_level", "Autoplay bot: keys, doors, a guard, a health detour; deterministic",

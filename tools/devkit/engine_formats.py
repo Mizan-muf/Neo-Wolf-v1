@@ -45,10 +45,11 @@ ENTITY_FIELDS = {
     "enemy": {"type", "x", "y", "variant"},
     "pickup": {"type", "x", "y", "kind", "value", "key"},
     "door": {"type", "x", "y", "mapX", "mapY", "lock"},
-    "trigger": {"type", "x", "y", "mapX", "mapY"},
+    "trigger": {"type", "x", "y", "mapX", "mapY", "message"},
     "decoration": {"type", "x", "y"},
 }
-KNOWN_ENTITY_FIELDS = {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock"}
+KNOWN_ENTITY_FIELDS = {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock", "message"}
+MAX_TRIGGER_MESSAGE_LENGTH = 40  # kMaxTriggerMessageLength (bytes of UTF-8); no comma (the CSV cannot hold one)
 TOP_LEVEL_FIELDS = {"level", "entities", "lights"}
 # Light zones: the optional top-level "lights" array (ReadLightZone, kMin/MaxLightZoneLevel).
 LIGHT_FIELDS = ("x", "y", "w", "h", "level")
@@ -67,6 +68,7 @@ CSV_COLUMNS: List[Tuple[str, str]] = [
     ("variant", "text"),
     ("key", "text"),
     ("lock", "text"),
+    ("message", "text"),
 ]
 
 
@@ -282,7 +284,27 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     if etype == "door" and "lock" in item and item["lock"] not in KEY_COLORS:
         result.errors.append(f"{label} (door): lock must be 'red', 'blue' or 'gold', got {item['lock']!r}")
         ok = False
+    if etype == "trigger" and "message" in item and not is_trigger_message(item["message"]):
+        result.errors.append(
+            f"{label} (trigger): message must be a non-empty string of at most {MAX_TRIGGER_MESSAGE_LENGTH} "
+            f"characters without a comma, a control character or a space at either end, got {item['message']!r}"
+        )
+        ok = False
     return ok
+
+
+def is_trigger_message(value: object) -> bool:
+    """A trigger's "message" (IsTriggerMessage): 1 to MAX_TRIGGER_MESSAGE_LENGTH bytes of well-formed
+    UTF-8, no comma, no control character and no space at either end, so that the CSV export holds
+    it unchanged. A CSV cell is decoded with "surrogateescape", so bytes that are not UTF-8 arrive
+    as lone surrogates (U+DC80-U+DCFF); like a surrogate escape in JSON, they are rejected."""
+    if not isinstance(value, str) or any(0xD800 <= ord(c) <= 0xDFFF for c in value):
+        return False
+    if not 0 < len(value.encode("utf-8")) <= MAX_TRIGGER_MESSAGE_LENGTH:
+        return False
+    if value[0] == " " or value[-1] == " ":
+        return False
+    return not any(c == "," or ord(c) < 0x20 or ord(c) == 0x7F for c in value)
 
 
 def _check_pickup(item: dict, label: str, result: EntityParse) -> bool:
@@ -428,7 +450,7 @@ def parse_entities_csv(path: Path) -> EntityParse:
             result.errors.append(f"{label}: Expected at least 3 fields (type,x,y), got {len(cells)}")
             continue
         if len(cells) > len(CSV_COLUMNS):
-            result.warnings.append(f"{label}: {len(cells) - len(CSV_COLUMNS)} extra column(s) after 'lock' ignored")
+            result.warnings.append(f"{label}: {len(cells) - len(CSV_COLUMNS)} extra column(s) after 'message' ignored")
         item: dict = {}
         converted = True
         for (name, kind), cell in zip(CSV_COLUMNS, cells):

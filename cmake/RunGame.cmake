@@ -2,7 +2,9 @@
 # game_smoke_* CTest tests), and optionally the size of the screenshot it saves.
 # Usage: cmake -DGAME_EXE=<path> -DGAME_ARGS=<a;b;c> -DEXPECT_EXIT=<code>
 #              [-DEXPECT_REGEX=<regex matched against stdout+stderr>]
-#              [-DEXPECT_BMP=<screenshot path> -DEXPECT_BMP_SIZE=<width>x<height>] -P RunGame.cmake
+#              [-DEXPECT_NO_REGEX=<regex that must not match>]
+#              [-DEXPECT_BMP=<screenshot path> -DEXPECT_BMP_SIZE=<width>x<height>]
+#              [-DEXPECT_NO_FILE=<path the run must not create>] -P RunGame.cmake
 
 if(NOT GAME_EXE OR NOT DEFINED EXPECT_EXIT)
     message(FATAL_ERROR "GAME_EXE and EXPECT_EXIT must be set")
@@ -10,6 +12,9 @@ endif()
 
 if(DEFINED EXPECT_BMP)
     file(REMOVE "${EXPECT_BMP}")  # a screenshot left by an earlier run must not pass
+endif()
+if(DEFINED EXPECT_NO_FILE)
+    file(REMOVE "${EXPECT_NO_FILE}")  # only this run may not create it
 endif()
 
 execute_process(
@@ -25,6 +30,9 @@ if(NOT "${result}" STREQUAL "${EXPECT_EXIT}")
 endif()
 if(DEFINED EXPECT_REGEX AND NOT out MATCHES "${EXPECT_REGEX}")
     message(FATAL_ERROR "The output does not match the regular expression: ${EXPECT_REGEX}")
+endif()
+if(DEFINED EXPECT_NO_REGEX AND out MATCHES "${EXPECT_NO_REGEX}")
+    message(FATAL_ERROR "The output matches the regular expression it must not match: ${EXPECT_NO_REGEX}")
 endif()
 if(DEFINED EXPECT_BMP)
     if(NOT EXISTS "${EXPECT_BMP}")
@@ -48,5 +56,8 @@ if(DEFINED EXPECT_BMP)
         message(FATAL_ERROR "The screenshot is ${bmp_size}, expected ${EXPECT_BMP_SIZE}.")
     endif()
     message(STATUS "Screenshot size ${bmp_size} as expected.")
+endif()
+if(DEFINED EXPECT_NO_FILE AND EXISTS "${EXPECT_NO_FILE}")
+    message(FATAL_ERROR "The run created ${EXPECT_NO_FILE}, which it must not.")
 endif()
 message(STATUS "Exit code ${result} as expected.")

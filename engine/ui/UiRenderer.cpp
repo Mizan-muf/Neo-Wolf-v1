@@ -320,6 +320,14 @@ std::string LevelNumberText(int levelNumber) {
     return "LEVEL " + std::to_string(levelNumber);
 }
 
+// The HUD bar's level tag: the title in capitals (fitted to maxWidth), "LEVEL N", or "".
+std::string HudLevelTag(const UiRenderer::HudView& view, int maxWidth) {
+    if (!view.levelTitle.empty()) {
+        return UiRenderer::FitText(Upper(view.levelTitle), maxWidth, 1);
+    }
+    return view.levelNumber > 0 ? LevelNumberText(view.levelNumber) : std::string();
+}
+
 // The y of the key-hint line at the bottom of the full-screen pages.
 int FooterY(int canvasHeight) {
     return canvasHeight - kMargin - kLineHeight - 6;
@@ -605,6 +613,10 @@ std::string UiRenderer::LevelLabel(int levelNumber, const std::string& levelName
     return "LEVEL " + std::to_string(levelNumber) + (levelName.empty() ? std::string() : ": " + Upper(levelName));
 }
 
+std::string UiRenderer::TestLevelLabel(const std::string& levelName) {
+    return Upper(levelName);
+}
+
 std::string UiRenderer::FormatDuration(double seconds) {
     constexpr long kSecondsPerMinute = 60;
     constexpr long kSecondsPerHour = 3600;
@@ -646,8 +658,13 @@ void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
                  card.y + (card.height - UiLayout::kGlyphHeight) / 2, std::string(1, KeyColorLabel(color)[0]),
                  kDarkInk);
     }
-    if (view.levelNumber > 0) {
-        DrawTextRightAligned(canvas, barX + barW - kTextInset, textY, LevelNumberText(view.levelNumber), kGold);
+    // The level's tag at the right end of the bar, kept clear of the key-card slots.
+    const int tagRight = barX + barW - kTextInset;
+    const int tagMaxWidth = tagRight - (UiLayout::kHudAmmoX + UiLayout::kKeyCardsOffset +
+                                        UiLayout::kKeyCardSlots * UiLayout::kKeyCardSlotWidth + kTextInset);
+    const std::string tag = HudLevelTag(view, tagMaxWidth);
+    if (!tag.empty()) {
+        DrawTextRightAligned(canvas, tagRight, textY, tag, kGold);
     }
 
     // Message line above the bar.
@@ -662,12 +679,13 @@ void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
     }
 
     // Level banner at level start, right of the minimap when it is shown.
-    if (view.showLevelBanner && view.levelNumber > 0) {
+    if (view.showLevelBanner && !tag.empty()) {
         const int reservedLeft = view.reservedLeft > 0 ? canvas.FromFramebufferX(view.reservedLeft) : 0;
         const int left = std::max(kMargin, reservedLeft + 4);
         const int right = width - kMargin;
         const int areaW = right - left;
-        const std::string title = LevelNumberText(view.levelNumber);
+        const std::string title = view.levelTitle.empty() ? LevelNumberText(view.levelNumber)
+                                                          : FitText(Upper(view.levelTitle), areaW - 16, 2);
         const std::string name = FitText(Upper(view.levelName), areaW - 16, 1);
         const int boxW = std::min(areaW, std::max(TextWidth(title, 2), TextWidth(name, 1)) + 16);
         const int boxX = left + (areaW - boxW) / 2;
@@ -748,7 +766,8 @@ void UiRenderer::DrawDebugOverlay(Framebuffer& framebuffer, float fps, float pla
 namespace {
 // The main menu's vertical rhythm. The roomy spacing is the 320x240 layout; on a shorter
 // canvas (320x180 at 16:9) the title moves up and the gaps shrink, the item rows less than the
-// rest, and when even that does not fit (many items) the controls summary is left out.
+// rest. The tight spacing fits five items (Continue and the test level both shown) with the
+// controls summary on that canvas; when even that does not fit, the summary is left out.
 struct MenuSpacing {
     int titleYDivisor = 15;          // the title's y is the canvas height divided by this
     int itemsGap = 16;               // between the subtitle and the first item
@@ -761,6 +780,8 @@ struct MenuSpacing {
 constexpr std::size_t kMenuControlsLines = 3;
 constexpr MenuSpacing kRoomyMenu{};
 constexpr MenuSpacing kCompactMenu{22, 7, 2 * kLineHeight + 6, kLineHeight + 2, 6, true};
+// The item rows just clear the selected item's highlight bar (2 * kLineHeight + 6 high).
+constexpr MenuSpacing kTightMenu{45, 4, 2 * kLineHeight + 4, kLineHeight + 2, 3, true};
 
 int MenuTitleY(int canvasHeight, const MenuSpacing& spacing) {
     return canvasHeight / spacing.titleYDivisor;
@@ -781,13 +802,13 @@ int MenuControlsY(int footerY, const MenuSpacing& spacing) {
 
 MenuSpacing ChooseMenuSpacing(int canvasHeight, int footerY, int itemCount) {
     constexpr int kMinGap = 2;  // UI pixels between the items and the controls summary
-    for (const MenuSpacing& spacing : {kRoomyMenu, kCompactMenu}) {
+    for (const MenuSpacing& spacing : {kRoomyMenu, kCompactMenu, kTightMenu}) {
         const int itemsY = MenuSubtitleY(canvasHeight, spacing) + kLineHeight + spacing.itemsGap;
         if (MenuItemsBottom(itemsY, itemCount, spacing) + kMinGap <= MenuControlsY(footerY, spacing)) {
             return spacing;
         }
     }
-    MenuSpacing withoutControls = kCompactMenu;
+    MenuSpacing withoutControls = kTightMenu;
     withoutControls.showControls = false;
     return withoutControls;
 }
@@ -982,10 +1003,14 @@ void UiRenderer::DrawLevelCompleteScreen(Framebuffer& framebuffer, const LevelCo
     }
     // When the panel is shorter (16:9), the message moves up by half the difference, so that it
     // stays between the results and the key hints.
-    DrawTextCentered(canvas, cx, y + 100 - (kPanelHeight - panel.height) / 2,
-                     view.lastLevel ? "THAT WAS THE LAST LEVEL!" : "HEALTH AND AMMO CARRY OVER", kMessage);
-    DrawTextCentered(canvas, cx, y + panel.height - 20,
-                     view.lastLevel ? "ENTER: CONTINUE   ESC: MENU" : "ENTER: NEXT LEVEL   ESC: MENU", kValue);
+    const char* message = view.lastLevel ? "THAT WAS THE LAST LEVEL!" : "HEALTH AND AMMO CARRY OVER";
+    const char* hints = view.lastLevel ? "ENTER: CONTINUE   ESC: MENU" : "ENTER: NEXT LEVEL   ESC: MENU";
+    if (view.testLevel) {
+        message = "OUTSIDE THE CAMPAIGN: NOTHING IS SAVED";
+        hints = "ENTER: RESTART   ESC: MENU";
+    }
+    DrawTextCentered(canvas, cx, y + 100 - (kPanelHeight - panel.height) / 2, FitText(message, textW, 1), kMessage);
+    DrawTextCentered(canvas, cx, y + panel.height - 20, hints, kValue);
 }
 
 void UiRenderer::DrawGameOverScreen(Framebuffer& framebuffer, const std::string& levelLabel) {

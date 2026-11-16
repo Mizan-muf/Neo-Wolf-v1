@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Keeps the level pages (docs/levels/levelNN.md) in step with the shipped levels (Phase 8).
 
+The test level (campaign.json "testLevel", outside the campaign) has a page too, named after its
+id (docs/levels/testchamber.md), and is checked the same way.
+
 Every level page has a "## Map" section with two ``text`` code blocks:
 
 1. the shipped map file ``game/maps/levelNN.map``, byte for byte (comment lines included);
@@ -111,8 +114,9 @@ def annotated_grid(map_text: str, entities_doc: dict) -> str:
 
 
 def campaign_levels(root: Path) -> list[dict]:
+    """The levels with a page: every campaign level, then the test level if there is one."""
     campaign = json.loads((root / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
-    return campaign["levels"]
+    return campaign["levels"] + ([campaign["testLevel"]] if "testLevel" in campaign else [])
 
 
 def page_path(root: Path, level_id: str) -> Path:

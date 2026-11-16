@@ -3,6 +3,7 @@
 // Reading a level's entity file (.json, or legacy .csv): the entity placements and light
 // zones, checked field by field. BuildLevelFromPlacements (LevelBuilder.h) turns them into a level.
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ struct EntityPlacement {
     KeyColor key = KeyColor::None;               // pickup of kind "key": "key" (required): red, blue or gold
     KeyColor lock = KeyColor::None;              // door: "lock" (optional): red, blue or gold
     EnemyVariant variant = EnemyVariant::Guard;  // enemy: "variant" (optional): guard, brute or runner
+    std::string message;                         // trigger: "message" (optional): its HUD text; empty = the default
     std::string source;                          // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
@@ -42,6 +44,10 @@ struct LightZone {
     std::string source;  // for messages: "file: lights[2]"
 };
 
+// A trigger's "message": at most this many characters, and no comma (the CSV export cannot
+// hold one). The HUD shows it in capitals and shortens it if the screen is too narrow.
+constexpr std::size_t kMaxTriggerMessageLength = 40;
+
 // The range a light zone's "level" must lie in. The floor keeps every area playable: an enemy
 // in a zone at the minimum is still clearly visible (see docs/LEVEL_AUTHORING.md).
 constexpr double kMinLightZoneLevel = 0.2;
@@ -52,7 +58,7 @@ const char* PlacementTypeName(PlacementType type);
 
 // Loads a level's entity placements. The format follows the extension (case-insensitive):
 //   .json  the canonical format: {"level": "...", "entities": [{"type": ..., "x": ..., ...}]}
-//   .csv   the legacy table: type,x,y[,mapX,mapY[,kind[,value[,angle[,variant[,key[,lock]]]]]]]
+//   .csv   the legacy table: type,x,y[,mapX,mapY[,kind[,value[,angle[,variant[,key[,lock[,message]]]]]]]]
 //          (an empty column means "not given").
 // Every problem is reported with the file name, the entity (index, and line for CSV) and the
 // field. Errors (unreadable file, bad syntax, unknown type, missing or invalid required field)

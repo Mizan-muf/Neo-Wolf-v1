@@ -295,6 +295,8 @@ if(NEOWOLF_BUILD_TESTS)
         ui_layout_bounds
         campaign_playthrough
         new_game_resets_world
+        game_flow_test_level
+        test_level
         key_bindings
         wall_texture_orientation
         line_of_sight
@@ -349,11 +351,23 @@ if(NEOWOLF_BUILD_TESTS)
                         "no per-level game_smoke_level_N or autoplay.level.N tests are registered.")
         set(neowolf_campaign_levels 0)
     endif()
-    # game_smoke_frames starts campaign level 1 and expects its entity count in the log: read it
-    # from level 1's entity file (a .json) so the test follows the content.
+    # The test level (campaign.json "testLevel", outside the campaign): with "bootIntoTestLevel"
+    # true the game starts in it, so game_smoke_frames sees it instead of level 1.
+    string(JSON neowolf_boot_test_level ERROR_VARIABLE neowolf_boot_error GET "${neowolf_campaign_json}" bootIntoTestLevel)
+    string(JSON neowolf_test_level_entities ERROR_VARIABLE neowolf_test_level_error
+           GET "${neowolf_campaign_json}" testLevel entities)
+    if(neowolf_boot_error OR neowolf_test_level_error OR NOT neowolf_boot_test_level)
+        set(neowolf_boot_test_level OFF)
+    endif()
+    # game_smoke_frames starts the first level (campaign level 1, or the test level) and expects
+    # its entity count in the log: read it from that level's entity file (a .json) so the test
+    # follows the content.
     set(neowolf_first_level_entities_regex "[0-9]+")
     if(neowolf_campaign_levels GREATER 0)
         string(JSON neowolf_first_entities ERROR_VARIABLE neowolf_first_error GET "${neowolf_campaign_json}" levels 0 entities)
+        if(neowolf_boot_test_level)
+            set(neowolf_first_entities "${neowolf_test_level_entities}")
+        endif()
         if(NOT neowolf_first_error AND neowolf_first_entities MATCHES "\\.json$"
            AND EXISTS "${PROJECT_SOURCE_DIR}/${neowolf_first_entities}")
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/${neowolf_first_entities}")
@@ -376,17 +390,25 @@ if(NEOWOLF_BUILD_TESTS)
     set(NEOWOLF_TEST_PREF_ROOT "${CMAKE_BINARY_DIR}/test-pref")
     set(NEOWOLF_GAME_TESTS "")
     # neowolf_add_game_test(<name> <expected exit code> <regex> <game args...>
-    #                       [SCREENSHOT <file.bmp> <width>x<height>])
-    # SCREENSHOT passes --screenshot <file.bmp> and checks the saved image's size.
+    #                       [NO_REGEX <regex>] [NO_PROGRESS] [SCREENSHOT <file.bmp> <width>x<height>])
+    # NO_REGEX fails the test when the output matches it. NO_PROGRESS fails it when the run
+    # writes progress.json in its per-user folder. SCREENSHOT passes --screenshot <file.bmp>
+    # and checks the saved image's size.
     function(neowolf_add_game_test name expect_exit regex)
-        cmake_parse_arguments(PARSE_ARGV 3 arg "" "" "SCREENSHOT")
+        cmake_parse_arguments(PARSE_ARGV 3 arg "NO_PROGRESS" "NO_REGEX" "SCREENSHOT")
         set(game_args ${arg_UNPARSED_ARGUMENTS} --pref-dir "${NEOWOLF_TEST_PREF_ROOT}/${name}")
-        set(screenshot_checks "")
+        set(extra_checks "")
+        if(arg_NO_REGEX)
+            list(APPEND extra_checks "-DEXPECT_NO_REGEX=${arg_NO_REGEX}")
+        endif()
+        if(arg_NO_PROGRESS)
+            list(APPEND extra_checks "-DEXPECT_NO_FILE=${NEOWOLF_TEST_PREF_ROOT}/${name}/progress.json")
+        endif()
         if(arg_SCREENSHOT)
             list(GET arg_SCREENSHOT 0 screenshot_file)
             list(GET arg_SCREENSHOT 1 screenshot_size)
             list(APPEND game_args --screenshot "${screenshot_file}")
-            set(screenshot_checks "-DEXPECT_BMP=${screenshot_file}" "-DEXPECT_BMP_SIZE=${screenshot_size}")
+            list(APPEND extra_checks "-DEXPECT_BMP=${screenshot_file}" "-DEXPECT_BMP_SIZE=${screenshot_size}")
         endif()
         add_test(NAME ${name}
                  COMMAND ${CMAKE_COMMAND}
@@ -394,7 +416,7 @@ if(NEOWOLF_BUILD_TESTS)
                          "-DGAME_ARGS=${game_args}"
                          -DEXPECT_EXIT=${expect_exit}
                          "-DEXPECT_REGEX=${regex}"
-                         ${screenshot_checks}
+                         ${extra_checks}
                          -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
         set(NEOWOLF_GAME_TESTS ${NEOWOLF_GAME_TESTS} ${name} PARENT_SCOPE)
@@ -430,6 +452,19 @@ if(NEOWOLF_BUILD_TESTS)
                 --level ${level} --frames 120)
         endforeach()
     endif()
+    # The test level: the game starts in it (only with bootIntoTestLevel true); --level and
+    # --preview still start where they say.
+    if(neowolf_boot_test_level)
+        neowolf_add_game_test(game_test_level_boot 0
+            "Test level: .*bootIntoTestLevel is on.*Booting into the test level.*Starting the test level .*GameState changed to: Gameplay.*Ran 30 frame"
+            --frames 30 NO_PROGRESS)
+    endif()
+    neowolf_add_game_test(game_test_level_not_with_level 0
+        "Starting level 1 .*GameState changed to: Gameplay.*Ran 30 frame"
+        --level 1 --frames 30 NO_REGEX "Booting into the test level|Starting the test level")
+    neowolf_add_game_test(game_test_level_not_with_preview 0 "Preview: hud .*Screenshot saved"
+        --preview hud --frames 5 NO_REGEX "Booting into the test level|Starting the test level"
+        SCREENSHOT "${CMAKE_BINARY_DIR}/test-shots/test-level-preview-hud.bmp" 640x360)
     math(EXPR neowolf_level_past_end "${neowolf_campaign_levels} + 1")
     neowolf_add_game_test(game_smoke_level_out_of_range 1
         "--level ${neowolf_level_past_end}: the campaign has ${neowolf_campaign_levels} level"

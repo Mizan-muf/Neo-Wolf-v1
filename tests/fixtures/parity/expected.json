@@ -235,6 +235,35 @@
     },
     "lights_not_array.entities.json": {
       "ok": false
+    },
+    "message.entities.json": {
+      "ok": true,
+      "types": [
+        "player",
+        "trigger"
+      ]
+    },
+    "message.entities.csv": {
+      "ok": true,
+      "types": [
+        "player",
+        "trigger"
+      ]
+    },
+    "message_comma.entities.json": {
+      "ok": false
+    },
+    "message_too_long.entities.csv": {
+      "ok": false
+    },
+    "message_space.entities.json": {
+      "ok": false
+    },
+    "message_tab.entities.csv": {
+      "ok": false
+    },
+    "message_not_utf8.entities.csv": {
+      "ok": false
     }
   },
   "levels": {

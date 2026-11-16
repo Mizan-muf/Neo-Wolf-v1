@@ -39,7 +39,7 @@ from tools.devkit.validator import (
     CampaignLevelInfo,
     ValidationReport,
     is_content_id,
-    read_campaign,
+    read_campaign_manifest,
     validate_map,
     validate_ppm,
     validate_project,
@@ -121,15 +121,19 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _find_campaign_level(root: Path, wanted: str) -> Tuple[Optional[CampaignLevelInfo], List[str]]:
-    """A campaign level by id or by 1-based number."""
+    """A campaign level by id or by 1-based number, or the test level by its id."""
     scratch = ValidationReport()
-    levels = read_campaign(root, scratch) or []
+    campaign = read_campaign_manifest(root, scratch)
+    levels = campaign.levels if campaign is not None else []
+    test_level = campaign.test_level if campaign is not None else None
     for level in levels:
         if level.id == wanted or (wanted.isdigit() and int(wanted) == level.index + 1):
             return level, []
+    if test_level is not None and test_level.id == wanted:
+        return test_level, []
+    ids = [level.id for level in levels] + ([test_level.id] if test_level is not None else [])
     return None, scratch.errors or [
-        f"campaign.json has no level '{wanted}' (ids: {', '.join(level.id for level in levels)}; "
-        f"or a number from 1 to {len(levels)})"
+        f"campaign.json has no level '{wanted}' (ids: {', '.join(ids)}; or a number from 1 to {len(levels)})"
     ]
 
 
@@ -137,7 +141,9 @@ def _default_entity_file(root: Path, map_path: Path) -> Optional[Path]:
     """The entity file of the campaign level that uses this map, else game/defs/<map name>.entities.json."""
     entities_path: Optional[Path] = None
     scratch = ValidationReport()
-    for level in read_campaign(root, scratch) or []:
+    campaign = read_campaign_manifest(root, scratch)
+    levels = [] if campaign is None else campaign.levels + ([campaign.test_level] if campaign.test_level else [])
+    for level in levels:
         if map_path.exists() and (root / level.map).resolve() == map_path.resolve():
             entities_path = root / level.entities
     sibling = root / "game" / "defs" / f"{map_path.stem}.entities.json"
@@ -360,6 +366,14 @@ def _campaign_to_register(args: argparse.Namespace, root: Path, map_path: Path) 
         print(f"Error: theme '{theme}' not found (game/defs/themes/{theme}.cfg).")
         return None, "", EXIT_FAILURE
     args.theme = theme
+    test_level = document.get("testLevel")
+    if isinstance(test_level, dict) and test_level.get("id") == args.level_id:
+        # Even with --force: the engine refuses a campaign.json whose test level shares a level's id.
+        print(
+            f"Error: '{args.level_id}' is the test level's id (campaign.json \"testLevel\"); "
+            "a campaign level needs another id."
+        )
+        return None, "", EXIT_FAILURE
     if any(isinstance(lvl, dict) and lvl.get("id") == args.level_id for lvl in levels) and not args.force:
         print(f"Error: campaign.json already has a level '{args.level_id}' (use --force to replace its entry).")
         return None, "", EXIT_FAILURE
@@ -573,7 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     map_p = subparsers.add_parser("inspect-map", help="Show a map with its entities, statistics and reachability.")
     map_p.add_argument("map_path", type=str, nargs="?", help="Path to a .map file (or use --level).")
-    map_p.add_argument("--level", type=str, help="A campaign level by id or 1-based number (map and entities).")
+    map_p.add_argument(
+        "--level",
+        type=str,
+        help="A campaign level by id or 1-based number, or the test level by id (map and entities).",
+    )
     map_p.add_argument(
         "--entities",
         type=str,

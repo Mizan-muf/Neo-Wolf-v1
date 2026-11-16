@@ -191,7 +191,10 @@ audio), 10 or 11 is fatal (logged, an error box unless `--frames` is used, exit 
    warning).
 8. Load the sprite textures (a checkerboard replaces any that fail).
 9. Load the four sound effects, if there is an audio device.
-10. Load the first level: level 1 behind the main menu, or level N with `--level N`.
+10. Load the first level: level 1 behind the main menu, level N with `--level N`, or the test
+    level (in Gameplay) when `campaign.json` sets `bootIntoTestLevel`, the options allow it
+    (`EngineOptions::testLevelBoot`, set by the game only) and neither `--level` nor
+    `--preview` is given.
 11. Set up a `--preview` screen if asked.
 
 ## Content loading and the content root
@@ -335,9 +338,10 @@ and the 1-pixel lines crisp, and the UI keeps its size relative to the screen; a
 exactly the 320×240 UI scaled up (checked by `ui_layout_bounds`). Every layout dimension, text
 scale, the HUD, minimap, key-card icons, crosshair, overlays and the debug overlay are in UI
 pixels. The 16:9 canvas (320×180) has 60 fewer rows than 320×240, so a few layouts adapt:
-the main menu moves its title up and uses tighter vertical spacing (with more than four menu
-items the controls summary is left out); the level list uses closer rows when the roomy ones
-would not show every level (all ten shipped levels fit at 16:9; a longer campaign scrolls);
+the main menu moves its title up and uses tighter vertical spacing (tightest with five
+items, saved progress and the test level; with more the controls summary is left out); the
+level list uses closer rows when the roomy ones would not show every level (all ten shipped
+levels fit at 16:9; a longer campaign scrolls);
 the campaign-complete page starts higher and its credits rows move closer together; the
 pause, level-complete and game-over panels are capped to end above the HUD bar (at 16:9 only
 the level-complete panel is affected: it is 14 UI pixels shorter, and its message moves up by

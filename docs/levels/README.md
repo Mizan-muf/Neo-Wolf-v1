@@ -12,6 +12,10 @@ own and the whole campaign with carry-over, inside every target below
 builder B levels 6–10, from the per-level briefs now kept as history in
 [BUILD_NOTES.md](BUILD_NOTES.md).
 
+The [Test Chamber](testchamber.md) has a page here too, but it is not part of the campaign: it
+is the development level the game starts in during 1.5, and none of the rules and targets below
+apply to it.
+
 References: tiles [MAP_FORMAT.md](../MAP_FORMAT.md), entity fields
 [CONTENT_DEFINITIONS.md](../CONTENT_DEFINITIONS.md), rules of play [GAMEPLAY.md](../GAMEPLAY.md),
 the step-by-step checklist [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md), the bot

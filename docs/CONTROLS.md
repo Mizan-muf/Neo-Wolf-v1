@@ -39,7 +39,7 @@ Window keys, handled by the platform layer and never passed to the game:
 | Keys | Effect |
 |---|---|
 | `W`/`S` or Up/Down | Move the highlight (wraps around) |
-| `Enter` or `Space` | Activate the highlighted item: New Game, Continue (only with saved progress), Level Select, Quit |
+| `Enter` or `Space` | Activate the highlighted item: New Game, Continue (only with saved progress), Level Select, Test Chamber (only when `campaign.json` has a test level), Quit |
 | `Esc` | Quit the game |
 
 ### Level select
@@ -66,6 +66,16 @@ Window keys, handled by the platform layer and never passed to the game:
 
 Pickups and checkpoint triggers work by walking over them. The game also pauses by itself when
 its window loses focus.
+
+### In the Test Chamber
+
+During the 1.5 development the game starts in the Test Chamber, a development level outside the
+campaign ([GAMEPLAY.md](GAMEPLAY.md#the-test-chamber)). Every other key works as in any level.
+
+| Keys | Effect |
+|---|---|
+| `E` at its exit switch (in the gold room) | Restart the Test Chamber (nothing is saved) |
+| `Esc`, then `Q` | Main menu: **New Game** or **Continue** plays the campaign; **Test Chamber** comes back |
 
 ### Pause
 

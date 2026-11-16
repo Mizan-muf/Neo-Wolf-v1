@@ -40,7 +40,7 @@ presets (`make`, `make check`, `make game`, `make tests`, `make clean`). `make c
 
 ## 2. Running Automated Tests
 
-See [TESTING.md](TESTING.md). In short, `ctest --preset <preset>` runs all 114 tests: the native C++
+See [TESTING.md](TESTING.md). In short, `ctest --preset <preset>` runs all 119 tests: the native C++
 tests (one CTest entry per test case), headless game runs, the autoplay bot on every level and
 the campaign, the DevKit Python tests and strict content validation.
 `make check` does the same on macOS and Linux.

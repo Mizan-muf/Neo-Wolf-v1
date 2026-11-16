@@ -1,4 +1,4 @@
-# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
+# type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message
 # lights: 4 light zone(s) in the JSON are not exported (the CSV cannot hold them)
 door,15.5,11.5,15,11,,,,,,red
 door,15.5,5.5,15,5,,,,,,gold

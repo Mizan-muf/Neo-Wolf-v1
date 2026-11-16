@@ -245,17 +245,30 @@ void Engine::LoadSoundEffects(const AudioEffectDefinitions& definitions) {
     LogInfo("Sound effects loaded: " + std::to_string(soundsLoaded));
 }
 
-// --level N starts its level directly; otherwise level 1 is loaded behind the main menu (New
-// Game reloads it fresh). Failing here is fatal: there is nothing to play.
+bool Engine::BootsIntoTestLevel(const EngineOptions& options) const {
+    return options.testLevelBoot && campaign_.bootIntoTestLevel && campaign_.testLevel.has_value() &&
+           options.startLevel == 0 && options.preview == PreviewScreen::None;
+}
+
+// --level N starts its level directly; campaign.json's "bootIntoTestLevel" starts the test level
+// (the game only, see EngineOptions::testLevelBoot); otherwise level 1 is loaded behind the main
+// menu (New Game reloads it fresh). Failing here is fatal: there is nothing to play.
 bool Engine::InitFirstLevel(const EngineOptions& options) {
-    const int firstIndex = options.startLevel > 0 ? options.startLevel - 1 : 0;
+    int firstIndex = options.startLevel > 0 ? options.startLevel - 1 : 0;
     PlayerStats firstStats{gameplay_.player.initialHealth, gameplay_.weapon.initialAmmo};
-    if (options.startLevel > 0) {
+    if (BootsIntoTestLevel(options)) {
+        LogInfo("Booting into the test level (campaign.json \"bootIntoTestLevel\")");
+        firstIndex = kTestLevelIndex;
+        firstStats = flow_.StartTestLevel().stats;  // Gameplay in the test level
+    } else if (options.startLevel > 0) {
         firstStats = flow_.StartLevelDirect(firstIndex).stats;  // --level: Gameplay, unlocks ignored
     }
     if (!LoadCampaignLevel(firstIndex, firstStats)) {
-        const CampaignLevel& level = campaign_.levels[static_cast<std::size_t>(firstIndex)];
-        ReportFatal("Could not load level " + std::to_string(firstIndex + 1) + " (" + level.map + ") from " +
+        const bool testLevel = firstIndex == kTestLevelIndex;
+        const CampaignLevel* level =
+            testLevel ? TestLevelDefinition() : &campaign_.levels[static_cast<std::size_t>(firstIndex)];
+        const std::string what = testLevel ? "the test level" : "level " + std::to_string(firstIndex + 1);
+        ReportFatal("Could not load " + what + " (" + (level != nullptr ? level->map : std::string()) + ") from " +
                         PathToUtf8(contentRoot_) + " (see the log for details).",
                     options.errorDialogs);
         return false;

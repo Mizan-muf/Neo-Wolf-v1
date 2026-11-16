@@ -293,6 +293,45 @@ python3 -m tools.devkit.level_docs           # check: exit 1 if a page's map dif
 - [ ] The design table and the measured table in `docs/levels/README.md`, and the campaign
       table in [GAMEPLAY.md](GAMEPLAY.md#the-campaign).
 
+## The Test Chamber
+
+The Test Chamber ([levels/testchamber.md](levels/testchamber.md)) is not a campaign level but
+the development level the game starts in during 1.5 (`campaign.json` `"testLevel"` and
+`"bootIntoTestLevel"`, [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#test-level)). Every new
+enemy, weapon, pickup or prop gets an area there, so that it can be tried as soon as the game
+opens. It is built like a level, with these differences:
+
+- Steps 3–5 and 7 apply as written: the same tiles, entity fields and `validate --strict` rules
+  (an exit switch reachable with every key collected before its lock, nothing unreachable).
+  Select it by id: `neo_devkit inspect-map --level testchamber`,
+  `neo_devkit sync-entities --level testchamber`.
+- Step 1's difficulty rules and step 6 do not apply: the bot does not play it, and it has no
+  difficulty target. Its exit switch restarts it.
+- Each area hangs off the hub (or a hall reached from it), and anything that fights back sits
+  behind a closed door so the player chooses when to start it.
+- Each area's entrance has a **sign**: a `T` cell with a trigger entity whose `"message"` names
+  the area and what it tests (at most 40 characters; no comma, control character or space at
+  either end), for example
+  `{ "type": "trigger", "x": 18.5, "y": 21.5, "mapX": 18, "mapY": 21, "message": "WEAPON RANGE: TARGETS AT 9 11 AND 15" }`.
+  A sign shows once per start of the level (`R` shows them again).
+- An area that measures something (the weapon range) keeps its enemies where the numbers say:
+  further than their `alertRadius` from where the player stands, and further than the shot's
+  `noiseRadius` along the floor (sound goes around walls cell by cell, not in a straight line),
+  so that only a hit wakes a target ([The weapon range](levels/testchamber.md#the-weapon-range)).
+- Free space for new areas is listed on its page ([Extending it](levels/testchamber.md#extending-it)).
+- Screenshots: move the player in a scratch copy, as for light zones above; the game starts in
+  the Test Chamber, so no `--level` is needed:
+
+```bash
+rm -rf /tmp/tc && mkdir -p /tmp/tc && cp -R game /tmp/tc/game
+# edit /tmp/tc/game/defs/testchamber.entities.json: the player's x, y and angle
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --data /tmp/tc --frames 30 \
+    --pref-dir /tmp/tc/prefs --screenshot /tmp/tc/area.bmp
+```
+
+- Update its page as in step 8 (`python3 -m tools.devkit.level_docs` checks it with the
+  campaign pages).
+
 ## 9. Before committing
 
 - [ ] `ctest --preset macos` is green (`content_validation`, `content_validation_campaign_size`

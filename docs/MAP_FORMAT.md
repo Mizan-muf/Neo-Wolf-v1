@@ -44,7 +44,7 @@ trigger; level 3's checkpoint `T` at (21, 2) is the first ([level03.md](levels/l
 | `A` | Wall, variant A | yes | `wall_alt_a` texture | |
 | `B` | Wall, variant B | yes | `wall_alt_b` texture | |
 | `D` | Door (closed) | yes | `door` texture | Opens only if a `door` entity has this cell as `mapX`/`mapY`; otherwise it stays a wall for good |
-| `T` | Trigger tile | no | nothing in the 3D view; dark green on the minimap | A walk-over marker for a `trigger` **entity** (checkpoint message + interop event). It does **not** end the level. Without a trigger entity it does nothing |
+| `T` | Trigger tile | no | nothing in the 3D view; dark green on the minimap | A walk-over marker for a `trigger` **entity** (its HUD message, `CHECKPOINT REACHED` by default, + interop event). It does **not** end the level. Without a trigger entity it does nothing |
 | `X` | Exit switch | yes | `exit` texture of the level's theme (an "EXIT" panel with a lever); a white X cross on a green cell on the minimap | Pressing the interact key (`E`) while facing it within reach **completes the level** (see below). Added in Phase 5 |
 
 Any other character, including lower-case letters, spaces and tabs, is an error.
@@ -68,8 +68,8 @@ to; it may be on the outer wall (it counts as solid there). `level01` has one at
 the east end of row 8.
 
 **Triggers (`T`).** A `trigger` entity turns its cell into a `T` tile. Walking within 0.8 cells
-of the trigger entity's `x`/`y` shows `CHECKPOINT REACHED` and sends one `TriggerActivated`
-interop event. Before Phase 5 this won the level; now only the exit switch does. A `T` without a
+of the trigger entity's `x`/`y` shows its `message` (default `CHECKPOINT REACHED`) and sends one
+`TriggerActivated` interop event. Before Phase 5 this won the level; now only the exit switch does. A `T` without a
 trigger entity does nothing.
 
 ## Lines
@@ -119,15 +119,15 @@ these as **errors** even though the engine would load the map:
 - an outer cell (first or last row or column) is not a solid wall (`#`, `A`, `B` or `X`); a `D`
   or `T` on the edge counts as a leak;
 - the map has no walkable cell (`.`, `D` or `T`);
-- in a **campaign level** (listed in `campaign.json`): a `D` without exactly one door entity, a
-  door or trigger entity that is not on a `D` / `T` cell, the player or anything else inside a
-  solid cell, no exit switch `X`, or no exit switch with a floor cell beside it that the player
+- in a **campaign level** (listed in `campaign.json`) and in the **test level** (its
+  `testLevel`): a `D` without exactly one door entity, a door or trigger entity that is not on
+  a `D` / `T` cell, the player or anything else inside a solid cell, no exit switch `X`, or no exit switch with a floor cell beside it that the player
   can reach from the spawn (a door entity's cell counts as passable, a locked door only once its
   key can be collected first), a lock colour without a key, or a key that cannot be collected
   before the door it opens.
 
 Warnings: a `T` without a trigger entity, an enemy whose body overlaps a wall, a pickup or enemy
-that cannot be reached, a map that no campaign level uses. The full list:
+that cannot be reached, a map that neither a campaign level nor the test level uses. The full list:
 [DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#validate--content-and-campaign-validation).
 
 The DevKit reads map lines **exactly like the engine** (since Phase 7, `tools/devkit/engine_formats.py`):
