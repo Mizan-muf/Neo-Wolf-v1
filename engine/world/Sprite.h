@@ -1,5 +1,7 @@
 #pragma once
 
+// Billboard sprites: what the renderer draws for enemies, pickups and decorations.
+
 #include <cstdint>
 
 #include "engine/core/Vec2.h"
@@ -17,8 +19,8 @@ enum class SpriteType : std::uint8_t {
 // 0-2 are the pre-Phase 6 slots (enemy = guard, pickup = health, decoration).
 enum class SpriteTextureId : int {
     Guard = 0,
-    Health = 1,
-    Decoration = 2,
+    Health,
+    Decoration,
     Brute,
     Runner,
     GuardDead,

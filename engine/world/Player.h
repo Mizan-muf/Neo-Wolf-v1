@@ -1,5 +1,7 @@
 #pragma once
 
+// The player: position, view direction, speeds and collision radius.
+
 #include "engine/core/Vec2.h"
 #include "engine/world/GameplayDefinitions.h"
 

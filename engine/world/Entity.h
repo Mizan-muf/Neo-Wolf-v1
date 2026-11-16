@@ -1,5 +1,8 @@
 #pragma once
 
+// The game objects of a level (player, enemies, pickups, doors, triggers, decorations) and the
+// manager that owns them and hands out their ids.
+
 #include <cstdint>
 #include <vector>
 
@@ -69,8 +72,8 @@ struct Entity {
     float hitFlashTimer = 0.0f;  // > 0: the sprite flashes (just hit)
     float stuckTimer = 0.0f;     // seconds of moving with (almost) no progress
     Vec2 lastKnownPlayerPosition{};
-    std::vector<Vec2i> path{};  // cells still to walk, nearest first
-    Vec2i pathGoal{-1, -1};     // the cell the path leads to
+    std::vector<Vec2i> path;  // cells still to walk, nearest first
+    Vec2i pathGoal{-1, -1};   // the cell the path leads to
 
     // Pickup kind and amount (from the entity file and gameplay.json for levels).
     PickupType pickupType = PickupType::Health;
@@ -93,5 +96,5 @@ public:
 
 private:
     int nextId_ = 1;
-    std::vector<Entity> entities_{};
+    std::vector<Entity> entities_;
 };

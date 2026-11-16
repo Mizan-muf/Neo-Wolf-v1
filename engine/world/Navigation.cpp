@@ -1,12 +1,24 @@
 #include "engine/world/Navigation.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 
 #include "engine/render/Raycaster.h"
 
 namespace {
+constexpr float kSameSpotDistance = 1e-4f;  // map cells: closer points have no direction between them
+
+// FindPath's parent entries that are not a cell index.
+constexpr int kUnvisited = -1;
+constexpr int kStartCell = -2;
+
+// Neighbour offsets: the 4 orthogonal steps first, then the 4 diagonals.
+constexpr std::size_t kOrthogonalNeighbours = 4;
+constexpr std::array<int, 8> kNeighbourDx = {1, -1, 0, 0, 1, 1, -1, -1};
+constexpr std::array<int, 8> kNeighbourDy = {0, 0, 1, -1, 1, -1, 1, -1};
+
 std::size_t IndexOf(const Map& map, int x, int y) {
     return static_cast<std::size_t>(y) * static_cast<std::size_t>(map.Width()) + static_cast<std::size_t>(x);
 }
@@ -30,8 +42,8 @@ bool HasLineOfSight(const Map& map, const Vec2& from, const Vec2& to) {
         return false;
     }
     const Vec2 delta = to - from;
-    const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-    if (distance < 1e-4f || fromCell == CellOf(to)) {
+    const float distance = Length(delta);
+    if (distance < kSameSpotDistance || fromCell == CellOf(to)) {
         return true;
     }
     const Vec2 direction{delta.x / distance, delta.y / distance};
@@ -44,8 +56,8 @@ bool HasClearCorridor(const Map& map, const Vec2& from, const Vec2& to, float ra
         return false;
     }
     const Vec2 delta = to - from;
-    const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-    if (distance < 1e-4f) {
+    const float distance = Length(delta);
+    if (distance < kSameSpotDistance) {
         return true;
     }
     const Vec2 side{-delta.y / distance * radius, delta.x / distance * radius};
@@ -61,27 +73,25 @@ bool FindPath(const Map& map, const Vec2i& start, const Vec2i& goal, std::vector
         return true;
     }
 
-    // parent[i]: index of the cell the search came from; -1 = not visited, -2 = the start.
-    std::vector<int> parent(static_cast<std::size_t>(map.Width()) * static_cast<std::size_t>(map.Height()), -1);
+    // parent[i]: index of the cell the search came from, kUnvisited or kStartCell.
+    std::vector<int> parent(static_cast<std::size_t>(map.Width()) * static_cast<std::size_t>(map.Height()), kUnvisited);
     std::vector<Vec2i> queue;
     queue.reserve(parent.size());
     queue.push_back(start);
-    parent[IndexOf(map, start.x, start.y)] = -2;
+    parent[IndexOf(map, start.x, start.y)] = kStartCell;
 
     // Orthogonal steps first, so a straight path is preferred over an equally short zigzag.
-    constexpr int kDx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
-    constexpr int kDy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
     bool found = false;
     for (std::size_t head = 0; head < queue.size() && !found; ++head) {
         const Vec2i cell = queue[head];
-        for (int d = 0; d < 8; ++d) {
-            const int nx = cell.x + kDx[d];
-            const int ny = cell.y + kDy[d];
-            if (!IsWalkableCell(map, nx, ny) || parent[IndexOf(map, nx, ny)] != -1) {
+        for (std::size_t d = 0; d < kNeighbourDx.size(); ++d) {
+            const int nx = cell.x + kNeighbourDx[d];
+            const int ny = cell.y + kNeighbourDy[d];
+            if (!IsWalkableCell(map, nx, ny) || parent[IndexOf(map, nx, ny)] != kUnvisited) {
                 continue;
             }
-            if (d >= 4 &&
-                (!IsWalkableCell(map, cell.x + kDx[d], cell.y) || !IsWalkableCell(map, cell.x, cell.y + kDy[d]))) {
+            if (d >= kOrthogonalNeighbours && (!IsWalkableCell(map, cell.x + kNeighbourDx[d], cell.y) ||
+                                               !IsWalkableCell(map, cell.x, cell.y + kNeighbourDy[d]))) {
                 continue;  // would cut a wall corner
             }
             parent[IndexOf(map, nx, ny)] = static_cast<int>(IndexOf(map, cell.x, cell.y));
@@ -96,7 +106,7 @@ bool FindPath(const Map& map, const Vec2i& start, const Vec2i& goal, std::vector
         return false;
     }
 
-    for (int at = static_cast<int>(IndexOf(map, goal.x, goal.y)); parent[static_cast<std::size_t>(at)] != -2;
+    for (int at = static_cast<int>(IndexOf(map, goal.x, goal.y)); parent[static_cast<std::size_t>(at)] != kStartCell;
          at = parent[static_cast<std::size_t>(at)]) {
         outPath.push_back(Vec2i{at % map.Width(), at / map.Width()});
     }
@@ -112,17 +122,15 @@ std::vector<int> ComputeSoundDistances(const Map& map, const Vec2i& source, int 
     }
     std::vector<Vec2i> queue{source};
     distance[IndexOf(map, source.x, source.y)] = 0;
-    constexpr int kDx[4] = {1, -1, 0, 0};
-    constexpr int kDy[4] = {0, 0, 1, -1};
     for (std::size_t head = 0; head < queue.size(); ++head) {
         const Vec2i cell = queue[head];
         const int next = distance[IndexOf(map, cell.x, cell.y)] + 1;
         if (next > maxDistance) {
             continue;
         }
-        for (int d = 0; d < 4; ++d) {
-            const int nx = cell.x + kDx[d];
-            const int ny = cell.y + kDy[d];
+        for (std::size_t d = 0; d < kOrthogonalNeighbours; ++d) {
+            const int nx = cell.x + kNeighbourDx[d];
+            const int ny = cell.y + kNeighbourDy[d];
             if (IsWalkableCell(map, nx, ny) && distance[IndexOf(map, nx, ny)] == -1) {
                 distance[IndexOf(map, nx, ny)] = next;
                 queue.push_back(Vec2i{nx, ny});

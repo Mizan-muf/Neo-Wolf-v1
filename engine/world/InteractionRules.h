@@ -1,5 +1,8 @@
 #pragma once
 
+// What the player does to the world each frame: pickups, triggers, doors and keys, the exit
+// switch, and the player's shot. The events they cause are reported in GameplayEvents.
+
 #include "engine/core/Vec2.h"
 #include "engine/world/Entity.h"
 #include "engine/world/KeyColor.h"

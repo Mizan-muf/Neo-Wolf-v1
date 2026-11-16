@@ -1,5 +1,8 @@
 #pragma once
 
+// Reading a level's entity file (.json, or legacy .csv): the entity placements and light
+// zones, checked field by field. BuildLevelFromPlacements (LevelBuilder.h) turns them into a level.
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,11 +22,11 @@ struct EntityPlacement {
     int mapY = -1;
     float angleDegrees = 0.0f;                   // player: initial view direction (0 = +x, 90 = +y)
     PickupType pickupKind = PickupType::Health;  // pickup: "kind" (required): health, ammo or key
-    std::optional<int> pickupValue{};            // pickup: "value"; empty = gameplay.json pickups.<kind>.value
+    std::optional<int> pickupValue;              // pickup: "value"; empty = gameplay.json pickups.<kind>.value
     KeyColor key = KeyColor::None;               // pickup of kind "key": "key" (required): red, blue or gold
     KeyColor lock = KeyColor::None;              // door: "lock" (optional): red, blue or gold
     EnemyVariant variant = EnemyVariant::Guard;  // enemy: "variant" (optional): guard, brute or runner
-    std::string source{};                        // where it came from, for messages: "file: entities[3]" or "file:5"
+    std::string source;                          // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
 // One entry of the optional "lights" array of a level's entity JSON file: a rectangle of map
@@ -36,7 +39,7 @@ struct LightZone {
     int width = 1;
     int height = 1;
     float level = 1.0f;
-    std::string source{};  // for messages: "file: lights[2]"
+    std::string source;  // for messages: "file: lights[2]"
 };
 
 // The range a light zone's "level" must lie in. The floor keeps every area playable: an enemy

@@ -19,9 +19,10 @@ bool Map::Resize(int width, int height) {
 
     width_ = width;
     height_ = height;
-    cells_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), TileType::Empty);
-    lightLevels_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), 1.0f);
-    doorLocks_.assign(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_), KeyColor::None);
+    const std::size_t cellCount = static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_);
+    cells_.assign(cellCount, TileType::Empty);
+    lightLevels_.assign(cellCount, 1.0f);  // full light until a light zone says otherwise
+    doorLocks_.assign(cellCount, KeyColor::None);
     return true;
 }
 
@@ -33,6 +34,10 @@ int Map::Height() const {
     return height_;
 }
 
+std::size_t Map::IndexOf(int x, int y) const {
+    return static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x);
+}
+
 bool Map::IsInsideMap(int x, int y) const {
     return x >= 0 && y >= 0 && x < width_ && y < height_;
 }
@@ -42,7 +47,7 @@ TileType Map::GetCell(int x, int y) const {
         return TileType::Wall;
     }
 
-    return cells_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)];
+    return cells_[IndexOf(x, y)];
 }
 
 bool Map::SetCell(int x, int y, TileType type) {
@@ -50,7 +55,7 @@ bool Map::SetCell(int x, int y, TileType type) {
         return false;
     }
 
-    cells_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] = type;
+    cells_[IndexOf(x, y)] = type;
     return true;
 }
 
@@ -68,7 +73,7 @@ float Map::GetLightLevel(int x, int y) const {
         return 1.0f;
     }
 
-    return lightLevels_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)];
+    return lightLevels_[IndexOf(x, y)];
 }
 
 bool Map::SetLightLevel(int x, int y, float lightLevel) {
@@ -76,8 +81,7 @@ bool Map::SetLightLevel(int x, int y, float lightLevel) {
         return false;
     }
 
-    lightLevels_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] =
-        std::clamp(lightLevel, 0.0f, 1.0f);
+    lightLevels_[IndexOf(x, y)] = std::clamp(lightLevel, 0.0f, 1.0f);
     return true;
 }
 
@@ -85,13 +89,13 @@ KeyColor Map::GetDoorLock(int x, int y) const {
     if (!IsInsideMap(x, y) || doorLocks_.empty()) {
         return KeyColor::None;
     }
-    return doorLocks_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)];
+    return doorLocks_[IndexOf(x, y)];
 }
 
 bool Map::SetDoorLock(int x, int y, KeyColor lock) {
     if (!IsInsideMap(x, y) || doorLocks_.empty()) {
         return false;
     }
-    doorLocks_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] = lock;
+    doorLocks_[IndexOf(x, y)] = lock;
     return true;
 }

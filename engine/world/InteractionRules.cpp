@@ -1,7 +1,9 @@
 #include "engine/world/InteractionRules.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <vector>
 
 #include "engine/render/Raycaster.h"
 #include "engine/world/EnemyAi.h"
@@ -9,7 +11,7 @@
 
 ExitSwitchHit FindExitSwitchInReach(const Map& map, const Player& player) {
     // Centre ray first, then pairs further out: the closest-to-centre hit wins.
-    constexpr float kOffsets[] = {0.0f, -0.5f, 0.5f, -1.0f, 1.0f};
+    constexpr std::array<float, 5> kOffsets = {0.0f, -0.5f, 0.5f, -1.0f, 1.0f};
     ExitSwitchHit best{};
     for (const float offset : kOffsets) {
         const float angle = player.directionAngleRadians + offset * kExitFacingHalfAngle;
@@ -40,31 +42,84 @@ bool IsDoorwayOccupied(const EntityManager& entityManager, const Player& player,
     if (IsCircleOverlappingCell(player.position, player.collisionRadius, cellX, cellY)) {
         return true;
     }
-    for (const Entity& entity : entityManager.Entities()) {
-        if (IsEnemyAlive(entity) && IsCircleOverlappingCell(entity.position, kEnemyRadius, cellX, cellY)) {
-            return true;
-        }
-    }
-    return false;
+    const std::vector<Entity>& entities = entityManager.Entities();
+    return std::any_of(entities.begin(), entities.end(), [&](const Entity& entity) {
+        return IsEnemyAlive(entity) && IsCircleOverlappingCell(entity.position, kEnemyRadius, cellX, cellY);
+    });
 }
+
+namespace {
+// How close (squared, in map cells, centre to centre) the player must be to an entity.
+constexpr float kPickupRadiusSq = 0.60f * 0.60f;
+constexpr float kTriggerRadiusSq = 0.80f * 0.80f;
+constexpr float kDoorInteractRadiusSq = 1.05f * 1.05f;
+
+void UseExitSwitch(const Map& map, const Player& player, GameplayEvents& outEvents) {
+    const ExitSwitchHit exitHit = FindExitSwitchInReach(map, player);
+    if (exitHit.found) {
+        outEvents.exitActivated = true;
+        outEvents.exitMapX = exitHit.mapX;
+        outEvents.exitMapY = exitHit.mapY;
+    }
+}
+
+// Health and ammo are capped at the maximum; a key goes on the key ring.
+void CollectPickup(Entity& pickup, int& playerHealth, int& playerAmmo, int maxHealth, int maxAmmo, KeyRing& keys,
+                   GameplayEvents& outEvents) {
+    pickup.collected = true;
+    pickup.active = false;
+    pickup.visible = false;
+
+    outEvents.pickupCollected = true;
+    outEvents.pickupType = pickup.pickupType;
+    outEvents.pickupValue = pickup.pickupValue;
+
+    if (pickup.pickupType == PickupType::Health) {
+        playerHealth = std::min(maxHealth, playerHealth + pickup.pickupValue);
+    } else if (pickup.pickupType == PickupType::Ammo) {
+        playerAmmo = std::min(maxAmmo, playerAmmo + pickup.pickupValue);
+    } else if (pickup.pickupType == PickupType::Key) {
+        keys.Add(pickup.keyColor);
+        outEvents.pickupKey = pickup.keyColor;
+    }
+}
+
+// Interact within reach of a door: closes an open door unless the doorway is occupied, opens a
+// closed one unless it is locked and the key is missing.
+void UseDoor(Entity& door, const EntityManager& entityManager, Map& map, const Player& player, const KeyRing& keys,
+             GameplayEvents& outEvents) {
+    outEvents.doorMapX = door.mapX;
+    outEvents.doorMapY = door.mapY;
+    if (door.doorOpen) {
+        if (IsDoorwayOccupied(entityManager, player, door.mapX, door.mapY)) {
+            outEvents.doorBlocked = true;
+            return;
+        }
+        door.doorOpen = false;
+        map.SetCell(door.mapX, door.mapY, TileType::Door);
+        outEvents.doorToggled = true;
+        outEvents.doorOpened = false;
+        return;
+    }
+    if (door.doorLock != KeyColor::None && !keys.Has(door.doorLock)) {
+        outEvents.doorNeedsKey = door.doorLock;
+        return;
+    }
+    door.doorOpen = true;
+    map.SetCell(door.mapX, door.mapY, TileType::Empty);
+    outEvents.doorToggled = true;
+    outEvents.doorOpened = true;
+}
+}  // namespace
 
 void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Player& player, int& playerHealth,
                               int& playerAmmo, int maxHealth, int maxAmmo, bool interactPressed, KeyRing& keys,
                               GameplayEvents& outEvents) {
-    constexpr float kPickupRadiusSq = 0.60f * 0.60f;
-    constexpr float kTriggerRadiusSq = 0.80f * 0.80f;
-    constexpr float kDoorInteractRadiusSq = 1.05f * 1.05f;
-
     // Interact uses the exit switch the player faces in preference to a door within reach (a
     // door only needs the player nearby, so one next to the exit would otherwise swallow the
     // press). A press that is not used on the exit goes to the doors.
     if (interactPressed) {
-        const ExitSwitchHit exitHit = FindExitSwitchInReach(map, player);
-        if (exitHit.found) {
-            outEvents.exitActivated = true;
-            outEvents.exitMapX = exitHit.mapX;
-            outEvents.exitMapY = exitHit.mapY;
-        }
+        UseExitSwitch(map, player, outEvents);
     }
     const bool doorPress = interactPressed && !outEvents.exitActivated;
 
@@ -75,22 +130,7 @@ void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Play
 
         if (entity.type == EntityType::Pickup && !entity.collected) {
             if (DistanceSquared(entity.position, player.position) <= kPickupRadiusSq) {
-                entity.collected = true;
-                entity.active = false;
-                entity.visible = false;
-
-                outEvents.pickupCollected = true;
-                outEvents.pickupType = entity.pickupType;
-                outEvents.pickupValue = entity.pickupValue;
-
-                if (entity.pickupType == PickupType::Health) {
-                    playerHealth = std::min(maxHealth, playerHealth + entity.pickupValue);
-                } else if (entity.pickupType == PickupType::Ammo) {
-                    playerAmmo = std::min(maxAmmo, playerAmmo + entity.pickupValue);
-                } else if (entity.pickupType == PickupType::Key) {
-                    keys.Add(entity.keyColor);
-                    outEvents.pickupKey = entity.keyColor;
-                }
+                CollectPickup(entity, playerHealth, playerAmmo, maxHealth, maxAmmo, keys, outEvents);
             }
             continue;
         }
@@ -104,32 +144,11 @@ void UpdateEntityInteractions(EntityManager& entityManager, Map& map, const Play
             continue;
         }
 
-        if (entity.type == EntityType::Door && doorPress) {
-            if (DistanceSquared(entity.position, player.position) > kDoorInteractRadiusSq) {
-                continue;
-            }
-            outEvents.doorMapX = entity.mapX;
-            outEvents.doorMapY = entity.mapY;
-            if (entity.doorOpen) {
-                if (IsDoorwayOccupied(entityManager, player, entity.mapX, entity.mapY)) {
-                    outEvents.doorBlocked = true;
-                    continue;
-                }
-                entity.doorOpen = false;
-                map.SetCell(entity.mapX, entity.mapY, TileType::Door);
-                outEvents.doorToggled = true;
-                outEvents.doorOpened = false;
-            } else {
-                if (entity.doorLock != KeyColor::None && !keys.Has(entity.doorLock)) {
-                    outEvents.doorNeedsKey = entity.doorLock;
-                    continue;
-                }
-                entity.doorOpen = true;
-                map.SetCell(entity.mapX, entity.mapY, TileType::Empty);
-                outEvents.doorToggled = true;
-                outEvents.doorOpened = true;
-            }
+        if (entity.type != EntityType::Door || !doorPress ||
+            DistanceSquared(entity.position, player.position) > kDoorInteractRadiusSq) {
+            continue;
         }
+        UseDoor(entity, entityManager, map, player, keys, outEvents);
     }
 }
 
@@ -153,10 +172,8 @@ bool PerformPlayerAttack(EntityManager& entityManager, const Map& map, const Pla
     const Vec2 playerDir{std::cos(player.directionAngleRadians), std::sin(player.directionAngleRadians)};
 
     const RaycastHit wallHit = Raycaster::CastRay(map, player.position, playerDir, player.directionAngleRadians);
-    float maxDistance = (wallHit.hit && wallHit.distanceRaw > 0.0f) ? wallHit.distanceRaw : maxRange;
-    if (maxDistance > maxRange) {
-        maxDistance = maxRange;
-    }
+    const float maxDistance =
+        std::min((wallHit.hit && wallHit.distanceRaw > 0.0f) ? wallHit.distanceRaw : maxRange, maxRange);
 
     Entity* closestEnemy = nullptr;
     float closestDist = maxDistance;

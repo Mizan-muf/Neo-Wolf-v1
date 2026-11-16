@@ -10,6 +10,13 @@
 
 namespace {
 constexpr float kWaypointReached = 0.12f;  // map cells from a cell centre
+constexpr float kMinStep = 1e-4f;          // map cells: a shorter step is not taken
+// Map cells: two bodies closer than this have no direction between them to push along.
+constexpr float kCoincidentDistance = 1e-4f;
+// A move that covers less than this share of its step made no progress (the enemy is wedged).
+constexpr float kStuckProgressFraction = 0.2f;
+// A chasing enemy in sight stops at this share of its attack radius, so it ends up inside it.
+constexpr float kChaseStopFraction = 0.9f;
 
 void StartChase(Entity& enemy, GameplayEvents& events) {
     enemy.enemyState = EnemyState::Chase;
@@ -71,7 +78,7 @@ void MoveTowards(Entity& enemy, const Map& map, const Vec2& target, float stopDi
     const Vec2 to = waypoint - enemy.position;
     const float distance = Length(to);
     step = std::min(step, distance - stopAt);
-    if (step <= 1e-4f) {
+    if (step <= kMinStep) {
         return;
     }
     const Vec2 before = enemy.position;
@@ -79,7 +86,7 @@ void MoveTowards(Entity& enemy, const Map& map, const Vec2& target, float stopDi
         MoveWithSliding(map, enemy.position, Vec2{to.x / distance * step, to.y / distance * step}, kEnemyRadius);
 
     // Wedged (e.g. a door closed on the path): forget the path and search again.
-    if (Length(enemy.position - before) < step * 0.2f) {
+    if (Length(enemy.position - before) < step * kStuckProgressFraction) {
         enemy.stuckTimer += dt;
         if (enemy.stuckTimer >= kEnemyStuckSeconds) {
             enemy.path.clear();
@@ -117,6 +124,36 @@ bool Hears(const Entity& enemy, const Map& map, const std::vector<int>& soundDis
     return distance >= 0 && static_cast<float>(distance) <= radius;
 }
 
+// Idle: notices the player in sight within alertRadius, else a shot it heard.
+void UpdateIdle(Entity& enemy, const Map& map, const Player& player, float distance, const NoiseEvent* noise,
+                bool heard, GameplayEvents& events) {
+    if (distance <= enemy.alertRadius && HasLineOfSight(map, enemy.position, player.position)) {
+        Notice(enemy, player.position, events);
+    } else if (heard) {
+        Notice(enemy, noise->position, events);
+    }
+}
+
+// Chase: attacks once in range with sight; gives up (Search) after kEnemyLoseTargetSeconds
+// without sight; otherwise walks towards the player or the last known position.
+void UpdateChase(Entity& enemy, const Map& map, const Player& player, int& playerHealth, float dt, float distance,
+                 bool sees, GameplayEvents& events) {
+    if (sees && distance <= enemy.attackRadius) {
+        enemy.enemyState = EnemyState::Attack;
+        enemy.path.clear();
+        Attack(enemy, playerHealth, events);
+        return;
+    }
+    if (enemy.lostTimer >= kEnemyLoseTargetSeconds) {
+        enemy.enemyState = EnemyState::Search;
+        enemy.stateTimer = kEnemySearchSeconds;
+    }
+    // Stop short of the player's body; walk all the way to a last known position.
+    const float stopDistance =
+        sees ? std::min(enemy.attackRadius * kChaseStopFraction, player.collisionRadius + kEnemyRadius) : 0.0f;
+    MoveTowards(enemy, map, sees ? player.position : enemy.lastKnownPlayerPosition, stopDistance, dt);
+}
+
 void UpdateEnemy(Entity& enemy, const Map& map, const Player& player, int& playerHealth, float dt,
                  const NoiseEvent* noise, const std::vector<int>& soundDistances, GameplayEvents& events) {
     enemy.attackCooldown = std::max(0.0f, enemy.attackCooldown - dt);
@@ -127,11 +164,7 @@ void UpdateEnemy(Entity& enemy, const Map& map, const Player& player, int& playe
     const bool heard = noise != nullptr && noise->active && Hears(enemy, map, soundDistances, noise->radius);
 
     if (enemy.enemyState == EnemyState::Idle) {
-        if (distance <= enemy.alertRadius && HasLineOfSight(map, enemy.position, player.position)) {
-            Notice(enemy, player.position, events);
-        } else if (heard) {
-            Notice(enemy, noise->position, events);
-        }
+        UpdateIdle(enemy, map, player, distance, noise, heard, events);
         return;
     }
 
@@ -178,21 +211,7 @@ void UpdateEnemy(Entity& enemy, const Map& map, const Player& player, int& playe
         default:
             break;
     }
-
-    // Chase.
-    if (sees && distance <= enemy.attackRadius) {
-        enemy.enemyState = EnemyState::Attack;
-        enemy.path.clear();
-        Attack(enemy, playerHealth, events);
-        return;
-    }
-    if (enemy.lostTimer >= kEnemyLoseTargetSeconds) {
-        enemy.enemyState = EnemyState::Search;
-        enemy.stateTimer = kEnemySearchSeconds;
-    }
-    // Stop short of the player's body; walk all the way to a last known position.
-    const float stopDistance = sees ? std::min(enemy.attackRadius * 0.9f, player.collisionRadius + kEnemyRadius) : 0.0f;
-    MoveTowards(enemy, map, sees ? player.position : enemy.lastKnownPlayerPosition, stopDistance, dt);
+    UpdateChase(enemy, map, player, playerHealth, dt, distance, sees, events);
 }
 }  // namespace
 
@@ -250,7 +269,7 @@ void SeparateEnemies(EntityManager& entityManager, const Map& map) {
             if (distance >= kMinDistance) {
                 continue;
             }
-            if (distance < 1e-4f) {
+            if (distance < kCoincidentDistance) {
                 // Exactly on top of each other: split along a fixed axis (deterministic).
                 const float push = kMinDistance * 0.5f;
                 a.position = MoveWithSliding(map, a.position, Vec2{-push, 0.0f}, kEnemyRadius);
@@ -277,7 +296,8 @@ void SeparateEnemiesFromPlayer(EntityManager& entityManager, const Map& map, con
             continue;
         }
         // Exactly on the player: push along +x (deterministic), like SeparateEnemies.
-        const Vec2 direction = distance < 1e-4f ? Vec2{1.0f, 0.0f} : Vec2{delta.x / distance, delta.y / distance};
+        const Vec2 direction =
+            distance < kCoincidentDistance ? Vec2{1.0f, 0.0f} : Vec2{delta.x / distance, delta.y / distance};
         enemy.position = MoveWithSliding(map, enemy.position, direction * (minDistance - distance), kEnemyRadius);
     }
 }

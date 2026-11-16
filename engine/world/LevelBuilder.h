@@ -1,5 +1,7 @@
 #pragma once
 
+// Building a level from its entity placements, and keeping sprites in step with the entities.
+
 #include <string>
 #include <vector>
 
@@ -13,7 +15,7 @@
 // Everything a level's entity placements turn into.
 struct LevelContents {
     EntityManager entities{};
-    std::vector<SpriteEntity> sprites{};
+    std::vector<SpriteEntity> sprites;
     Player player{};
 };
 

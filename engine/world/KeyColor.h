@@ -16,7 +16,7 @@ enum class KeyColor : std::uint8_t {
 };
 
 inline constexpr int kKeyColorCount = 3;  // Red, Blue, Gold
-inline constexpr KeyColor kKeyColors[kKeyColorCount] = {KeyColor::Red, KeyColor::Blue, KeyColor::Gold};
+inline constexpr std::array<KeyColor, kKeyColorCount> kKeyColors = {KeyColor::Red, KeyColor::Blue, KeyColor::Gold};
 
 // "red", "blue", "gold" (the names used in content files); "none" for KeyColor::None.
 inline const char* KeyColorName(KeyColor color) {

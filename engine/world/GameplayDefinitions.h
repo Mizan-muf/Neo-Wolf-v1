@@ -7,6 +7,7 @@
 // before Init, unit tests). They match the shipped gameplay.json. Each key, its range and
 // where it is applied are documented in docs/CONTENT_DEFINITIONS.md; keep the two in sync.
 
+#include <array>
 #include <cstdint>
 
 // Upper limit for every health, damage, ammo and pickup value in the content files.
@@ -37,8 +38,8 @@ struct WeaponDefinition {
 enum class EnemyVariant : std::uint8_t { Guard = 0, Brute, Runner };
 
 inline constexpr int kEnemyVariantCount = 3;
-inline constexpr EnemyVariant kEnemyVariants[kEnemyVariantCount] = {EnemyVariant::Guard, EnemyVariant::Brute,
-                                                                    EnemyVariant::Runner};
+inline constexpr std::array<EnemyVariant, kEnemyVariantCount> kEnemyVariants = {
+    EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner};
 
 // "guard", "brute", "runner" (the names used in gameplay.json and entity files).
 inline const char* EnemyVariantName(EnemyVariant variant) {

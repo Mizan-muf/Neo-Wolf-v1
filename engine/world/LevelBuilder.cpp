@@ -1,5 +1,6 @@
 #include "engine/world/LevelBuilder.h"
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -11,6 +12,19 @@
 #include "engine/world/EnemyAi.h"
 
 namespace {
+SpriteTextureId KeySpriteTexture(KeyColor color) {
+    switch (color) {
+        case KeyColor::Blue:
+            return SpriteTextureId::KeyBlue;
+        case KeyColor::Gold:
+            return SpriteTextureId::KeyGold;
+        case KeyColor::Red:
+        case KeyColor::None:
+            break;
+    }
+    return SpriteTextureId::KeyRed;
+}
+
 // The sprite an entity is drawn with; false for types without a sprite. Enemies change to
 // their corpse texture when they die.
 bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId& outTexture) {
@@ -38,9 +52,7 @@ bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId&
                     outTexture = SpriteTextureId::Ammo;
                     break;
                 case PickupType::Key:
-                    outTexture = entity.keyColor == KeyColor::Blue   ? SpriteTextureId::KeyBlue
-                                 : entity.keyColor == KeyColor::Gold ? SpriteTextureId::KeyGold
-                                                                     : SpriteTextureId::KeyRed;
+                    outTexture = KeySpriteTexture(entity.keyColor);
                     break;
                 case PickupType::Health:
                     outTexture = SpriteTextureId::Health;
@@ -99,7 +111,7 @@ void ValidatePlacements(const Map& map, const std::vector<EntityPlacement>& plac
         }
     }
     if (players.empty()) {
-        errors.push_back("the level has no player placement (exactly one \"player\" entity is required)");
+        errors.emplace_back("the level has no player placement (exactly one \"player\" entity is required)");
     } else if (players.size() > 1) {
         errors.push_back("the level has " + std::to_string(players.size()) +
                          " player placements; exactly one is required (second: " + DescribeSource(*players[1]) + ")");
@@ -233,7 +245,7 @@ void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEn
         }
         const Entity& entity = *it->second;
         SpriteType type = sprite.type;
-        SpriteTextureId texture = static_cast<SpriteTextureId>(sprite.textureId);
+        auto texture = static_cast<SpriteTextureId>(sprite.textureId);
         if (SpriteForEntity(entity, type, texture)) {
             sprite.type = type;  // e.g. an enemy that died becomes a corpse
             sprite.textureId = static_cast<int>(texture);
@@ -269,13 +281,18 @@ void ApplyEnemyArchetype(Entity& enemy, EnemyVariant variant, const EnemyDefinit
 }
 
 std::string DescribeLevelContents(const LevelContents& contents) {
-    static constexpr struct {
+    struct Kind {
         EntityType type;
         const char* name;
-    } kKinds[] = {
-        {EntityType::Player, "player"}, {EntityType::Enemy, "enemy"},     {EntityType::Pickup, "pickup"},
-        {EntityType::Door, "door"},     {EntityType::Trigger, "trigger"}, {EntityType::Decoration, "decoration"},
     };
+    static constexpr std::array<Kind, 6> kKinds = {{
+        {EntityType::Player, "player"},
+        {EntityType::Enemy, "enemy"},
+        {EntityType::Pickup, "pickup"},
+        {EntityType::Door, "door"},
+        {EntityType::Trigger, "trigger"},
+        {EntityType::Decoration, "decoration"},
+    }};
     std::string text = std::to_string(contents.entities.Entities().size()) + " entities:";
     bool first = true;
     for (const auto& kind : kKinds) {

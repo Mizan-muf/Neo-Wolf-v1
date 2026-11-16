@@ -1,5 +1,8 @@
 #pragma once
 
+// Movement and collision for round bodies (the player and enemies) against walls and each
+// other: moves are made axis by axis in small steps so bodies slide along walls.
+
 #include <vector>
 
 #include "engine/core/Vec2.h"

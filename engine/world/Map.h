@@ -1,5 +1,8 @@
 #pragma once
 
+// The tile grid of a level: one TileType, light level and door lock per cell.
+
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -39,9 +42,11 @@ public:
     bool SetDoorLock(int x, int y, KeyColor lock);
 
 private:
+    std::size_t IndexOf(int x, int y) const;  // into the per-cell vectors; (x, y) must be inside
+
     int width_ = 0;
     int height_ = 0;
-    std::vector<TileType> cells_{};
-    std::vector<float> lightLevels_{};
-    std::vector<KeyColor> doorLocks_{};
+    std::vector<TileType> cells_;
+    std::vector<float> lightLevels_;
+    std::vector<KeyColor> doorLocks_;
 };

@@ -1,12 +1,15 @@
 #include "engine/world/EntityPlacementLoader.h"
 
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/core/JsonDocument.h"
@@ -16,19 +19,31 @@ using nlohmann::json;
 
 namespace {
 constexpr std::int64_t kMaxMapCoordinate = 100000;
+constexpr const char* kUtf8ByteOrderMark = "\xEF\xBB\xBF";
+constexpr std::size_t kUtf8ByteOrderMarkLength = 3;
+constexpr std::size_t kCsvRequiredColumns = 3;  // type,x,y
 
-struct Diagnostics {
-    std::vector<std::string>& errors;
-    std::vector<std::string>& warnings;
+// The caller's message lists for one parse: errors fail the load, warnings do not.
+class Diagnostics {
+public:
+    Diagnostics(std::vector<std::string>& errors, std::vector<std::string>& warnings)
+        : errors_(&errors), warnings_(&warnings) {}
+
+    void Error(std::string message) { errors_->push_back(std::move(message)); }
+    void Warning(std::string message) { warnings_->push_back(std::move(message)); }
+
+private:
+    std::vector<std::string>* errors_;  // borrowed
+    std::vector<std::string>* warnings_;
 };
 
 std::string Trim(const std::string& value) {
     std::size_t start = 0;
-    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
         ++start;
     }
     std::size_t end = value.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
         --end;
     }
     return value.substr(start, end - start);
@@ -42,13 +57,36 @@ std::string ToLower(std::string value) {
 }
 
 bool ParseType(const std::string& value, PlacementType& outType) {
-    static constexpr PlacementType kTypes[] = {
+    static constexpr std::array<PlacementType, 6> kTypes = {
         PlacementType::Player, PlacementType::Enemy,   PlacementType::Pickup,
         PlacementType::Door,   PlacementType::Trigger, PlacementType::Decoration,
     };
     for (const PlacementType type : kTypes) {
         if (value == PlacementTypeName(type)) {
             outType = type;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ParsePickupKind(const std::string& value, PickupType& outKind) {
+    if (value == "health") {
+        outKind = PickupType::Health;
+    } else if (value == "ammo") {
+        outKind = PickupType::Ammo;
+    } else if (value == "key") {
+        outKind = PickupType::Key;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool ParseEnemyVariant(const std::string& value, EnemyVariant& outVariant) {
+    for (const EnemyVariant variant : kEnemyVariants) {
+        if (value == EnemyVariantName(variant)) {
+            outVariant = variant;
             return true;
         }
     }
@@ -62,13 +100,13 @@ bool ReadNumber(const json& object, const char* key, const std::string& where, b
     const auto it = object.find(key);
     if (it == object.end()) {
         if (required) {
-            diag.errors.push_back(where + ": field \"" + key + "\" is required (a number)");
+            diag.Error(where + ": field \"" + key + "\" is required (a number)");
             return false;
         }
         return true;
     }
     if (!it->is_number() || !std::isfinite(it->get<double>())) {
-        diag.errors.push_back(where + ": field \"" + key + "\" must be a number, got " + DescribeJsonValue(*it));
+        diag.Error(where + ": field \"" + key + "\" must be a number, got " + DescribeJsonValue(*it));
         return false;
     }
     value = static_cast<float>(it->get<double>());
@@ -97,8 +135,8 @@ bool ReadInteger(const json& object, const char* key, const std::string& where, 
         ok = ok && number >= minValue && number <= maxValue;
     }
     if (!ok) {
-        diag.errors.push_back(where + ": field \"" + key + "\" must be an integer from " + std::to_string(minValue) +
-                              " to " + std::to_string(maxValue) + ", got " + DescribeJsonValue(*it));
+        diag.Error(where + ": field \"" + key + "\" must be an integer from " + std::to_string(minValue) + " to " +
+                   std::to_string(maxValue) + ", got " + DescribeJsonValue(*it));
         return false;
     }
     value = static_cast<int>(number);
@@ -106,151 +144,171 @@ bool ReadInteger(const json& object, const char* key, const std::string& where, 
     return true;
 }
 
-// Fills `out` from one entity object. `where` names the file and the entity.
-bool ReadPlacement(const json& object, const std::string& where, EntityPlacement& out, Diagnostics& diag) {
+// Reads a key colour field ("key" or "lock"). Returns false only on an error.
+bool ReadKeyColorField(const json& object, const std::string& at, const char* key, bool required, KeyColor& value,
+                       Diagnostics& diag) {
+    const auto it = object.find(key);
+    if (it == object.end()) {
+        if (required) {
+            diag.Error(at + ": field \"" + key + "\" is required (\"red\", \"blue\" or \"gold\")");
+            return false;
+        }
+        return true;
+    }
+    if (!it->is_string() || !ParseKeyColor(it->get<std::string>(), value)) {
+        diag.Error(at + ": field \"" + key + "\" must be \"red\", \"blue\" or \"gold\", got " + DescribeJsonValue(*it));
+        return false;
+    }
+    return true;
+}
+
+// A field that applies to other placement types only is ignored, with a warning.
+void WarnInapplicable(const json& object, const std::string& at, const char* key, const char* appliesTo,
+                      Diagnostics& diag) {
+    if (object.contains(key)) {
+        diag.Warning(at + ": field \"" + key + "\" only applies to " + appliesTo + "; ignored");
+    }
+}
+
+void WarnUnknownFields(const json& object, const std::string& where, std::initializer_list<const char*> knownFields,
+                       Diagnostics& diag) {
+    for (auto it = object.begin(); it != object.end(); ++it) {
+        bool known = false;
+        for (const char* field : knownFields) {
+            known = known || it.key() == field;
+        }
+        if (!known) {
+            diag.Warning(where + ": unknown field \"" + it.key() + "\" ignored");
+        }
+    }
+}
+
+bool ReadPlacementType(const json& object, const std::string& where, PlacementType& outType, Diagnostics& diag) {
     const auto typeIt = object.find("type");
     if (typeIt == object.end()) {
-        diag.errors.push_back(where +
-                              ": field \"type\" is required "
-                              "(player, enemy, pickup, door, trigger or decoration)");
+        diag.Error(where +
+                   ": field \"type\" is required "
+                   "(player, enemy, pickup, door, trigger or decoration)");
         return false;
     }
-    if (!typeIt->is_string() || !ParseType(typeIt->get<std::string>(), out.type)) {
-        diag.errors.push_back(where +
-                              ": field \"type\" must be one of player, enemy, pickup, door, trigger, "
-                              "decoration; got " +
-                              DescribeJsonValue(*typeIt));
+    if (!typeIt->is_string() || !ParseType(typeIt->get<std::string>(), outType)) {
+        diag.Error(where +
+                   ": field \"type\" must be one of player, enemy, pickup, door, trigger, "
+                   "decoration; got " +
+                   DescribeJsonValue(*typeIt));
         return false;
     }
-    const std::string typeName = PlacementTypeName(out.type);
-    const std::string at = where + " (" + typeName + ")";
+    return true;
+}
+
+// Door and trigger: "mapX" and "mapY", the map cell the entity controls. Their absence is
+// reported only when `reportMissing` (no earlier field of the entity was invalid).
+bool ReadCellFields(const json& object, const std::string& at, bool reportMissing, EntityPlacement& out,
+                    Diagnostics& diag) {
+    if (out.type != PlacementType::Door && out.type != PlacementType::Trigger) {
+        WarnInapplicable(object, at, "mapX", "door and trigger", diag);
+        WarnInapplicable(object, at, "mapY", "door and trigger", diag);
+        return true;
+    }
+    bool hasX = false;
+    bool hasY = false;
+    bool ok = ReadInteger(object, "mapX", at, 0, kMaxMapCoordinate, out.mapX, hasX, diag);
+    ok = ReadInteger(object, "mapY", at, 0, kMaxMapCoordinate, out.mapY, hasY, diag) && ok;
+    if (reportMissing && ok && (!hasX || !hasY)) {
+        diag.Error(at + ": fields \"mapX\" and \"mapY\" are required (the map cell this " +
+                   PlacementTypeName(out.type) + " controls)");
+        ok = false;
+    }
+    return ok;
+}
+
+bool ReadPlayerFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
+    if (out.type != PlacementType::Player) {
+        WarnInapplicable(object, at, "angle", "player", diag);
+        return true;
+    }
+    bool present = false;
+    return ReadNumber(object, "angle", at, false, out.angleDegrees, present, diag);
+}
+
+// "kind" (required), then "key" for a key pickup or the optional "value" for the others.
+bool ReadPickupFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
+    if (out.type != PlacementType::Pickup) {
+        WarnInapplicable(object, at, "kind", "pickup", diag);
+        WarnInapplicable(object, at, "value", "pickup", diag);
+        WarnInapplicable(object, at, "key", "pickups of kind \"key\"", diag);
+        return true;
+    }
+    bool ok = true;
+    const auto kindIt = object.find("kind");
+    const std::string kind = kindIt != object.end() && kindIt->is_string() ? kindIt->get<std::string>() : "";
+    if (kindIt == object.end()) {
+        diag.Error(at + ": field \"kind\" is required (\"health\", \"ammo\" or \"key\")");
+        ok = false;
+    } else if (!ParsePickupKind(kind, out.pickupKind)) {
+        diag.Error(at + ": field \"kind\" must be \"health\", \"ammo\" or \"key\", got " + DescribeJsonValue(*kindIt));
+        ok = false;
+    }
+    if (kind == "key") {
+        ok = ReadKeyColorField(object, at, "key", true, out.key, diag) && ok;
+        WarnInapplicable(object, at, "value", "health and ammo pickups", diag);
+        return ok;
+    }
+    WarnInapplicable(object, at, "key", "pickups of kind \"key\"", diag);
+    int value = 0;
+    bool present = false;
+    ok = ReadInteger(object, "value", at, 1, kMaxGameplayStat, value, present, diag) && ok;
+    if (present) {
+        out.pickupValue = value;
+    }
+    return ok;
+}
+
+bool ReadDoorFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
+    if (out.type != PlacementType::Door) {
+        WarnInapplicable(object, at, "lock", "door", diag);
+        return true;
+    }
+    return ReadKeyColorField(object, at, "lock", false, out.lock, diag);
+}
+
+bool ReadEnemyFields(const json& object, const std::string& at, EntityPlacement& out, Diagnostics& diag) {
+    if (out.type != PlacementType::Enemy) {
+        WarnInapplicable(object, at, "variant", "enemy", diag);
+        return true;
+    }
+    const auto variantIt = object.find("variant");
+    if (variantIt == object.end()) {
+        return true;
+    }
+    if (!variantIt->is_string() || !ParseEnemyVariant(variantIt->get<std::string>(), out.variant)) {
+        diag.Error(at + ": field \"variant\" must be \"guard\", \"brute\" or \"runner\", got " +
+                   DescribeJsonValue(*variantIt));
+        return false;
+    }
+    return true;
+}
+
+// Fills `out` from one entity object. `where` names the file and the entity. Fields that
+// apply to some types only are ignored (warning) on the other types.
+bool ReadPlacement(const json& object, const std::string& where, EntityPlacement& out, Diagnostics& diag) {
+    if (!ReadPlacementType(object, where, out.type, diag)) {
+        return false;
+    }
+    const std::string at = where + " (" + PlacementTypeName(out.type) + ")";
     out.source = where;
 
     bool ok = true;
     bool present = false;
     ok = ReadNumber(object, "x", at, true, out.position.x, present, diag) && ok;
     ok = ReadNumber(object, "y", at, true, out.position.y, present, diag) && ok;
-
-    // Fields that apply to some types only. Given on another type, they are ignored (warning).
-    const bool isCellEntity = out.type == PlacementType::Door || out.type == PlacementType::Trigger;
-    const auto inapplicable = [&](const char* key, const char* appliesTo) {
-        if (object.contains(key)) {
-            diag.warnings.push_back(at + ": field \"" + key + "\" only applies to " + appliesTo + "; ignored");
-        }
-    };
-
-    if (isCellEntity) {
-        bool hasX = false;
-        bool hasY = false;
-        ok = ReadInteger(object, "mapX", at, 0, kMaxMapCoordinate, out.mapX, hasX, diag) && ok;
-        ok = ReadInteger(object, "mapY", at, 0, kMaxMapCoordinate, out.mapY, hasY, diag) && ok;
-        if (ok && (!hasX || !hasY)) {
-            diag.errors.push_back(at + ": fields \"mapX\" and \"mapY\" are required (the map cell this " + typeName +
-                                  " controls)");
-            ok = false;
-        }
-    } else {
-        inapplicable("mapX", "door and trigger");
-        inapplicable("mapY", "door and trigger");
-    }
-
-    if (out.type == PlacementType::Player) {
-        ok = ReadNumber(object, "angle", at, false, out.angleDegrees, present, diag) && ok;
-    } else {
-        inapplicable("angle", "player");
-    }
-
-    // Reads an optional key colour field ("key" or "lock"). Returns false only on an error.
-    const auto readKeyColor = [&](const char* key, KeyColor& value, bool required) {
-        const auto it = object.find(key);
-        if (it == object.end()) {
-            if (required) {
-                diag.errors.push_back(at + ": field \"" + key + "\" is required (\"red\", \"blue\" or \"gold\")");
-                return false;
-            }
-            return true;
-        }
-        if (!it->is_string() || !ParseKeyColor(it->get<std::string>(), value)) {
-            diag.errors.push_back(at + ": field \"" + key + "\" must be \"red\", \"blue\" or \"gold\", got " +
-                                  DescribeJsonValue(*it));
-            return false;
-        }
-        return true;
-    };
-
-    if (out.type == PlacementType::Pickup) {
-        const auto kindIt = object.find("kind");
-        const std::string kind = kindIt != object.end() && kindIt->is_string() ? kindIt->get<std::string>() : "";
-        if (kindIt == object.end()) {
-            diag.errors.push_back(at + ": field \"kind\" is required (\"health\", \"ammo\" or \"key\")");
-            ok = false;
-        } else if (kind == "health") {
-            out.pickupKind = PickupType::Health;
-        } else if (kind == "ammo") {
-            out.pickupKind = PickupType::Ammo;
-        } else if (kind == "key") {
-            out.pickupKind = PickupType::Key;
-        } else {
-            diag.errors.push_back(at + ": field \"kind\" must be \"health\", \"ammo\" or \"key\", got " +
-                                  DescribeJsonValue(*kindIt));
-            ok = false;
-        }
-        if (kind == "key") {
-            ok = readKeyColor("key", out.key, true) && ok;
-            inapplicable("value", "health and ammo pickups");
-        } else {
-            inapplicable("key", "pickups of kind \"key\"");
-            int value = 0;
-            ok = ReadInteger(object, "value", at, 1, kMaxGameplayStat, value, present, diag) && ok;
-            if (present) {
-                out.pickupValue = value;
-            }
-        }
-    } else {
-        inapplicable("kind", "pickup");
-        inapplicable("value", "pickup");
-        inapplicable("key", "pickups of kind \"key\"");
-    }
-
-    if (out.type == PlacementType::Door) {
-        ok = readKeyColor("lock", out.lock, false) && ok;
-    } else {
-        inapplicable("lock", "door");
-    }
-
-    if (out.type == PlacementType::Enemy) {
-        const auto variantIt = object.find("variant");
-        if (variantIt != object.end()) {
-            bool known = false;
-            if (variantIt->is_string()) {
-                for (const EnemyVariant variant : kEnemyVariants) {
-                    if (variantIt->get<std::string>() == EnemyVariantName(variant)) {
-                        out.variant = variant;
-                        known = true;
-                    }
-                }
-            }
-            if (!known) {
-                diag.errors.push_back(at + ": field \"variant\" must be \"guard\", \"brute\" or \"runner\", got " +
-                                      DescribeJsonValue(*variantIt));
-                ok = false;
-            }
-        }
-    } else {
-        inapplicable("variant", "enemy");
-    }
-
-    static const char* const kKnownFields[] = {"type", "x",     "y",       "mapX", "mapY", "angle",
-                                               "kind", "value", "variant", "key",  "lock"};
-    for (auto it = object.begin(); it != object.end(); ++it) {
-        bool known = false;
-        for (const char* field : kKnownFields) {
-            known = known || it.key() == field;
-        }
-        if (!known) {
-            diag.warnings.push_back(at + ": unknown field \"" + it.key() + "\" ignored");
-        }
-    }
+    ok = ReadCellFields(object, at, ok, out, diag) && ok;
+    ok = ReadPlayerFields(object, at, out, diag) && ok;
+    ok = ReadPickupFields(object, at, out, diag) && ok;
+    ok = ReadDoorFields(object, at, out, diag) && ok;
+    ok = ReadEnemyFields(object, at, out, diag) && ok;
+    WarnUnknownFields(object, at,
+                      {"type", "x", "y", "mapX", "mapY", "angle", "kind", "value", "variant", "key", "lock"}, diag);
     return ok;
 }
 
@@ -265,8 +323,8 @@ bool ReadLightZone(const json& object, const std::string& where, LightZone& out,
             return false;
         }
         if (!present) {
-            diag.errors.push_back(where + ": field \"" + key + "\" is required (an integer from " +
-                                  std::to_string(minValue) + " to " + std::to_string(kMaxMapCoordinate) + ")");
+            diag.Error(where + ": field \"" + key + "\" is required (an integer from " + std::to_string(minValue) +
+                       " to " + std::to_string(kMaxMapCoordinate) + ")");
             return false;
         }
         return true;
@@ -278,28 +336,78 @@ bool ReadLightZone(const json& object, const std::string& where, LightZone& out,
 
     const auto levelIt = object.find("level");
     if (levelIt == object.end()) {
-        diag.errors.push_back(where + ": field \"level\" is required (a number from 0.2 to 1.0)");
+        diag.Error(where + ": field \"level\" is required (a number from 0.2 to 1.0)");
         ok = false;
     } else if (!levelIt->is_number() || !std::isfinite(levelIt->get<double>()) ||
                levelIt->get<double>() < kMinLightZoneLevel || levelIt->get<double>() > kMaxLightZoneLevel) {
-        diag.errors.push_back(where + ": field \"level\" must be a number from 0.2 to 1.0, got " +
-                              DescribeJsonValue(*levelIt));
+        diag.Error(where + ": field \"level\" must be a number from 0.2 to 1.0, got " + DescribeJsonValue(*levelIt));
         ok = false;
     } else {
         out.level = static_cast<float>(levelIt->get<double>());
     }
 
-    static const char* const kKnownFields[] = {"x", "y", "w", "h", "level"};
-    for (auto it = object.begin(); it != object.end(); ++it) {
-        bool known = false;
-        for (const char* field : kKnownFields) {
-            known = known || it.key() == field;
-        }
-        if (!known) {
-            diag.warnings.push_back(where + ": unknown field \"" + it.key() + "\" ignored");
+    WarnUnknownFields(object, where, {"x", "y", "w", "h", "level"}, diag);
+    return ok;
+}
+
+// JSON top level: "level" should be a string; keys other than level, entities and lights are
+// ignored (warning).
+void WarnTopLevelFields(const json& document, const std::string& sourceName, Diagnostics& diag) {
+    const auto levelIt = document.find("level");
+    if (levelIt != document.end() && !levelIt->is_string()) {
+        diag.Warning(sourceName + ": field \"level\" should be a string (the level id), got " +
+                     DescribeJsonValue(*levelIt));
+    }
+    for (auto it = document.begin(); it != document.end(); ++it) {
+        if (it.key() != "level" && it.key() != "entities" && it.key() != "lights") {
+            diag.Warning(sourceName + ": unknown top-level field \"" + it.key() + "\" ignored");
         }
     }
-    return ok;
+}
+
+// JSON "lights" (optional): an array of light zones, applied in order when the level is built.
+void ReadLightZones(const json& document, const std::string& sourceName, std::vector<LightZone>& outLights,
+                    Diagnostics& diag) {
+    const auto lightsIt = document.find("lights");
+    if (lightsIt == document.end()) {
+        return;
+    }
+    if (!lightsIt->is_array()) {
+        diag.Error(sourceName + ": field \"lights\" must be an array of light zones, got " +
+                   DescribeJsonValue(*lightsIt));
+        return;
+    }
+    std::size_t lightIndex = 0;
+    for (const json& entry : *lightsIt) {
+        const std::string where = sourceName + ": lights[" + std::to_string(lightIndex) + "]";
+        ++lightIndex;
+        if (!entry.is_object()) {
+            diag.Error(where + ": each light zone must be an object, got " + DescribeJsonValue(entry));
+            continue;
+        }
+        LightZone zone{};
+        if (ReadLightZone(entry, where, zone, diag)) {
+            outLights.push_back(zone);
+        }
+    }
+}
+
+// JSON "entities" (an array): every valid entry is added to outPlacements.
+void ReadEntities(const json& entities, const std::string& sourceName, std::vector<EntityPlacement>& outPlacements,
+                  Diagnostics& diag) {
+    std::size_t index = 0;
+    for (const json& entry : entities) {
+        const std::string where = sourceName + ": entities[" + std::to_string(index) + "]";
+        ++index;
+        if (!entry.is_object()) {
+            diag.Error(where + ": each entity must be an object, got " + DescribeJsonValue(entry));
+            continue;
+        }
+        EntityPlacement placement{};
+        if (ReadPlacement(entry, where, placement, diag)) {
+            outPlacements.push_back(placement);
+        }
+    }
 }
 
 // CSV: one cell converted to the JSON value the shared reader expects.
@@ -310,13 +418,20 @@ struct CsvColumn {
     CsvColumnType type;
 };
 
-constexpr CsvColumn kCsvColumns[] = {
-    {"type", CsvColumnType::Text},     {"x", CsvColumnType::Number},     {"y", CsvColumnType::Number},
-    {"mapX", CsvColumnType::Integer},  {"mapY", CsvColumnType::Integer}, {"kind", CsvColumnType::Text},
-    {"value", CsvColumnType::Integer}, {"angle", CsvColumnType::Number}, {"variant", CsvColumnType::Text},
-    {"key", CsvColumnType::Text},      {"lock", CsvColumnType::Text},
-};
-constexpr std::size_t kCsvColumnCount = sizeof(kCsvColumns) / sizeof(kCsvColumns[0]);
+constexpr std::size_t kCsvColumnCount = 11;
+constexpr std::array<CsvColumn, kCsvColumnCount> kCsvColumns = {{
+    {"type", CsvColumnType::Text},
+    {"x", CsvColumnType::Number},
+    {"y", CsvColumnType::Number},
+    {"mapX", CsvColumnType::Integer},
+    {"mapY", CsvColumnType::Integer},
+    {"kind", CsvColumnType::Text},
+    {"value", CsvColumnType::Integer},
+    {"angle", CsvColumnType::Number},
+    {"variant", CsvColumnType::Text},
+    {"key", CsvColumnType::Text},
+    {"lock", CsvColumnType::Text},
+}};
 
 bool ConvertCsvCell(const std::string& cell, const CsvColumn& column, const std::string& where, json& out,
                     Diagnostics& diag) {
@@ -333,7 +448,7 @@ bool ConvertCsvCell(const std::string& cell, const CsvColumn& column, const std:
             out = number;
             return true;
         }
-        diag.errors.push_back(where + ": column \"" + column.name + "\" must be a number, got '" + cell + "'");
+        diag.Error(where + ": column \"" + column.name + "\" must be a number, got '" + cell + "'");
         return false;
     }
     const long long number = std::strtoll(begin, &end, 10);
@@ -341,8 +456,55 @@ bool ConvertCsvCell(const std::string& cell, const CsvColumn& column, const std:
         out = static_cast<std::int64_t>(number);
         return true;
     }
-    diag.errors.push_back(where + ": column \"" + column.name + "\" must be an integer, got '" + cell + "'");
+    diag.Error(where + ": column \"" + column.name + "\" must be an integer, got '" + cell + "'");
     return false;
+}
+
+// The comma-separated cells of one CSV line, each trimmed.
+std::vector<std::string> SplitCsvCells(const std::string& line) {
+    std::vector<std::string> cells;
+    std::size_t cellStart = 0;
+    for (;;) {
+        const std::size_t comma = line.find(',', cellStart);
+        cells.push_back(
+            Trim(line.substr(cellStart, comma == std::string::npos ? std::string::npos : comma - cellStart)));
+        if (comma == std::string::npos) {
+            return cells;
+        }
+        cellStart = comma + 1;
+    }
+}
+
+// One CSV entity row: the cells become the JSON object ReadPlacement reads (an empty cell
+// means "not given"). A valid entity is added to outPlacements.
+void ReadCsvRow(const std::vector<std::string>& cells, const std::string& where,
+                std::vector<EntityPlacement>& outPlacements, Diagnostics& diag) {
+    if (cells.size() < kCsvRequiredColumns) {
+        diag.Error(where + ": expected at least 3 columns (type,x,y), got " + std::to_string(cells.size()));
+        return;
+    }
+    if (cells.size() > kCsvColumnCount) {
+        diag.Warning(where + ": " + std::to_string(cells.size() - kCsvColumnCount) +
+                     " extra column(s) after \"lock\" ignored");
+    }
+
+    json object = json::object();
+    bool ok = true;
+    for (std::size_t i = 0; i < cells.size() && i < kCsvColumnCount; ++i) {
+        if (cells[i].empty()) {
+            continue;
+        }
+        json value;
+        if (ConvertCsvCell(cells[i], kCsvColumns[i], where, value, diag)) {
+            object[kCsvColumns[i].name] = value;
+        } else {
+            ok = false;
+        }
+    }
+    EntityPlacement placement{};
+    if (ok && ReadPlacement(object, where, placement, diag)) {
+        outPlacements.push_back(placement);
+    }
 }
 
 bool HasExtension(const std::string& path, const std::string& extension) {
@@ -381,65 +543,21 @@ bool ParseEntityPlacementsJson(const std::string& text, const std::string& sourc
         return false;
     }
     if (!document.is_object()) {
-        errors.push_back(sourceName + ": the top level must be an object with an \"entities\" array, got " +
-                         DescribeJsonValue(document));
+        diag.Error(sourceName + ": the top level must be an object with an \"entities\" array, got " +
+                   DescribeJsonValue(document));
         return false;
     }
 
-    const auto levelIt = document.find("level");
-    if (levelIt != document.end() && !levelIt->is_string()) {
-        warnings.push_back(sourceName + ": field \"level\" should be a string (the level id), got " +
-                           DescribeJsonValue(*levelIt));
-    }
-    for (auto it = document.begin(); it != document.end(); ++it) {
-        if (it.key() != "level" && it.key() != "entities" && it.key() != "lights") {
-            warnings.push_back(sourceName + ": unknown top-level field \"" + it.key() + "\" ignored");
-        }
-    }
-
-    // "lights" (optional): an array of light zones, applied in order when the level is built.
-    const auto lightsIt = document.find("lights");
-    if (lightsIt != document.end()) {
-        if (!lightsIt->is_array()) {
-            errors.push_back(sourceName + ": field \"lights\" must be an array of light zones, got " +
-                             DescribeJsonValue(*lightsIt));
-        } else {
-            std::size_t lightIndex = 0;
-            for (const json& entry : *lightsIt) {
-                const std::string where = sourceName + ": lights[" + std::to_string(lightIndex) + "]";
-                ++lightIndex;
-                if (!entry.is_object()) {
-                    errors.push_back(where + ": each light zone must be an object, got " + DescribeJsonValue(entry));
-                    continue;
-                }
-                LightZone zone{};
-                if (ReadLightZone(entry, where, zone, diag)) {
-                    outLights.push_back(zone);
-                }
-            }
-        }
-    }
+    WarnTopLevelFields(document, sourceName, diag);
+    ReadLightZones(document, sourceName, outLights, diag);
 
     const auto entitiesIt = document.find("entities");
     if (entitiesIt == document.end() || !entitiesIt->is_array()) {
-        errors.push_back(sourceName + ": field \"entities\" is required and must be an array" +
-                         (entitiesIt == document.end() ? std::string() : ", got " + DescribeJsonValue(*entitiesIt)));
+        diag.Error(sourceName + ": field \"entities\" is required and must be an array" +
+                   (entitiesIt == document.end() ? std::string() : ", got " + DescribeJsonValue(*entitiesIt)));
         return false;
     }
-
-    std::size_t index = 0;
-    for (const json& entry : *entitiesIt) {
-        const std::string where = sourceName + ": entities[" + std::to_string(index) + "]";
-        ++index;
-        if (!entry.is_object()) {
-            errors.push_back(where + ": each entity must be an object, got " + DescribeJsonValue(entry));
-            continue;
-        }
-        EntityPlacement placement{};
-        if (ReadPlacement(entry, where, placement, diag)) {
-            outPlacements.push_back(placement);
-        }
-    }
+    ReadEntities(*entitiesIt, sourceName, outPlacements, diag);
     return errors.size() == errorsBefore;
 }
 
@@ -469,8 +587,8 @@ bool ParseEntityPlacementsCsv(const std::string& text, const std::string& source
         lineStart = lineEnd + 1;
         ++lineNumber;
 
-        if (lineNumber == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
-            line.erase(0, 3);  // UTF-8 byte order mark
+        if (lineNumber == 1 && line.compare(0, kUtf8ByteOrderMarkLength, kUtf8ByteOrderMark) == 0) {
+            line.erase(0, kUtf8ByteOrderMarkLength);
         }
         const std::string trimmed = Trim(line);  // also drops the \r of a CRLF file
         if (trimmed.empty() || trimmed[0] == '#') {
@@ -480,45 +598,7 @@ bool ParseEntityPlacementsCsv(const std::string& text, const std::string& source
         const std::string where =
             sourceName + ":" + std::to_string(lineNumber) + " (entity " + std::to_string(entityIndex) + ")";
         ++entityIndex;
-
-        std::vector<std::string> cells;
-        std::size_t cellStart = 0;
-        for (;;) {
-            const std::size_t comma = trimmed.find(',', cellStart);
-            cells.push_back(
-                Trim(trimmed.substr(cellStart, comma == std::string::npos ? std::string::npos : comma - cellStart)));
-            if (comma == std::string::npos) {
-                break;
-            }
-            cellStart = comma + 1;
-        }
-
-        if (cells.size() < 3) {
-            errors.push_back(where + ": expected at least 3 columns (type,x,y), got " + std::to_string(cells.size()));
-            continue;
-        }
-        if (cells.size() > kCsvColumnCount) {
-            warnings.push_back(where + ": " + std::to_string(cells.size() - kCsvColumnCount) +
-                               " extra column(s) after \"lock\" ignored");
-        }
-
-        json object = json::object();
-        bool ok = true;
-        for (std::size_t i = 0; i < cells.size() && i < kCsvColumnCount; ++i) {
-            if (cells[i].empty()) {
-                continue;  // an empty column means "not given"
-            }
-            json value;
-            if (ConvertCsvCell(cells[i], kCsvColumns[i], where, value, diag)) {
-                object[kCsvColumns[i].name] = value;
-            } else {
-                ok = false;
-            }
-        }
-        EntityPlacement placement{};
-        if (ok && ReadPlacement(object, where, placement, diag)) {
-            outPlacements.push_back(placement);
-        }
+        ReadCsvRow(SplitCsvCells(trimmed), where, outPlacements, diag);
     }
     return errors.size() == errorsBefore;
 }
