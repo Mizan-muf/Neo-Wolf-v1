@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "engine/core/PreviewScreen.h"
+#include "engine/core/RenderSize.h"
 
 enum class WindowModeOption {
     Default,    // windowed (later phases may remember the last choice)
@@ -21,6 +22,7 @@ struct CommandLineOptions {
     int frames = 0;              // --frames <N>; 0 = run until the player quits
     std::string screenshotPath;  // --screenshot <file.bmp>: save the last frame on exit (developer tool)
     PreviewScreen preview = PreviewScreen::None;  // --preview <screen> (developer tool)
+    RenderSize renderSize = kDefaultRenderSize;   // --render-size <W>x<H>: the framebuffer size
     WindowModeOption windowMode = WindowModeOption::Default;
 };
 

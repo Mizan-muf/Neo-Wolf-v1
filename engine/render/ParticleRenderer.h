@@ -13,5 +13,5 @@ struct Player;
 
 namespace ParticleRenderer {
 void Render(const Map& map, const Player& player, Framebuffer& framebuffer, const std::vector<float>& wallDepthBuffer,
-            const std::vector<Particle>& particles, float fieldOfViewRadians);
+            const std::vector<Particle>& particles);
 }  // namespace ParticleRenderer

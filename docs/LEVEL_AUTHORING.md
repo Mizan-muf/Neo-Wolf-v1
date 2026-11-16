@@ -136,8 +136,8 @@ rm -rf /tmp/levelNN-light && mkdir -p /tmp/levelNN-light && cp -R game /tmp/leve
 # edit /tmp/levelNN-light/game/defs/levelNN.entities.json: the player's x, y and angle look into the zone
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --data /tmp/levelNN-light --level N \
     --frames 5 --pref-dir /tmp/levelNN-light/prefs --screenshot /tmp/levelNN-light/zone.bmp
-sips -s format png /tmp/levelNN-light/zone.bmp --out /tmp/levelNN-light/zone.png   # 320x240
-sips -z 480 640 /tmp/levelNN-light/zone.png --out /tmp/levelNN-light/zone-big.png   # easier to judge
+sips -s format png /tmp/levelNN-light/zone.bmp --out /tmp/levelNN-light/zone.png   # 640x360
+sips -z 720 1280 /tmp/levelNN-light/zone.png --out /tmp/levelNN-light/zone-big.png   # easier to judge
 ```
 
 ## 5. Validate

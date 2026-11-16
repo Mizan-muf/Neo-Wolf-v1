@@ -29,7 +29,7 @@ Window keys, handled by the platform layer and never passed to the game:
 
 | Key | Effect |
 |---|---|
-| `F11`, `Alt+Enter`; macOS also `Cmd+Ctrl+F` | Toggle desktop fullscreen (the 320×240 image keeps its 4:3 shape with black bars) |
+| `F11`, `Alt+Enter`; macOS also `Cmd+Ctrl+F` | Toggle desktop fullscreen (the image keeps its shape, 16:9 at the default 640×360, with black bars) |
 | Close button, `Cmd+Q` (macOS), `Alt+F4` (Windows) | Quit at once, from any screen |
 
 ## Per screen

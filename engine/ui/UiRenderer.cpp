@@ -137,7 +137,43 @@ Glyph GetGlyph(char c) {
     }
 }
 
-void DrawGlyph(Framebuffer& framebuffer, int x, int y, const Glyph& glyph, std::uint32_t color, int scale) {
+// The framebuffer as the UI sees it: a canvas of width x height UI pixels, each drawn as a
+// scale x scale block of framebuffer pixels (UiLayout::UiScale), centred in the framebuffer.
+// Every layout below works in UI pixels.
+struct UiCanvas {
+    Framebuffer* framebuffer = nullptr;  // borrowed; null when only the geometry is needed
+    int scale = 1;
+    int width = 0;  // in UI pixels
+    int height = 0;
+    int offsetX = 0;  // framebuffer position of UI pixel (0, 0)
+    int offsetY = 0;
+
+    int ToFramebufferX(int x) const { return offsetX + x * scale; }
+    int ToFramebufferY(int y) const { return offsetY + y * scale; }
+    // The first UI column at or right of framebuffer column x.
+    int FromFramebufferX(int x) const { return (x - offsetX + scale - 1) / scale; }
+
+    void Rect(int x, int y, int rectWidth, int rectHeight, std::uint32_t color) const {
+        framebuffer->DrawRect(ToFramebufferX(x), ToFramebufferY(y), rectWidth * scale, rectHeight * scale, color);
+    }
+};
+
+UiCanvas MakeCanvas(int framebufferWidth, int framebufferHeight, Framebuffer* framebuffer) {
+    UiCanvas canvas{};
+    canvas.framebuffer = framebuffer;
+    canvas.scale = UiLayout::UiScale(framebufferWidth, framebufferHeight);
+    canvas.width = framebufferWidth / canvas.scale;
+    canvas.height = framebufferHeight / canvas.scale;
+    canvas.offsetX = (framebufferWidth - canvas.width * canvas.scale) / 2;
+    canvas.offsetY = (framebufferHeight - canvas.height * canvas.scale) / 2;
+    return canvas;
+}
+
+UiCanvas MakeCanvas(Framebuffer& framebuffer) {
+    return MakeCanvas(framebuffer.Width(), framebuffer.Height(), &framebuffer);
+}
+
+void DrawGlyph(const UiCanvas& canvas, int x, int y, const Glyph& glyph, std::uint32_t color, int scale) {
     for (int row = 0; row < UiLayout::kGlyphHeight; ++row) {
         // Bit 4 of a glyph row is the leftmost column.
         const unsigned rowBits = glyph[static_cast<std::size_t>(row)];
@@ -146,9 +182,26 @@ void DrawGlyph(Framebuffer& framebuffer, int x, int y, const Glyph& glyph, std::
             if ((rowBits & columnBit) == 0u) {
                 continue;
             }
-            framebuffer.DrawRect(x + col * scale, y + row * scale, scale, scale, color);
+            canvas.Rect(x + col * scale, y + row * scale, scale, scale, color);
         }
     }
+}
+
+void DrawText(const UiCanvas& canvas, int x, int y, const std::string& text, std::uint32_t color, int scale = 1) {
+    scale = std::max(1, scale);
+    int cursorX = x;
+    for (const char c : text) {
+        const char upper = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (upper != ' ') {
+            DrawGlyph(canvas, cursorX, y, GetGlyph(upper), color, scale);
+        }
+        cursorX += UiLayout::kGlyphAdvance * scale;
+    }
+}
+
+void DrawTextCentered(const UiCanvas& canvas, int centerX, int y, const std::string& text, std::uint32_t color,
+                      int scale = 1) {
+    DrawText(canvas, centerX - UiRenderer::TextWidth(text, scale) / 2, y, text, color, scale);
 }
 
 // Palette.
@@ -199,9 +252,28 @@ constexpr int kLineHeight = UiLayout::kGlyphHeight;  // at scale 1
 // the padding on each side of fitted text.
 constexpr int kOverlayTitleY = 9;
 constexpr int kOverlayTextInset = 8;
+// The overlay panels end at least this far above the HUD bar.
+constexpr int kOverlayHudGap = 4;
 // How much of the world's brightness stays visible behind the overlays (Framebuffer::Darken).
 constexpr int kPauseDimPercent = 40;
 constexpr int kResultDimPercent = 35;
+// The level banner's top is a fifth of the way down (y 48 at 320x240), but never above this:
+// the debug overlay (top right, down to y 50) can cover only the banner's border and padding,
+// not its text.
+constexpr int kLevelBannerMinY = 47;
+// The banner's padding around its two text rows (title at scale 2, level name): roomy is the
+// 320x240 banner; on a short canvas (320x180 at 16:9) the compact one keeps
+// kLevelBannerCrosshairGap UI pixels between the banner and the crosshair below it.
+struct BannerSpacing {
+    int padding = 4;  // between the border and the text, above and below
+    int textGap = 4;  // between the title and the name
+};
+constexpr BannerSpacing kRoomyBanner{};
+constexpr BannerSpacing kCompactBanner{3, 3};
+constexpr int kLevelBannerCrosshairGap = 3;
+// The crosshair: four arms of kCrosshairArm pixels, kCrosshairGap pixels from the centre pixel.
+constexpr int kCrosshairArm = 6;
+constexpr int kCrosshairGap = 2;
 // Health at or below this is shown in the warning colour.
 constexpr int kLowHealth = 25;
 // The minimap's frame: a 1-pixel border and a 1-pixel gap; the map is drawn inside it.
@@ -211,25 +283,28 @@ constexpr int kMinimapGridMinCell = 5;
 // The exit marker's "X" has arms of at least this many pixels (at least 7x7 pixels in all).
 constexpr int kExitMarkerMinArm = 3;
 
-// A filled panel with a 1-pixel border.
-void DrawPanel(Framebuffer& framebuffer, int x, int y, int width, int height, std::uint32_t fill = kPanel,
-               std::uint32_t border = kPanelBorder) {
-    framebuffer.DrawRect(x, y, width, height, border);
-    framebuffer.DrawRect(x + 1, y + 1, width - 2, height - 2, fill);
+// The top of the HUD bar.
+int HudBarY(int canvasHeight) {
+    return canvasHeight - kMargin - UiLayout::kHudBarHeight;
 }
 
-struct Point {
-    int x = 0;
-    int y = 0;
-};
+// A filled panel with a 1-pixel border.
+void DrawPanel(const UiCanvas& canvas, int x, int y, int width, int height, std::uint32_t fill = kPanel,
+               std::uint32_t border = kPanelBorder) {
+    canvas.Rect(x, y, width, height, border);
+    canvas.Rect(x + 1, y + 1, width - 2, height - 2, fill);
+}
 
-// A centred panel, shrunk to fit inside the margins; returns its top-left corner.
-Point DrawCenteredPanel(Framebuffer& framebuffer, int width, int height, std::uint32_t fill) {
-    width = std::min(width, framebuffer.Width() - 2 * kMargin);
-    height = std::min(height, framebuffer.Height() - 2 * kMargin);
-    const Point topLeft{(framebuffer.Width() - width) / 2, (framebuffer.Height() - height) / 2};
-    DrawPanel(framebuffer, topLeft.x, topLeft.y, width, height, fill);
-    return topLeft;
+// A centred panel, shrunk to fit inside the margins and to end kOverlayHudGap UI pixels above
+// the HUD bar it is drawn over (on the 16:9 canvas the level-complete panel is lower); returns
+// where it was drawn.
+UiRenderer::UiRect DrawCenteredPanel(const UiCanvas& canvas, int width, int height, std::uint32_t fill) {
+    const int aboveHud = 2 * (HudBarY(canvas.height) - kOverlayHudGap) - canvas.height;
+    width = std::min(width, canvas.width - 2 * kMargin);
+    height = std::min(height, aboveHud);
+    const UiRenderer::UiRect panel{(canvas.width - width) / 2, (canvas.height - height) / 2, width, height};
+    DrawPanel(canvas, panel.x, panel.y, panel.width, panel.height, fill);
+    return panel;
 }
 
 std::string Upper(const std::string& text) {
@@ -246,18 +321,59 @@ std::string LevelNumberText(int levelNumber) {
 }
 
 // The y of the key-hint line at the bottom of the full-screen pages.
-int FooterY(int framebufferHeight) {
-    return framebufferHeight - kMargin - kLineHeight - 6;
+int FooterY(int canvasHeight) {
+    return canvasHeight - kMargin - kLineHeight - 6;
 }
 
 // Scale-1 text that ends at `right` (exclusive of spacing).
-void DrawTextRightAligned(Framebuffer& framebuffer, int right, int y, const std::string& text, std::uint32_t color) {
-    UiRenderer::DrawText(framebuffer, right - UiRenderer::TextWidth(text, 1), y, text, color);
+void DrawTextRightAligned(const UiCanvas& canvas, int right, int y, const std::string& text, std::uint32_t color) {
+    DrawText(canvas, right - UiRenderer::TextWidth(text, 1), y, text, color);
+}
+
+// Where the HUD draws the card for `color`, in UI pixels.
+UiRenderer::UiRect KeyCardRectOnCanvas(int canvasHeight, KeyColor color) {
+    const int barY = HudBarY(canvasHeight);
+    const int slot = std::max(0, KeyColorIndex(color));
+    UiRenderer::UiRect rect{};
+    rect.x = UiLayout::kHudAmmoX + UiLayout::kKeyCardsOffset + slot * UiLayout::kKeyCardSlotWidth;
+    rect.y = barY + (UiLayout::kHudBarHeight - UiLayout::kKeyCardHeight) / 2;
+    rect.width = UiLayout::kKeyCardWidth;
+    rect.height = UiLayout::kKeyCardHeight;
+    return rect;
+}
+
+// The minimap's layout in UI pixels (UiRenderer::ComputeMinimapLayout converts it).
+UiRenderer::MinimapLayout ComputeMinimapLayoutOnCanvas(int canvasWidth, int canvasHeight, int mapWidth, int mapHeight,
+                                                       float playerX, float playerY) {
+    UiRenderer::MinimapLayout layout{};
+    layout.panelSize = std::max(UiRenderer::kMinimapMinPanel, std::min(canvasWidth, canvasHeight) / 3);
+    layout.panelX = kMargin;
+    layout.panelY = kMargin;
+    const int inner = layout.panelSize - 2 * kMinimapFrame;
+    if (mapWidth <= 0 || mapHeight <= 0) {
+        layout.cellSize = UiRenderer::kMinimapMinCell;
+        return layout;
+    }
+    const int fitCell = std::min(inner / mapWidth, inner / mapHeight);
+    if (fitCell >= UiRenderer::kMinimapMinCell) {
+        layout.cellSize = std::min(fitCell, UiRenderer::kMinimapMaxCell);
+        layout.originX = layout.panelX + (layout.panelSize - mapWidth * layout.cellSize) / 2;
+        layout.originY = layout.panelY + (layout.panelSize - mapHeight * layout.cellSize) / 2;
+        layout.followsPlayer = false;
+    } else {
+        layout.cellSize = UiRenderer::kMinimapMinCell;
+        layout.originX = layout.panelX + layout.panelSize / 2 -
+                         static_cast<int>(std::lround(playerX * static_cast<float>(layout.cellSize)));
+        layout.originY = layout.panelY + layout.panelSize / 2 -
+                         static_cast<int>(std::lround(playerY * static_cast<float>(layout.cellSize)));
+        layout.followsPlayer = true;
+    }
+    return layout;
 }
 
 // The minimap panel's inner square: everything drawn on the map is clipped to it.
 struct MinimapCanvas {
-    Framebuffer* framebuffer = nullptr;  // borrowed
+    const UiCanvas* ui = nullptr;  // borrowed
     int clipX = 0;
     int clipY = 0;
     int clipSize = 0;
@@ -269,7 +385,7 @@ struct MinimapCanvas {
         const int x1 = std::min(x + width, clipX + clipSize);
         const int y1 = std::min(y + height, clipY + clipSize);
         if (x1 > x0 && y1 > y0) {
-            framebuffer->DrawRect(x0, y0, x1 - x0, y1 - y0, color);
+            ui->Rect(x0, y0, x1 - x0, y1 - y0, color);
         }
     }
 };
@@ -456,7 +572,7 @@ void DrawMinimapLegend(const MinimapCanvas& canvas, const UiRenderer::MinimapLay
     const int legendY = canvas.clipY + canvas.clipSize - kLineHeight - 2;
     const int legendX = canvas.clipX + (canvas.clipSize - (kMarkerSize + kGap + UiRenderer::TextWidth("EXIT", 1))) / 2;
     DrawExitMarker(canvas, layout.cellSize, legendX + kExitMarkerMinArm, legendY + kExitMarkerMinArm);
-    UiRenderer::DrawText(*canvas.framebuffer, legendX + kMarkerSize + kGap, legendY, "EXIT", kValue);
+    DrawText(*canvas.ui, legendX + kMarkerSize + kGap, legendY, "EXIT", kValue);
 }
 }  // namespace
 
@@ -482,24 +598,6 @@ std::string UiRenderer::FitText(const std::string& text, int maxWidth, int scale
     return shortened.empty() ? std::string() : shortened + "..";
 }
 
-void UiRenderer::DrawText(Framebuffer& framebuffer, int x, int y, const std::string& text, std::uint32_t color,
-                          int scale) {
-    scale = std::max(1, scale);
-    int cursorX = x;
-    for (const char c : text) {
-        const char upper = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-        if (upper != ' ') {
-            DrawGlyph(framebuffer, cursorX, y, GetGlyph(upper), color, scale);
-        }
-        cursorX += UiLayout::kGlyphAdvance * scale;
-    }
-}
-
-void UiRenderer::DrawTextCentered(Framebuffer& framebuffer, int centerX, int y, const std::string& text,
-                                  std::uint32_t color, int scale) {
-    DrawText(framebuffer, centerX - TextWidth(text, scale) / 2, y, text, color, scale);
-}
-
 std::string UiRenderer::LevelLabel(int levelNumber, const std::string& levelName) {
     if (levelNumber <= 0) {
         return {};
@@ -522,33 +620,34 @@ std::string UiRenderer::FormatDuration(double seconds) {
 }
 
 void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
-    const int width = framebuffer.Width();
-    const int height = framebuffer.Height();
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const int width = canvas.width;
+    const int height = canvas.height;
 
     // Bottom bar: health, ammo, (key-card slots, Phase 6), compact level label.
     const int barX = kMargin;
-    const int barY = height - kMargin - UiLayout::kHudBarHeight;
+    const int barY = HudBarY(height);
     const int barW = width - 2 * kMargin;
-    DrawPanel(framebuffer, barX, barY, barW, UiLayout::kHudBarHeight);
+    DrawPanel(canvas, barX, barY, barW, UiLayout::kHudBarHeight);
     const int textY = barY + (UiLayout::kHudBarHeight - kLineHeight) / 2;
-    DrawText(framebuffer, UiLayout::kHudHealthX, textY, "HEALTH", kText);
-    DrawText(framebuffer, UiLayout::kHudHealthX + TextWidth("HEALTH ", 1), textY, std::to_string(view.health),
+    DrawText(canvas, UiLayout::kHudHealthX, textY, "HEALTH", kText);
+    DrawText(canvas, UiLayout::kHudHealthX + TextWidth("HEALTH ", 1), textY, std::to_string(view.health),
              view.health <= kLowHealth ? kWarn : kValue);
-    DrawText(framebuffer, UiLayout::kHudAmmoX, textY, "AMMO", kText);
-    DrawText(framebuffer, UiLayout::kHudAmmoX + TextWidth("AMMO ", 1), textY, std::to_string(view.ammo),
+    DrawText(canvas, UiLayout::kHudAmmoX, textY, "AMMO", kText);
+    DrawText(canvas, UiLayout::kHudAmmoX + TextWidth("AMMO ", 1), textY, std::to_string(view.ammo),
              view.ammo == 0 ? kWarn : kValue);
     for (const KeyColor color : kKeyColors) {
         if (!view.keys.Has(color)) {
             continue;
         }
-        const UiRect card = KeyCardRect(width, height, color);
-        DrawPanel(framebuffer, card.x, card.y, card.width, card.height, KeyCardColor(color), kKeyCardBorder);
-        DrawText(framebuffer, card.x + (card.width - UiLayout::kGlyphWidth) / 2,
+        const UiRect card = KeyCardRectOnCanvas(height, color);
+        DrawPanel(canvas, card.x, card.y, card.width, card.height, KeyCardColor(color), kKeyCardBorder);
+        DrawText(canvas, card.x + (card.width - UiLayout::kGlyphWidth) / 2,
                  card.y + (card.height - UiLayout::kGlyphHeight) / 2, std::string(1, KeyColorLabel(color)[0]),
                  kDarkInk);
     }
     if (view.levelNumber > 0) {
-        DrawTextRightAligned(framebuffer, barX + barW - kTextInset, textY, LevelNumberText(view.levelNumber), kGold);
+        DrawTextRightAligned(canvas, barX + barW - kTextInset, textY, LevelNumberText(view.levelNumber), kGold);
     }
 
     // Message line above the bar.
@@ -558,37 +657,41 @@ void UiRenderer::DrawHud(Framebuffer& framebuffer, const HudView& view) {
         const int boxH = kLineHeight + 6;
         const int boxX = (width - boxW) / 2;
         const int boxY = barY - 4 - boxH;
-        DrawPanel(framebuffer, boxX, boxY, boxW, boxH);
-        DrawText(framebuffer, boxX + kTextInset, boxY + 3, text, kMessage);
+        DrawPanel(canvas, boxX, boxY, boxW, boxH);
+        DrawText(canvas, boxX + kTextInset, boxY + 3, text, kMessage);
     }
 
     // Level banner at level start, right of the minimap when it is shown.
     if (view.showLevelBanner && view.levelNumber > 0) {
-        const int left = std::max(kMargin, view.reservedLeft + 4);
+        const int reservedLeft = view.reservedLeft > 0 ? canvas.FromFramebufferX(view.reservedLeft) : 0;
+        const int left = std::max(kMargin, reservedLeft + 4);
         const int right = width - kMargin;
         const int areaW = right - left;
         const std::string title = LevelNumberText(view.levelNumber);
         const std::string name = FitText(Upper(view.levelName), areaW - 16, 1);
         const int boxW = std::min(areaW, std::max(TextWidth(title, 2), TextWidth(name, 1)) + 16);
-        const int boxH = 2 * kLineHeight + kLineHeight + 14;
         const int boxX = left + (areaW - boxW) / 2;
-        const int boxY = height / 5;
-        DrawPanel(framebuffer, boxX, boxY, boxW, boxH);
-        DrawTextCentered(framebuffer, boxX + boxW / 2, boxY + 5, title, kGold, 2);
-        DrawTextCentered(framebuffer, boxX + boxW / 2, boxY + 5 + 2 * kLineHeight + 4, name, kText);
+        const int boxY = std::max(height / 5, kLevelBannerMinY);
+        const auto bannerHeight = [](const BannerSpacing& spacing) {
+            return 2 * (1 + spacing.padding) + 2 * kLineHeight + spacing.textGap + kLineHeight;
+        };
+        const int crosshairTop = height / 2 - kCrosshairGap - kCrosshairArm;
+        const BannerSpacing& spacing = boxY + bannerHeight(kRoomyBanner) + kLevelBannerCrosshairGap <= crosshairTop
+                                           ? kRoomyBanner
+                                           : kCompactBanner;
+        const int boxH = bannerHeight(spacing);
+        const int titleY = boxY + 1 + spacing.padding;
+        DrawPanel(canvas, boxX, boxY, boxW, boxH);
+        DrawTextCentered(canvas, boxX + boxW / 2, titleY, title, kGold, 2);
+        DrawTextCentered(canvas, boxX + boxW / 2, titleY + 2 * kLineHeight + spacing.textGap, name, kText);
     }
 }
 
 UiRenderer::UiRect UiRenderer::KeyCardRect(int framebufferWidth, int framebufferHeight, KeyColor color) {
-    (void)framebufferWidth;  // the bar starts at the left margin at every width
-    const int barY = framebufferHeight - kMargin - UiLayout::kHudBarHeight;
-    const int slot = std::max(0, KeyColorIndex(color));
-    UiRect rect{};
-    rect.x = UiLayout::kHudAmmoX + UiLayout::kKeyCardsOffset + slot * UiLayout::kKeyCardSlotWidth;
-    rect.y = barY + (UiLayout::kHudBarHeight - UiLayout::kKeyCardHeight) / 2;
-    rect.width = UiLayout::kKeyCardWidth;
-    rect.height = UiLayout::kKeyCardHeight;
-    return rect;
+    const UiCanvas canvas = MakeCanvas(framebufferWidth, framebufferHeight, nullptr);
+    const UiRect card = KeyCardRectOnCanvas(canvas.height, color);
+    return {canvas.ToFramebufferX(card.x), canvas.ToFramebufferY(card.y), card.width * canvas.scale,
+            card.height * canvas.scale};
 }
 
 std::uint32_t UiRenderer::KeyCardColor(KeyColor color) {
@@ -606,17 +709,20 @@ std::uint32_t UiRenderer::KeyCardColor(KeyColor color) {
 }
 
 void UiRenderer::DrawCrosshair(Framebuffer& framebuffer) {
-    // Four 6-pixel arms with a 2-pixel gap around the centre pixel.
-    const int cx = framebuffer.Width() / 2;
-    const int cy = framebuffer.Height() / 2;
-    framebuffer.DrawRect(cx - 8, cy, 6, 1, kCrosshair);
-    framebuffer.DrawRect(cx + 3, cy, 6, 1, kCrosshair);
-    framebuffer.DrawRect(cx, cy - 8, 1, 6, kCrosshair);
-    framebuffer.DrawRect(cx, cy + 3, 1, 6, kCrosshair);
+    // Four arms with a gap around the centre pixel.
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const int cx = canvas.width / 2;
+    const int cy = canvas.height / 2;
+    constexpr int kInner = kCrosshairGap + 1;  // from the centre to the first pixel of an arm
+    canvas.Rect(cx - kInner - kCrosshairArm + 1, cy, kCrosshairArm, 1, kCrosshair);
+    canvas.Rect(cx + kInner, cy, kCrosshairArm, 1, kCrosshair);
+    canvas.Rect(cx, cy - kInner - kCrosshairArm + 1, 1, kCrosshairArm, kCrosshair);
+    canvas.Rect(cx, cy + kInner, 1, kCrosshairArm, kCrosshair);
 }
 
 void UiRenderer::DrawDebugOverlay(Framebuffer& framebuffer, float fps, float playerX, float playerY, float angleDegrees,
                                   int cellX, int cellY) {
+    const UiCanvas canvas = MakeCanvas(framebuffer);
     std::array<std::array<char, 48>, 4> lines{};
     std::snprintf(lines[0].data(), lines[0].size(), "FPS %.1f", static_cast<double>(fps));
     std::snprintf(lines[1].data(), lines[1].size(), "POS %.2f, %.2f", static_cast<double>(playerX),
@@ -631,55 +737,103 @@ void UiRenderer::DrawDebugOverlay(Framebuffer& framebuffer, float fps, float pla
     }
     const int boxW = textW + 2 * kPadding;
     const int boxH = static_cast<int>(lines.size()) * kRowH + 7;
-    const int boxX = framebuffer.Width() - kMargin - boxW;
+    const int boxX = canvas.width - kMargin - boxW;
     const int boxY = kMargin;
-    DrawPanel(framebuffer, boxX, boxY, boxW, boxH);
+    DrawPanel(canvas, boxX, boxY, boxW, boxH);
     for (std::size_t i = 0; i < lines.size(); ++i) {
-        DrawText(framebuffer, boxX + kPadding, boxY + kPadding + static_cast<int>(i) * kRowH, lines[i].data(),
-                 kDebugText);
+        DrawText(canvas, boxX + kPadding, boxY + kPadding + static_cast<int>(i) * kRowH, lines[i].data(), kDebugText);
     }
 }
 
+namespace {
+// The main menu's vertical rhythm. The roomy spacing is the 320x240 layout; on a shorter
+// canvas (320x180 at 16:9) the title moves up and the gaps shrink, the item rows less than the
+// rest, and when even that does not fit (many items) the controls summary is left out.
+struct MenuSpacing {
+    int titleYDivisor = 15;          // the title's y is the canvas height divided by this
+    int itemsGap = 16;               // between the subtitle and the first item
+    int rowH = 2 * kLineHeight + 8;  // item rows (scale-2 text)
+    int controlsRowH = kLineHeight + 4;
+    int controlsGap = kLineHeight + 4;  // between the controls summary and the footer
+    bool showControls = true;
+};
+
+constexpr std::size_t kMenuControlsLines = 3;
+constexpr MenuSpacing kRoomyMenu{};
+constexpr MenuSpacing kCompactMenu{22, 7, 2 * kLineHeight + 6, kLineHeight + 2, 6, true};
+
+int MenuTitleY(int canvasHeight, const MenuSpacing& spacing) {
+    return canvasHeight / spacing.titleYDivisor;
+}
+
+int MenuSubtitleY(int canvasHeight, const MenuSpacing& spacing) {
+    return MenuTitleY(canvasHeight, spacing) + 3 * kLineHeight + 6;
+}
+
+// The first row below the selected item's highlight bar (rowY - 3, 2 * kLineHeight + 6 high).
+int MenuItemsBottom(int itemsY, int itemCount, const MenuSpacing& spacing) {
+    return itemsY + (std::max(1, itemCount) - 1) * spacing.rowH + 2 * kLineHeight + 3;
+}
+
+int MenuControlsY(int footerY, const MenuSpacing& spacing) {
+    return footerY - spacing.controlsGap - static_cast<int>(kMenuControlsLines) * spacing.controlsRowH;
+}
+
+MenuSpacing ChooseMenuSpacing(int canvasHeight, int footerY, int itemCount) {
+    constexpr int kMinGap = 2;  // UI pixels between the items and the controls summary
+    for (const MenuSpacing& spacing : {kRoomyMenu, kCompactMenu}) {
+        const int itemsY = MenuSubtitleY(canvasHeight, spacing) + kLineHeight + spacing.itemsGap;
+        if (MenuItemsBottom(itemsY, itemCount, spacing) + kMinGap <= MenuControlsY(footerY, spacing)) {
+            return spacing;
+        }
+    }
+    MenuSpacing withoutControls = kCompactMenu;
+    withoutControls.showControls = false;
+    return withoutControls;
+}
+}  // namespace
+
 void UiRenderer::DrawMenuScreen(Framebuffer& framebuffer, const MenuView& view) {
-    const int width = framebuffer.Width();
-    const int height = framebuffer.Height();
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const int width = canvas.width;
+    const int height = canvas.height;
     const int cx = width / 2;
     framebuffer.Clear(kMenuBackground);
 
-    const int titleY = height / 15;
-    DrawTextCentered(framebuffer, cx, titleY, "NEO-WOLF", kTitleRed, 3);
-    const int subtitleY = titleY + 3 * kLineHeight + 6;
-    DrawTextCentered(framebuffer, cx, subtitleY, FitText(Upper(view.campaignTitle), width - 2 * kMargin - 8, 1), kGold);
+    const int footerY = FooterY(height);
+    const MenuSpacing spacing = ChooseMenuSpacing(height, footerY, static_cast<int>(view.items.size()));
+    DrawTextCentered(canvas, cx, MenuTitleY(height, spacing), "NEO-WOLF", kTitleRed, 3);
+    const int subtitleY = MenuSubtitleY(height, spacing);
+    DrawTextCentered(canvas, cx, subtitleY, FitText(Upper(view.campaignTitle), width - 2 * kMargin - 8, 1), kGold);
 
     // Items at scale 2. The selected one has a highlight bar and > < markers (not colour only).
-    const int rowH = 2 * kLineHeight + 8;
-    const int itemsY = subtitleY + kLineHeight + 16;
+    const int itemsY = subtitleY + kLineHeight + spacing.itemsGap;
     const int barW = std::min(width - 2 * kMargin, 200);
     const int markerSpace = kTextInset + TextWidth(">", 2) + kTextInset;  // marker plus padding on each side
     for (std::size_t i = 0; i < view.items.size(); ++i) {
-        const int rowY = itemsY + static_cast<int>(i) * rowH;
+        const int rowY = itemsY + static_cast<int>(i) * spacing.rowH;
         const bool selected = static_cast<int>(i) == view.selected;
         const std::string label = FitText(view.items[i], barW - 2 * markerSpace, 2);
         if (selected) {
-            DrawPanel(framebuffer, cx - barW / 2, rowY - 3, barW, 2 * kLineHeight + 6, kHighlight, kGold);
-            DrawText(framebuffer, cx - barW / 2 + kTextInset, rowY, ">", kGold, 2);
-            DrawText(framebuffer, cx + barW / 2 - kTextInset - TextWidth("<", 2), rowY, "<", kGold, 2);
+            DrawPanel(canvas, cx - barW / 2, rowY - 3, barW, 2 * kLineHeight + 6, kHighlight, kGold);
+            DrawText(canvas, cx - barW / 2 + kTextInset, rowY, ">", kGold, 2);
+            DrawText(canvas, cx + barW / 2 - kTextInset - TextWidth("<", 2), rowY, "<", kGold, 2);
         }
-        DrawTextCentered(framebuffer, cx, rowY, label, selected ? kValue : kText, 2);
+        DrawTextCentered(canvas, cx, rowY, label, selected ? kValue : kText, 2);
     }
 
     // Controls summary and key hints at the bottom.
-    const int footerY = FooterY(height);
-    const std::array<const char*, 3> controls = {"MOVE: W/S   STRAFE: A/D   TURN: ARROWS, Q",
-                                                 "FIRE: SPACE, CTRL, F   USE: E   MAP: M, TAB",
-                                                 "PAUSE: P, ESC   RESTART LEVEL: R"};
-    const int controlsRowH = kLineHeight + 4;
-    int controlsY = footerY - 4 * controlsRowH;  // one empty row above the footer
-    for (const char* line : controls) {
-        DrawTextCentered(framebuffer, cx, controlsY, FitText(line, width - 2 * kMargin, 1), kTextDim);
-        controlsY += controlsRowH;
+    if (spacing.showControls) {
+        const std::array<const char*, kMenuControlsLines> controls = {"MOVE: W/S   STRAFE: A/D   TURN: ARROWS, Q",
+                                                                      "FIRE: SPACE, CTRL, F   USE: E   MAP: M, TAB",
+                                                                      "PAUSE: P, ESC   RESTART LEVEL: R"};
+        int controlsY = MenuControlsY(footerY, spacing);
+        for (const char* line : controls) {
+            DrawTextCentered(canvas, cx, controlsY, FitText(line, width - 2 * kMargin, 1), kTextDim);
+            controlsY += spacing.controlsRowH;
+        }
     }
-    DrawTextCentered(framebuffer, cx, footerY,
+    DrawTextCentered(canvas, cx, footerY,
                      FitText("UP/DOWN: CHOOSE   ENTER/SPACE: SELECT   ESC: QUIT", width - 2 * kMargin, 1), kText);
 }
 
@@ -690,24 +844,56 @@ std::uint32_t LevelEntryColor(const UiRenderer::LevelSelectEntry& entry, bool se
     }
     return selected ? kValue : kText;
 }
+
+// The level list's rows. The roomy spacing is the 320x240 layout; when not every level fits
+// that way (on the 320x180 canvas at 16:9 only seven of ten would) the rows move closer
+// together. "MORE" sits moreShift pixels inside the row before the first or after the last
+// shown row; highlightTop is how far the selected row's bar starts above its text.
+struct LevelListSpacing {
+    int listGap = 12;  // between the campaign title and the first row
+    int rowH = kLineHeight + 8;
+    int highlightTop = 4;
+    int highlightH = kLineHeight + 7;
+    int moreShift = 2;
+};
+constexpr LevelListSpacing kRoomyLevelList{};
+constexpr LevelListSpacing kCompactLevelList{13, kLineHeight + 4, 2, kLineHeight + 4, 0};
+// The least space between the list (or "MORE") and the footer, in UI pixels.
+constexpr int kLevelListFooterGap = 4;
+
+// How many rows of `spacing` fit between listY and the footer; with `more`, room is left for
+// "MORE" below the last row.
+int LevelListRows(int listY, int footerY, const LevelListSpacing& spacing, bool more) {
+    const int bottom = footerY - kLevelListFooterGap;
+    if (more) {
+        return std::max(1, (bottom - kLineHeight + spacing.moreShift - listY) / spacing.rowH);
+    }
+    return std::max(1, (bottom - (spacing.highlightH - spacing.highlightTop) - listY) / spacing.rowH + 1);
+}
 }  // namespace
 
 void UiRenderer::DrawLevelSelectScreen(Framebuffer& framebuffer, const LevelSelectView& view) {
-    const int width = framebuffer.Width();
-    const int height = framebuffer.Height();
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const int width = canvas.width;
+    const int height = canvas.height;
     const int cx = width / 2;
     framebuffer.Clear(kMenuBackground);
 
     const int titleY = height / 16;
-    DrawTextCentered(framebuffer, cx, titleY, "LEVEL SELECT", kGold, 2);
-    DrawTextCentered(framebuffer, cx, titleY + 2 * kLineHeight + 6,
-                     FitText(Upper(view.campaignTitle), width - 2 * kMargin - 8, 1), kText);
+    const int subtitleY = titleY + 2 * kLineHeight + 6;
+    DrawTextCentered(canvas, cx, titleY, "LEVEL SELECT", kGold, 2);
+    DrawTextCentered(canvas, cx, subtitleY, FitText(Upper(view.campaignTitle), width - 2 * kMargin - 8, 1), kText);
 
     const int footerY = FooterY(height);
-    const int listY = titleY + 2 * kLineHeight + 6 + kLineHeight + 12;
-    const int rowH = kLineHeight + 8;
-    const int visibleRows = std::max(1, (footerY - 8 - listY) / rowH);
     const int count = static_cast<int>(view.levels.size());
+    const auto listTop = [&](const LevelListSpacing& candidate) { return subtitleY + kLineHeight + candidate.listGap; };
+    const LevelListSpacing& spacing = count <= LevelListRows(listTop(kRoomyLevelList), footerY, kRoomyLevelList, false)
+                                          ? kRoomyLevelList
+                                          : kCompactLevelList;
+    const int listY = listTop(spacing);
+    const int rowH = spacing.rowH;
+    const bool scrolls = count > LevelListRows(listY, footerY, spacing, false);
+    const int visibleRows = LevelListRows(listY, footerY, spacing, scrolls);
     const int firstRow = std::clamp(view.selected - visibleRows / 2, 0, std::max(0, count - visibleRows));
 
     const int barX = kMargin + 8;
@@ -722,58 +908,59 @@ void UiRenderer::DrawLevelSelectScreen(Framebuffer& framebuffer, const LevelSele
         const int rowY = listY + row * rowH;
         const bool selected = index == view.selected;
         if (selected) {
-            DrawPanel(framebuffer, barX, rowY - 4, barW, kLineHeight + 7, kHighlight, kGold);
-            DrawText(framebuffer, barX + kTextInset, rowY, ">", kGold);
+            DrawPanel(canvas, barX, rowY - spacing.highlightTop, barW, spacing.highlightH, kHighlight, kGold);
+            DrawText(canvas, barX + kTextInset, rowY, ">", kGold);
         }
         const std::uint32_t color = LevelEntryColor(entry, selected);
-        DrawText(framebuffer, numberX, rowY, std::to_string(entry.number), color);
+        DrawText(canvas, numberX, rowY, std::to_string(entry.number), color);
         int nameRight = textRight;
         if (!entry.unlocked) {
             // Locked levels are dimmed AND tagged, so the state does not depend on colour.
             nameRight -= TextWidth(lockedTag, 1) + 8;
-            DrawTextRightAligned(framebuffer, textRight, rowY, lockedTag, kTextDim);
+            DrawTextRightAligned(canvas, textRight, rowY, lockedTag, kTextDim);
         }
-        DrawText(framebuffer, nameX, rowY, FitText(Upper(entry.name), nameRight - nameX, 1), color);
+        DrawText(canvas, nameX, rowY, FitText(Upper(entry.name), nameRight - nameX, 1), color);
     }
     // "MORE" above or below the list when it scrolls.
     if (firstRow > 0) {
-        DrawTextRightAligned(framebuffer, textRight, listY - rowH + 2, "MORE", kTextDim);
+        DrawTextRightAligned(canvas, textRight, listY - rowH + spacing.moreShift, "MORE", kTextDim);
     }
     if (firstRow + visibleRows < count) {
-        DrawTextRightAligned(framebuffer, textRight, listY + visibleRows * rowH - 2, "MORE", kTextDim);
+        DrawTextRightAligned(canvas, textRight, listY + visibleRows * rowH - spacing.moreShift, "MORE", kTextDim);
     }
 
-    DrawTextCentered(framebuffer, cx, footerY,
-                     FitText("UP/DOWN: CHOOSE   ENTER: START   ESC: BACK", width - 2 * kMargin, 1), kText);
+    DrawTextCentered(canvas, cx, footerY, FitText("UP/DOWN: CHOOSE   ENTER: START   ESC: BACK", width - 2 * kMargin, 1),
+                     kText);
 }
 
 // The overlay panels below lay out their rows with one-off offsets from the panel top; each is
 // used once, next to the text it places, so they stay literals (docs/CODING_STANDARDS.md, 5).
+// The panel sizes are in UI pixels and shrink to fit the canvas (DrawCenteredPanel).
 void UiRenderer::DrawPauseOverlay(Framebuffer& framebuffer, const std::string& levelLabel) {
+    const UiCanvas canvas = MakeCanvas(framebuffer);
     framebuffer.Darken(kPauseDimPercent);
-    const int boxW = 210;
-    const Point panel = DrawCenteredPanel(framebuffer, boxW, 96, kPanel);
-    const int cx = panel.x + boxW / 2;
+    const UiRect panel = DrawCenteredPanel(canvas, 210, 96, kPanel);
+    const int cx = panel.x + panel.width / 2;
     const int y = panel.y;
-    DrawTextCentered(framebuffer, cx, y + kOverlayTitleY, "PAUSED", kGold, 2);
-    DrawTextCentered(framebuffer, cx, y + 30, FitText(levelLabel, boxW - 2 * kOverlayTextInset, 1), kText);
-    DrawTextCentered(framebuffer, cx, y + 48, "ESC, P OR ENTER: RESUME", kValue);
-    DrawTextCentered(framebuffer, cx, y + 60, "R: RESTART LEVEL", kValue);
-    DrawTextCentered(framebuffer, cx, y + 72, "Q: QUIT TO MENU", kValue);
+    DrawTextCentered(canvas, cx, y + kOverlayTitleY, "PAUSED", kGold, 2);
+    DrawTextCentered(canvas, cx, y + 30, FitText(levelLabel, panel.width - 2 * kOverlayTextInset, 1), kText);
+    DrawTextCentered(canvas, cx, y + 48, "ESC, P OR ENTER: RESUME", kValue);
+    DrawTextCentered(canvas, cx, y + 60, "R: RESTART LEVEL", kValue);
+    DrawTextCentered(canvas, cx, y + 72, "Q: QUIT TO MENU", kValue);
 }
 
 void UiRenderer::DrawLevelCompleteScreen(Framebuffer& framebuffer, const LevelCompleteView& view) {
+    const UiCanvas canvas = MakeCanvas(framebuffer);
     framebuffer.Darken(kResultDimPercent);
-    const int boxW = framebuffer.Width() - 2 * 24;
-    const int boxH = 150;
-    const Point panel = DrawCenteredPanel(framebuffer, boxW, boxH, kLevelCompleteFill);
-    const int cx = panel.x + boxW / 2;
+    constexpr int kPanelHeight = 150;
+    const UiRect panel = DrawCenteredPanel(canvas, canvas.width - 2 * 24, kPanelHeight, kLevelCompleteFill);
+    const int cx = panel.x + panel.width / 2;
     const int y = panel.y;
-    const int textW = boxW - 2 * kOverlayTextInset;
+    const int textW = panel.width - 2 * kOverlayTextInset;
     const std::string title =
         view.levelNumber > 0 ? LevelNumberText(view.levelNumber) + " COMPLETE" : std::string("LEVEL COMPLETE");
-    DrawTextCentered(framebuffer, cx, y + kOverlayTitleY, FitText(title, textW, 2), kGold, 2);
-    DrawTextCentered(framebuffer, cx, y + 30, FitText(Upper(view.levelName), textW, 1), kText);
+    DrawTextCentered(canvas, cx, y + kOverlayTitleY, FitText(title, textW, 2), kGold, 2);
+    DrawTextCentered(canvas, cx, y + 30, FitText(Upper(view.levelName), textW, 1), kText);
 
     struct ResultRow {
         const char* label;
@@ -786,51 +973,44 @@ void UiRenderer::DrawLevelCompleteScreen(Framebuffer& framebuffer, const LevelCo
         {"TIME", FormatDuration(r.seconds)},
     }};
     const int labelX = panel.x + 36;
-    const int valueRight = panel.x + boxW - 36;
+    const int valueRight = panel.x + panel.width - 36;
     int rowY = y + 50;
     for (const ResultRow& row : rows) {
-        DrawText(framebuffer, labelX, rowY, row.label, kText);
-        DrawText(framebuffer, valueRight - TextWidth(row.value, 1), rowY, row.value, kValue);
+        DrawText(canvas, labelX, rowY, row.label, kText);
+        DrawText(canvas, valueRight - TextWidth(row.value, 1), rowY, row.value, kValue);
         rowY += kLineHeight + 6;
     }
-    DrawTextCentered(framebuffer, cx, y + 100,
+    // When the panel is shorter (16:9), the message moves up by half the difference, so that it
+    // stays between the results and the key hints.
+    DrawTextCentered(canvas, cx, y + 100 - (kPanelHeight - panel.height) / 2,
                      view.lastLevel ? "THAT WAS THE LAST LEVEL!" : "HEALTH AND AMMO CARRY OVER", kMessage);
-    DrawTextCentered(framebuffer, cx, y + boxH - 20,
+    DrawTextCentered(canvas, cx, y + panel.height - 20,
                      view.lastLevel ? "ENTER: CONTINUE   ESC: MENU" : "ENTER: NEXT LEVEL   ESC: MENU", kValue);
 }
 
 void UiRenderer::DrawGameOverScreen(Framebuffer& framebuffer, const std::string& levelLabel) {
+    const UiCanvas canvas = MakeCanvas(framebuffer);
     framebuffer.Darken(kResultDimPercent);
-    const int boxW = 240;
-    const Point panel = DrawCenteredPanel(framebuffer, boxW, 108, kGameOverFill);
-    const int cx = panel.x + boxW / 2;
+    const UiRect panel = DrawCenteredPanel(canvas, 240, 108, kGameOverFill);
+    const int cx = panel.x + panel.width / 2;
     const int y = panel.y;
-    const int textW = boxW - 2 * kOverlayTextInset;
-    DrawTextCentered(framebuffer, cx, y + kOverlayTitleY, "GAME OVER", kWarn, 3);
-    DrawTextCentered(framebuffer, cx, y + 38, FitText(levelLabel, textW, 1), kText);
-    DrawTextCentered(framebuffer, cx, y + 56, "R OR ENTER: RESTART LEVEL", kValue);
-    DrawTextCentered(framebuffer, cx, y + 68, "ESC: MAIN MENU", kValue);
-    DrawTextCentered(framebuffer, cx, y + 88, FitText("HEALTH AND AMMO AS AT LEVEL START", textW, 1), kTextDim);
+    const int textW = panel.width - 2 * kOverlayTextInset;
+    DrawTextCentered(canvas, cx, y + kOverlayTitleY, "GAME OVER", kWarn, 3);
+    DrawTextCentered(canvas, cx, y + 38, FitText(levelLabel, textW, 1), kText);
+    DrawTextCentered(canvas, cx, y + 56, "R OR ENTER: RESTART LEVEL", kValue);
+    DrawTextCentered(canvas, cx, y + 68, "ESC: MAIN MENU", kValue);
+    DrawTextCentered(canvas, cx, y + 88, FitText("HEALTH AND AMMO AS AT LEVEL START", textW, 1), kTextDim);
 }
 
 void UiRenderer::DrawCampaignCompleteScreen(Framebuffer& framebuffer, const std::string& campaignTitle,
                                             int levelCount) {
-    const int width = framebuffer.Width();
-    const int height = framebuffer.Height();
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const int width = canvas.width;
+    const int height = canvas.height;
     const int cx = width / 2;
     const int textW = width - 2 * kMargin - 8;
     framebuffer.Clear(kCampaignCompleteBackground);
 
-    int y = height / 12;
-    DrawTextCentered(framebuffer, cx, y, "CONGRATULATIONS!", kGold, 2);
-    y += 2 * kLineHeight + 10;
-    DrawTextCentered(framebuffer, cx, y, "CAMPAIGN COMPLETE", kValue, 2);
-    y += 2 * kLineHeight + 12;
-    DrawTextCentered(framebuffer, cx, y, FitText(Upper(campaignTitle), textW, 1), kText);
-    y += kLineHeight + 5;
-    DrawTextCentered(framebuffer, cx, y, "ALL " + std::to_string(levelCount) + " LEVELS CLEARED", kText);
-
-    y += kLineHeight + 18;
     // The first line is the heading.
     const std::array<const char*, 6> credits = {"CREDITS",
                                                 "NEO-WOLF: A SOFTWARE RAYCASTER",
@@ -838,60 +1018,71 @@ void UiRenderer::DrawCampaignCompleteScreen(Framebuffer& framebuffer, const std:
                                                 "JSON: NLOHMANN/JSON (MIT)",
                                                 "TEXTURES: TOOLS/DEVKIT/GEN_TEXTURES.PY",
                                                 "THANKS FOR PLAYING!"};
+    // The heading block (two scale-2 titles, the campaign title and the level count) takes this
+    // many rows from its top to the line below the level count.
+    constexpr int kHeadingH = 2 * kLineHeight + 10 + 2 * kLineHeight + 12 + kLineHeight + 5 + kLineHeight;
+    // The 320x240 spacing; on a shorter canvas (320x180 at 16:9) everything starts higher and
+    // the credits move closer together, so that they end well above the footer.
+    const int footerY = FooterY(height);
+    const auto creditsBottom = [&](int top, int gap, int rowH) {
+        return top + kHeadingH + gap + static_cast<int>(credits.size() - 1) * rowH + kLineHeight;
+    };
+    int y = height / 12;
+    int creditsGap = 18;
+    int creditsRowH = kLineHeight + 5;
+    if (creditsBottom(y, creditsGap, creditsRowH) + 6 > footerY) {
+        y = height / 18;
+        creditsGap = 10;
+        creditsRowH = kLineHeight + 4;
+    }
+    DrawTextCentered(canvas, cx, y, "CONGRATULATIONS!", kGold, 2);
+    y += 2 * kLineHeight + 10;
+    DrawTextCentered(canvas, cx, y, "CAMPAIGN COMPLETE", kValue, 2);
+    y += 2 * kLineHeight + 12;
+    DrawTextCentered(canvas, cx, y, FitText(Upper(campaignTitle), textW, 1), kText);
+    y += kLineHeight + 5;
+    DrawTextCentered(canvas, cx, y, "ALL " + std::to_string(levelCount) + " LEVELS CLEARED", kText);
+    y += kLineHeight + creditsGap;
     for (std::size_t i = 0; i < credits.size(); ++i) {
-        DrawTextCentered(framebuffer, cx, y, FitText(credits[i], textW, 1), i == 0 ? kGold : kTextDim);
-        y += kLineHeight + 5;
+        DrawTextCentered(canvas, cx, y, FitText(credits[i], textW, 1), i == 0 ? kGold : kTextDim);
+        y += creditsRowH;
     }
 
-    DrawTextCentered(framebuffer, cx, FooterY(height), "ENTER: MAIN MENU", kValue);
+    DrawTextCentered(canvas, cx, footerY, "ENTER: MAIN MENU", kValue);
 }
 
 UiRenderer::MinimapLayout UiRenderer::ComputeMinimapLayout(int framebufferWidth, int framebufferHeight, int mapWidth,
                                                            int mapHeight, float playerX, float playerY) {
-    constexpr int kMinPanelSize = 16;
-    MinimapLayout layout{};
-    layout.panelSize = std::max(kMinPanelSize, std::min(framebufferWidth, framebufferHeight) / 3);
-    layout.panelX = kMargin;
-    layout.panelY = kMargin;
-    const int inner = layout.panelSize - 2 * kMinimapFrame;
-    if (mapWidth <= 0 || mapHeight <= 0) {
-        layout.cellSize = kMinimapMinCell;
-        return layout;
-    }
-    const int fitCell = std::min(inner / mapWidth, inner / mapHeight);
-    if (fitCell >= kMinimapMinCell) {
-        layout.cellSize = std::min(fitCell, kMinimapMaxCell);
-        layout.originX = layout.panelX + (layout.panelSize - mapWidth * layout.cellSize) / 2;
-        layout.originY = layout.panelY + (layout.panelSize - mapHeight * layout.cellSize) / 2;
-        layout.followsPlayer = false;
-    } else {
-        layout.cellSize = kMinimapMinCell;
-        layout.originX = layout.panelX + layout.panelSize / 2 -
-                         static_cast<int>(std::lround(playerX * static_cast<float>(layout.cellSize)));
-        layout.originY = layout.panelY + layout.panelSize / 2 -
-                         static_cast<int>(std::lround(playerY * static_cast<float>(layout.cellSize)));
-        layout.followsPlayer = true;
-    }
+    const UiCanvas canvas = MakeCanvas(framebufferWidth, framebufferHeight, nullptr);
+    MinimapLayout layout =
+        ComputeMinimapLayoutOnCanvas(canvas.width, canvas.height, mapWidth, mapHeight, playerX, playerY);
+    layout.panelX = canvas.ToFramebufferX(layout.panelX);
+    layout.panelY = canvas.ToFramebufferY(layout.panelY);
+    layout.panelSize *= canvas.scale;
+    layout.cellSize *= canvas.scale;
+    layout.originX = canvas.ToFramebufferX(layout.originX);
+    layout.originY = canvas.ToFramebufferY(layout.originY);
     return layout;
 }
 
 int UiRenderer::DrawMinimap(Framebuffer& framebuffer, const Map& map, const Player& player,
                             const std::vector<SpriteEntity>& sprites) {
-    const MinimapLayout layout = ComputeMinimapLayout(framebuffer.Width(), framebuffer.Height(), map.Width(),
-                                                      map.Height(), player.position.x, player.position.y);
-    DrawPanel(framebuffer, layout.panelX, layout.panelY, layout.panelSize, layout.panelSize, kMinimapPanel);
-    const MinimapCanvas canvas{&framebuffer, layout.panelX + kMinimapFrame, layout.panelY + kMinimapFrame,
-                               layout.panelSize - 2 * kMinimapFrame};
+    const UiCanvas canvas = MakeCanvas(framebuffer);
+    const MinimapLayout layout = ComputeMinimapLayoutOnCanvas(canvas.width, canvas.height, map.Width(), map.Height(),
+                                                              player.position.x, player.position.y);
+    DrawPanel(canvas, layout.panelX, layout.panelY, layout.panelSize, layout.panelSize, kMinimapPanel);
+    const MinimapCanvas mapCanvas{&canvas, layout.panelX + kMinimapFrame, layout.panelY + kMinimapFrame,
+                                  layout.panelSize - 2 * kMinimapFrame};
 
-    const CellRange cells = VisibleCells(canvas, layout, map);
+    const CellRange cells = VisibleCells(mapCanvas, layout, map);
     const int gap = layout.cellSize >= kMinimapGridMinCell ? 1 : 0;
-    DrawMinimapCells(canvas, layout, map, cells, gap);
-    const bool anyExit = DrawMinimapExits(canvas, layout, map);
-    DrawMinimapLockedDoors(canvas, layout, map, cells, gap);
-    DrawMinimapSprites(canvas, layout, sprites);
-    DrawMinimapPlayer(canvas, layout, player);
+    DrawMinimapCells(mapCanvas, layout, map, cells, gap);
+    const bool anyExit = DrawMinimapExits(mapCanvas, layout, map);
+    DrawMinimapLockedDoors(mapCanvas, layout, map, cells, gap);
+    DrawMinimapSprites(mapCanvas, layout, sprites);
+    DrawMinimapPlayer(mapCanvas, layout, player);
     if (!layout.followsPlayer && anyExit) {
-        DrawMinimapLegend(canvas, layout, map);
+        DrawMinimapLegend(mapCanvas, layout, map);
     }
-    return layout.panelX + layout.panelSize;
+    return canvas.ToFramebufferX(layout.panelX + layout.panelSize);
 }

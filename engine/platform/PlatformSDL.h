@@ -28,6 +28,15 @@ struct PlatformConfig {
     bool fullscreen = false;  // start in desktop fullscreen
 };
 
+// The window PlatformSDL opens for a PlatformConfig (FitWindow): its size and its minimum
+// size, both in points.
+struct WindowFit {
+    int width = 0;
+    int height = 0;
+    int minWidth = 0;
+    int minHeight = 0;
+};
+
 class PlatformSDL {
 public:
     // Most keys trigger one action; Space, Enter, Escape and Q trigger two.
@@ -58,8 +67,15 @@ public:
     // message system at all (dummy video driver, headless CI).
     static void ShowErrorMessageBox(const std::string& title, const std::string& message);
 
-    // Writes the framebuffer (e.g. 320x240) as a 24-bit BMP (--screenshot). Works without a
-    // window. On failure returns false and sets `error`.
+    // The configured window size, shrunk (keeping its shape) to fit within 90% of a usable
+    // desktop area of usableWidth x usableHeight (0 or less: unknown, no limit), but never
+    // smaller than the framebuffer unless the framebuffer itself does not fit; then the
+    // framebuffer's shape shrunk to fit. The minimum size is the framebuffer size, or the
+    // window size if that is smaller. Pure, so tests can call it without a display.
+    static WindowFit FitWindow(const PlatformConfig& config, int usableWidth, int usableHeight);
+
+    // Writes the framebuffer (the render size, e.g. 640x360) as a 24-bit BMP (--screenshot).
+    // Works without a window. On failure returns false and sets `error`.
     static bool SaveFramebufferBmp(const Framebuffer& framebuffer, const std::string& path, std::string& error);
 
     // Key bindings (docs/CONTROLS.md). `scancode` is an SDL_Scancode and `modifiers` an SDL

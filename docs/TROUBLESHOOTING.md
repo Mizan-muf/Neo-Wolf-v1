@@ -127,8 +127,9 @@ logs
 [INFO] No vsync: capping the frame rate at 60 FPS.
 ```
 
-and continues with SDL's software renderer. The game draws its 320×240 image on the CPU anyway,
-so it stays playable. The old workaround `SDL_RENDER_DRIVER=software` is no longer needed (it
+and continues with SDL's software renderer. The game draws its image on the CPU anyway (640×360
+by default), so it stays playable; on a slow machine a smaller `--render-size`, for example
+`320x240`, makes each frame cheaper. The old workaround `SDL_RENDER_DRIVER=software` is no longer needed (it
 still works and forces the software renderer).
 
 If the window cannot be opened at all, the log contains the SDL error (`SDL video
@@ -146,7 +147,8 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./neo_wolf --frames 300   # exits 0 
 
 - Toggle desktop fullscreen with `F11` or `Alt+Enter` (macOS: also `Cmd+Ctrl+F`). `--fullscreen`
   starts in fullscreen, `--windowed` in a window.
-- The window can be resized; the image keeps its 4:3 shape with black bars and sharp pixels.
+- The window can be resized; the image keeps its shape (16:9 at the default 640×360 render size,
+  4:3 with `--render-size 320x240`) with black bars and sharp pixels.
 - The game pauses when its window loses focus (switching apps). Press `Esc`, `P` or `Enter` to
   resume.
 - To quit: **Quit** on the main menu (or `Esc` there), close the window, `Cmd+Q` (macOS) or

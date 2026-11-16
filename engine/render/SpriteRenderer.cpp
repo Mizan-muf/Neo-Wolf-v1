@@ -70,7 +70,7 @@ struct SpriteScreenRect {
 
 SpriteScreenRect ComputeSpriteScreenRect(int centerX, float depth, int screenWidth, int screenHeight) {
     SpriteScreenRect rect{};
-    rect.size = std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / depth)));
+    rect.size = std::max(1, static_cast<int>(std::fabs(FocalLengthPixels(screenHeight) / depth)));
     rect.leftX = (-rect.size / 2) + centerX;
     rect.topY = (-rect.size / 2) + (screenHeight / 2);
     const int bottomY = (rect.size / 2) + (screenHeight / 2);
@@ -131,7 +131,7 @@ std::vector<std::size_t> SpriteRenderer::BuildSortedSpriteIndices(const Player& 
 
 void SpriteRenderer::Render(const Map& map, const Player& player, Framebuffer& framebuffer,
                             const std::vector<float>& wallDepthBuffer, const std::vector<SpriteEntity>& sprites,
-                            const SpriteTextureSet& textures, float fieldOfViewRadians) {
+                            const SpriteTextureSet& textures) {
     const int screenWidth = framebuffer.Width();
     const int screenHeight = framebuffer.Height();
     if (screenWidth <= 0 || screenHeight <= 0) {
@@ -143,8 +143,8 @@ void SpriteRenderer::Render(const Map& map, const Player& player, Framebuffer& f
 
     const std::vector<std::size_t> sortedIndices = BuildSortedSpriteIndices(player, sprites);
 
-    const std::optional<BillboardProjection> projection =
-        MakeBillboardProjection(player.position, MakeCameraBasis(player.directionAngleRadians, fieldOfViewRadians));
+    const std::optional<BillboardProjection> projection = MakeBillboardProjection(
+        player.position, MakeCameraBasis(player.directionAngleRadians, screenWidth, screenHeight));
     if (!projection) {
         return;
     }

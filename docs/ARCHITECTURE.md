@@ -6,8 +6,8 @@ from the `#include` lines. Gameplay rules are in [GAMEPLAY.md](GAMEPLAY.md), fil
 [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md) and [MAP_FORMAT.md](MAP_FORMAT.md), the C API
 in [C_API.md](C_API.md), tests in [TESTING.md](TESTING.md).
 
-Neo-Wolf is a C++17 program on SDL2. It draws every frame on the CPU into a 320×240 pixel
-buffer (a raycaster for walls, floor and ceiling, then billboard sprites, particles and the
+Neo-Wolf is a C++17 program on SDL2. It draws every frame on the CPU into a pixel buffer of
+the render size (640×360 by default, `--render-size`) (a raycaster for walls, floor and ceiling, then billboard sprites, particles and the
 UI), and SDL scales that buffer into the window. All game content (maps, entity placements,
 gameplay values, the campaign, textures, sounds) is read from files at run time.
 
@@ -18,14 +18,14 @@ All engine code is in `engine/<module>/` and is compiled into one static library
 
 | Module | Responsibility | Main files |
 |---|---|---|
-| `core` (foundation) | Types and services that include nothing from other engine modules: vectors and maths (`Vec2`, `Vec2i`, `MathUtils`), colours, logging (`Log`, the log file), content-root and per-user-folder resolution (`Paths`), the JSON wrapper (`JsonDocument`, nlohmann/json), the action-based `InputState`, `TimeState`, `GameState` values, the SDL-free state machine `GameFlow` (menus, progression, carry-over), `progress.json` (`Progress`), and command-line parsing (`CommandLine`). | `Vec2.h`, `MathUtils.h`, `Log.*`, `Paths.*`, `InputState.h`, `GameFlow.*`, `Progress.*`, `CommandLine.*` |
+| `core` (foundation) | Types and services that include nothing from other engine modules: vectors and maths (`Vec2`, `Vec2i`, `MathUtils`), colours, logging (`Log`, the log file), content-root and per-user-folder resolution (`Paths`), the JSON wrapper (`JsonDocument`, nlohmann/json), the action-based `InputState`, `TimeState`, `GameState` values, the SDL-free state machine `GameFlow` (menus, progression, carry-over), `progress.json` (`Progress`), command-line parsing (`CommandLine`), and the render size and its limits (`RenderSize.h`). | `Vec2.h`, `MathUtils.h`, `Log.*`, `Paths.*`, `InputState.h`, `GameFlow.*`, `Progress.*`, `CommandLine.*`, `RenderSize.h` |
 | `core` (orchestration) | `Engine` owns every subsystem and runs init, update, render and shutdown (split over `Engine.Init/Update/Render/Shutdown/Core/Campaign.cpp`). `App` is the game's main loop: log file, timing, frame pacing, screenshot. | `Engine.h`, `Engine.*.cpp`, `App.*` |
 | `platform` | The SDL window, renderer and events: creates the window and renderer, turns keyboard and window events into `InputState` actions (`MapKeyToActions`), handles fullscreen and quit shortcuts, uploads and presents the framebuffer, shows the fatal-error message box, saves BMP screenshots. | `PlatformSDL.*` |
 | `render` | Software rendering into the `Framebuffer` (ARGB pixels): the DDA `Raycaster` (walls, floor, ceiling; `CastRay` is also used for line of sight and shots), `SpriteRenderer` (billboards with a depth buffer) and `ParticleRenderer`; `RenderMath.h` holds the camera, projection and shading helpers they share. | `Framebuffer.*`, `Raycaster.*`, `SpriteRenderer.*`, `ParticleRenderer.*`, `RenderMath.h` |
 | `world` | The simulation: the tile `Map` and `MapLoader`, `Player`, `Entity` / `EntityManager`, entity-file loading (`EntityPlacementLoader`, also light zones) and level building (`LevelBuilder`), movement and collision (`MovementRules`), pickups, doors, keys, triggers, the exit switch and the player's shot (`InteractionRules`), grid queries (`Navigation`) and the enemy AI (`EnemyAi`). Default gameplay values (`GameplayDefinitions.h`). | `Map.*`, `Entity.*`, `LevelBuilder.*`, `MovementRules.*`, `InteractionRules.*`, `Navigation.*`, `EnemyAi.*` |
 | `assets` | Loading content other than levels: PPM (`P3`) textures and the checkerboard fallback (`TextureLoader`, `Texture`, `AssetManager`), theme, sprite and audio `.cfg` files (`ContentConfig`, `AudioConfig`), `gameplay.json` (`GameplayConfig`) and `campaign.json` (`CampaignConfig`). | `TextureLoader.*`, `ContentConfig.*`, `GameplayConfig.*`, `CampaignConfig.*` |
 | `audio` | The SDL audio device: loads WAV files, converts them to the device format, plays a sound by queueing it on the device (`SDL_QueueAudio`; sounds play one after another, there is no mixer), master volume. Optional: the game runs without it. | `AudioSystem.*` |
-| `ui` | Everything drawn on top of the world or instead of it: menu, level select, HUD, pause, level-complete, game-over and credits screens, minimap, crosshair, debug overlay, and the built-in bitmap font, all laid out from the framebuffer size. | `UiRenderer.*` |
+| `ui` | Everything drawn on top of the world or instead of it: menu, level select, HUD, pause, level-complete, game-over and credits screens, minimap, crosshair, debug overlay, and the built-in bitmap font, all laid out on a UI canvas derived from the framebuffer size and drawn at a whole-number UI scale ([below](#ui-scale)). | `UiRenderer.*` |
 | `particles` | A pool of at most 512 particles (position, velocity, lifetime, colour, size) and the preset effects (hit spark, pickup sparkle, ambient dust). | `Particle.*` |
 | `interop` | The in-process C API (`nw_engine_*`) and the thread-safe command and event queues (`CommandBridge`). No shared library is built; see [C_API.md](C_API.md). | `EngineInterop.*`, `CommandBridge.*` |
 | `autoplay` | The headless bot that plays the real engine through simulated input, and its JSON/trace report (static library `neowolf_autoplay`, tool `neo_wolf_autoplay`). | `AutoplayBot.*`, `AutoplayReport.*`, `AutoplayTrace.*` |
@@ -169,18 +169,24 @@ set (`Engine.Campaign.cpp`, `Progress.cpp`).
 
 ## Startup (`Engine::Init`)
 
-In this order (`Engine.Init.cpp`); a failure in steps 1–3, 5, 6 (the framebuffer, not the
+In this order (`Engine.Init.cpp`); a failure in steps 0–3, 5, 6 (the framebuffer, not the
 audio), 10 or 11 is fatal (logged, an error box unless `--frames` is used, exit code 1):
 
+0. Check the **render size** (`EngineOptions::renderSize`, `IsValidRenderSize`: even width
+   320–1920, even height 200–1080, width:height from 5:4 to 64:27; the command line checks
+   `--render-size` first, this covers the C API and tests).
 1. Find the **content root** ([below](#content-loading-and-the-content-root)).
 2. Load `game/defs/gameplay.json` (invalid = fatal, before any window opens).
 3. Load `game/defs/campaign.json` (invalid = fatal); check `--level N` against it.
 4. Load saved progress, if there is a per-user folder.
-5. Unless headless: create the window and renderer (`PlatformSDL::Init`: 1024×768 resizable
-   window (shrunk to fit 90% of the usable desktop), HiDPI, accelerated renderer with vsync, else the software renderer; logical size
-   320×240, letterboxed, nearest-neighbour scaling).
-6. Allocate the 320×240 framebuffer; unless headless, open the audio device (failure only
-   means no sound).
+5. Unless headless: create the window and renderer (`PlatformSDL::Init`: a resizable window
+   of the largest whole multiple of the render size that fits in 1280×960, at least 1× (1280×720
+   for the default 640×360); on a desktop whose usable area is smaller than 90% of that, shrunk
+   to fit with the same shape (as up to 1.0.0), but not below the render size unless the render
+   size itself does not fit; HiDPI, accelerated renderer with vsync, else the software renderer;
+   logical size = the render size, letterboxed, nearest-neighbour scaling).
+6. Allocate the framebuffer at the render size; unless headless, open the audio device
+   (failure only means no sound).
 7. Read `sprites.cfg` and `audio.cfg` (missing or broken files fall back to defaults with a
    warning).
 8. Load the sprite textures (a checkerboard replaces any that fail).
@@ -267,8 +273,30 @@ and from the player. Enemies never open doors. Rules, numbers and the state diag
 
 ## Rendering pipeline
 
-Per frame, in `Engine::RenderWorld` and `Engine::RenderUi`, all into the 320×240 framebuffer
-(field of view 60°):
+Per frame, in `Engine::RenderWorld` and `Engine::RenderUi`, all into the framebuffer (the
+render size, `EngineOptions::renderSize`; 640×360 unless `--render-size` says otherwise).
+
+**Projection ("Hor+", `RenderMath.h`).** The vertical field of view is fixed: at distance 1
+the view spans 0.5 world units above and below the horizon (`kViewHalfHeight`), so a wall one
+unit high fills the screen height (vertical field of view about 53.1°, unchanged since 1.0.0).
+Pixels are square: one world unit at distance 1 is `FocalLengthPixels` = the screen height in
+pixels, across and up the screen alike, and the camera plane is `kViewHalfHeight × width /
+height` long. The horizontal field of view therefore follows from the framebuffer's shape:
+about 67.4° at 4:3 (320×240, 640×480), 83.3° at 16:9 (640×360, 1280×720); a wider framebuffer
+shows more at the sides, never less above and below. The render-size limits keep it between
+about 64° (5:4) and 100° (64:27, the shape of 2560×1080 monitors sold as 21:9). Walls, floor and ceiling, sprites and
+particles all use the same camera (`MakeCameraBasis`) and focal length, so sprites and
+particles keep their size relative to the walls at every render size. Up to 1.0.0 the
+horizontal field of view was a fixed 60° at 320×240, which stretched the image 1.15 times
+horizontally (walls looked wider than tall); test `projection_square_pixels` checks the
+vertical field of view, square pixels and the horizontal field of view at every column, and
+that an off-centre sprite lands on the wall column at the same sideways offset, at 320×240,
+640×360 and 640×480.
+
+The render size only changes how the frame is drawn. Nothing in the simulation reads the
+framebuffer, the field of view or the ray hits (the AI, shots and the autoplay bot use
+`Raycaster::CastRay` and the map directly), so the game plays the same at every render size:
+the autoplay bot's report is byte-identical.
 
 1. **Background fill:** the theme's floor and ceiling textures tiled in screen space
    (`RenderCeilingAndFloor`). Step 2 draws over almost all of it.
@@ -293,7 +321,34 @@ Per frame, in `Engine::RenderWorld` and `Engine::RenderUi`, all into the 320×24
    the pause, game-over or level-complete panel; the menu and credits screens replace the
    world entirely.
 7. **Present** (`PlatformSDL::PresentFramebuffer`): upload the pixels into a streaming texture
-   and draw it scaled to the window, keeping the 4:3 shape.
+   and draw it scaled to the window, keeping the framebuffer's shape (black bars around it).
+
+### UI scale
+
+The UI is laid out in **UI pixels** on a canvas of at least 320×180 (`UiLayout::kDesignWidth`
+× `kDesignHeight`). Each UI pixel is drawn as a block of `UiLayout::UiScale` × `UiScale`
+framebuffer pixels, the largest whole number that leaves such a canvas (at least 1):
+320×240 → 1 (the 1.0.0 UI, pixel for pixel), 640×360 and 640×480 → 2, 960×540 → 3,
+1280×720 → 4, 1920×1080 → 6. The canvas is the framebuffer size divided by the scale, centred
+(at most scale − 1 pixels are left over at the edges). Whole numbers keep the 5×7 bitmap font
+and the 1-pixel lines crisp, and the UI keeps its size relative to the screen; at 640×480 it is
+exactly the 320×240 UI scaled up (checked by `ui_layout_bounds`). Every layout dimension, text
+scale, the HUD, minimap, key-card icons, crosshair, overlays and the debug overlay are in UI
+pixels. The 16:9 canvas (320×180) has 60 fewer rows than 320×240, so a few layouts adapt:
+the main menu moves its title up and uses tighter vertical spacing (with more than four menu
+items the controls summary is left out); the level list uses closer rows when the roomy ones
+would not show every level (all ten shipped levels fit at 16:9; a longer campaign scrolls);
+the campaign-complete page starts higher and its credits rows move closer together; the
+pause, level-complete and game-over panels are capped to end above the HUD bar (at 16:9 only
+the level-complete panel is affected: it is 14 UI pixels shorter, and its message moves up by
+half of that); the minimap panel keeps its 320×240 size of 80 UI pixels (so every level shows
+the same part of its map, with the exit legend, as at 320×240; on a canvas at least 270 UI
+pixels high and wide the panel is a third of the shorter side); and the level banner stays at
+y 47 or lower, where the debug overlay can cover only its border, with a compact banner (3
+instead of 4 UI pixels of padding, 32 instead of 35 high) when the roomy one would come within
+3 UI pixels of the crosshair. `ui_layout_bounds` checks these at every tested size besides the
+margins. The 4:3 layouts are unchanged from 1.0.0, except that a campaign of more than eleven
+levels now uses the closer rows of the level list.
 
 ## Test seams
 
@@ -343,4 +398,5 @@ warnings as errors, `package-*`) and the build commands are in
 - **World positions:** floats in cell units; the centre of cell `(x, y)` is `(x + 0.5, y + 0.5)`.
 - **Angles:** radians; 0 points along +x (east), π/2 along +y (south, down the map), π west,
   3π/2 north.
-- **Screen:** the framebuffer is always 320×240; column 0 is the left edge, row 0 the top.
+- **Screen:** the framebuffer is the render size (640×360 by default); column 0 is the left
+  edge, row 0 the top. The UI works in UI pixels ([UI scale](#ui-scale)).

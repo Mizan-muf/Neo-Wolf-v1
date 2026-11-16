@@ -21,8 +21,7 @@ constexpr float kMinParticleLifetime = 0.0001f;
 }  // namespace
 
 void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer& framebuffer,
-                              const std::vector<float>& wallDepthBuffer, const std::vector<Particle>& particles,
-                              float fieldOfViewRadians) {
+                              const std::vector<float>& wallDepthBuffer, const std::vector<Particle>& particles) {
     const int screenWidth = framebuffer.Width();
     const int screenHeight = framebuffer.Height();
     if (screenWidth <= 0 || screenHeight <= 0) {
@@ -32,12 +31,13 @@ void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer&
         return;
     }
 
-    const std::optional<BillboardProjection> projection =
-        MakeBillboardProjection(player.position, MakeCameraBasis(player.directionAngleRadians, fieldOfViewRadians));
+    const std::optional<BillboardProjection> projection = MakeBillboardProjection(
+        player.position, MakeCameraBasis(player.directionAngleRadians, screenWidth, screenHeight));
     if (!projection) {
         return;
     }
 
+    const float focalLength = FocalLengthPixels(screenHeight);
     for (const Particle& p : particles) {
         if (!p.active || p.lifetimeTotal <= kMinParticleLifetime) {
             continue;
@@ -56,8 +56,9 @@ void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer&
             continue;
         }
 
-        // A square of p.size world units, centred on the horizon.
-        const int sizePx = std::max(1, static_cast<int>((p.size * static_cast<float>(screenHeight)) / view.depth));
+        // A square of p.size world units, centred on the horizon: its size in pixels grows with
+        // the framebuffer like the walls and sprites around it.
+        const int sizePx = std::max(1, static_cast<int>((p.size * focalLength) / view.depth));
         const int x0 = screenX - (sizePx / 2);
         const int y0 = (screenHeight / 2) - (sizePx / 2);
         const float life = Clamp(p.lifetimeRemaining / p.lifetimeTotal, 0.0f, 1.0f);

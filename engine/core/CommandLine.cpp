@@ -31,6 +31,21 @@ bool ParsePositiveInt(const std::string& text, int& out) {
     return true;
 }
 
+// "<width>x<height>" (or "X"), each part a strict decimal; IsValidRenderSize decides the rest.
+bool ParseRenderSize(const std::string& text, RenderSize& out) {
+    const std::size_t separator = text.find_first_of("xX");
+    if (separator == std::string::npos) {
+        return false;
+    }
+    RenderSize size{};
+    if (!ParsePositiveInt(text.substr(0, separator), size.width) ||
+        !ParsePositiveInt(text.substr(separator + 1), size.height) || !IsValidRenderSize(size)) {
+        return false;
+    }
+    out = size;
+    return true;
+}
+
 std::string PreviewScreenList() {
     std::string list;
     for (const PreviewScreen screen : kPreviewScreens) {
@@ -96,7 +111,7 @@ struct ValueOption {
     std::string (*needs)();
 };
 
-constexpr std::array<ValueOption, 6> kValueOptions = {{
+constexpr std::array<ValueOption, 7> kValueOptions = {{
     {"--data",
      [](const std::string& value, CommandLineOptions& options) { return SetNonEmpty(value, options.dataDir); },
      [] { return std::string("a directory"); }},
@@ -129,6 +144,9 @@ constexpr std::array<ValueOption, 6> kValueOptions = {{
          return true;
      },
      [] { return std::string("a positive number of frames"); }},
+    {"--render-size",
+     [](const std::string& value, CommandLineOptions& options) { return ParseRenderSize(value, options.renderSize); },
+     [] { return "a size WIDTHxHEIGHT: " + DescribeRenderSizeLimits() + " (for example 640x360)"; }},
 }};
 
 const ValueOption* FindValueOption(std::string_view name) {
@@ -231,14 +249,17 @@ std::string CommandLineUsage(std::string_view programName) {
         "  --frames <N>        run N frames, then exit with code 0 (automated smoke tests)\n"
         "  --windowed          start in a window (default)\n"
         "  --fullscreen        start in desktop fullscreen\n"
+        "  --render-size <WxH> draw the game at W x H pixels (default 640x360), scaled to\n"
+        "                      the window; W even, 320-1920, H even, 200-1080, W:H from\n"
+        "                      5:4 to 64:27 (the shape of 2560x1080)\n"
         "\n"
         "Developer tools:\n"
         "  --preview <screen>  show one screen with fixed sample data, one of:\n"
         "                      " +
         PreviewScreenList() +
         "\n"
-        "  --screenshot <file> when the game exits, save the last 320x240 frame as a BMP\n"
-        "                      (use with --frames N)\n"
+        "  --screenshot <file> when the game exits, save the last frame as a BMP, at the\n"
+        "                      render size (use with --frames N)\n"
         "\n"
         "Without --data or NEOWOLF_DATA_DIR the game looks for game/ next to the executable\n"
         "(and up to 3 folders above it), in a macOS app's Resources folder, then in the\n"

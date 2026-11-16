@@ -6,7 +6,7 @@
 
 ![Start view of level07](../images/levels/level07.png)
 
-*Start view (headless `--frames 5` screenshot, 320×240).*
+*Start view (headless `--frames 5` screenshot, 640×360).*
 
 ![West wing (light 0.35) from the corridor at (7, 15), looking north into bunk room W1: the guard reads against the dark wall.](../images/levels/level07-west-wing.png)
 

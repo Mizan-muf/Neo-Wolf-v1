@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-#include "engine/core/MathUtils.h"
 #include "engine/platform/PlatformSDL.h"
 #include "engine/render/Framebuffer.h"
 #include "engine/render/ParticleRenderer.h"
@@ -14,7 +13,6 @@
 #include "engine/ui/UiRenderer.h"
 
 namespace {
-constexpr float kFieldOfViewRadians = DegreesToRadians(60.0f);
 constexpr float kDegreesPerRadian = 57.2957795f;           // for the debug overlay's heading
 constexpr std::uint32_t kPlainCeilingColor = 0xFF2A2A2Au;  // ARGB, when there is no ceiling texture
 constexpr std::uint32_t kPlainFloorColor = 0xFF3F3F3Fu;    // ARGB, when there is no floor texture
@@ -66,7 +64,6 @@ void Engine::RenderWorld() {
     RenderCeilingAndFloor(framebuffer_, ceilingTexture_, floorTexture_);
 
     RaycasterRenderParams rayParams{};
-    rayParams.fieldOfViewRadians = kFieldOfViewRadians;
     rayParams.wallTexture = wallTexture_;
     rayParams.wallAltATexture = wallAltATexture_;
     rayParams.wallAltBTexture = wallAltBTexture_;
@@ -88,11 +85,9 @@ void Engine::RenderWorld() {
     spriteTextures.slots = spriteTextures_;
     spriteTextures.missing = &missingTexture_;
 
-    SpriteRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, sprites_, spriteTextures,
-                           kFieldOfViewRadians);
+    SpriteRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, sprites_, spriteTextures);
 
-    ParticleRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, particleManager_.Particles(),
-                             kFieldOfViewRadians);
+    ParticleRenderer::Render(map_, player_, framebuffer_, latestWallDepthBuffer_, particleManager_.Particles());
 }
 
 void Engine::RenderUi() {

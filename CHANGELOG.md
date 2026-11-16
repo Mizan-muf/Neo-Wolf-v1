@@ -12,7 +12,44 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`--render-size <W>x<H>`**: the size of the image the game draws (even width 320–1920, even
+  height 200–1080, width:height from 5:4 to 64:27, the shape of 2560×1080; anything else is a usage error with exit
+  code 2). `EngineOptions::renderSize`
+  carries it; the simulation never reads it, and the autoplay bot's report is byte-identical at
+  every size.
+- Tests `render_size_option` and `projection_square_pixels`; `ui_layout_bounds` now checks every
+  screen at eleven render sizes from 320×200 to 1920×1080, including the edges of the 5:4 and
+  64:27 shape limits, and that the minimap shows every
+  shipped level as at 320×240, the level banner stays clear of the debug overlay's text and the
+  crosshair, and the overlay panels end above the HUD bar. Game tests `game_render_size` and
+  `game_render_size_invalid`; the `game_preview_*` tests check the screenshot's size (114 CTest
+  tests).
+
+### Changed
+
+- **Default internal resolution 640×360** (16:9) instead of a fixed 320×240. The initial window is
+  the largest whole multiple of the render size that fits in 1280×960 (1280×720 by default),
+  shrunk with the same shape on a smaller desktop; letterboxing and fullscreen work as before.
+- **Projection with square pixels** ("Hor+"): the vertical field of view of 1.0.0 is kept (a
+  wall one unit high fills the screen height at distance 1, about 53°) and the horizontal one
+  follows from the image's shape (about 67° at 4:3, 83° at 16:9). Up to 1.0.0 it was a fixed
+  60°, which stretched the 320×240 image 1.15 times horizontally; at 320×240 the view is now
+  wider and walls are square. Sprites and particles are projected with the same camera, so they
+  keep their size relative to the walls at every size.
+- **UI scale**: the UI is laid out on a canvas of at least 320×180 UI pixels and drawn at a
+  whole-number scale (1 at 320×240, where it is unchanged pixel for pixel; 2 at 640×360 and
+  640×480; 3 at 960×540; 4 at 1280×720). On a 16:9 canvas the main menu and the credits use
+  tighter vertical spacing, the level list uses closer rows so that all ten levels fit, the
+  level-complete panel is shorter so that it ends above the HUD bar, the level banner is a
+  little more compact so that it ends clear of the crosshair, and the minimap panel keeps its
+  320×240 size. `--screenshot` saves the frame at the render size.
+- The reference screenshots in `docs/images/screens/` and the level start views in
+  `docs/images/levels/` are now 640×360.
+- On the development Mac (Release build, headless, no frame cap) a frame of `Update` + `Render`
+  takes about 0.45 ms at 320×240, 1.3 ms at 640×360 and 5.2 ms at 1280×720
+  ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) C28).
 
 ## [1.0.0] - 2026-11-16
 

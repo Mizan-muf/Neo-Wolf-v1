@@ -6,7 +6,7 @@
 
 ![Start view of level08](../images/levels/level08.png)
 
-*Start view (headless `--frames 5` screenshot, 320×240).*
+*Start view (headless `--frames 5` screenshot, 640×360).*
 
 ## Idea
 

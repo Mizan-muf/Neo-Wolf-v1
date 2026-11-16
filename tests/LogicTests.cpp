@@ -43,12 +43,14 @@
 #include "engine/core/Paths.h"
 #include "engine/core/PreviewScreen.h"
 #include "engine/core/Progress.h"
+#include "engine/core/RenderSize.h"
 #include "engine/core/Vec2.h"
 #include "engine/interop/CommandBridge.h"
 #include "engine/interop/EngineInterop.h"
 #include "engine/particles/Particle.h"
 #include "engine/platform/PlatformSDL.h"
 #include "engine/render/Framebuffer.h"
+#include "engine/render/ParticleRenderer.h"
 #include "engine/render/Raycaster.h"
 #include "engine/render/SpriteRenderer.h"
 #include "engine/ui/UiRenderer.h"
@@ -177,10 +179,6 @@ constexpr int kPlayerMaxAmmo = 99;
 // AI functions as a float.
 constexpr double kFrameSeconds = 1.0 / 60.0;
 constexpr float kAiFrameSeconds = 1.0f / 60.0f;
-
-// The 60-degree field of view the engine renders with (Engine.Render.cpp), for direct
-// SpriteRenderer::Render calls.
-constexpr float kFieldOfViewRadians = 1.04719755f;
 
 // A framebuffer pixel, 0xAARRGGBB (Framebuffer::PackRGBA), and its colour channels.
 std::uint32_t PixelAt(const Framebuffer& framebuffer, int x, int y) {
@@ -1267,6 +1265,8 @@ void TestCommandLineParsing() {
     TEST_ASSERT(r.options.windowMode == WindowModeOption::Default);
     TEST_ASSERT(r.options.prefDir.empty() && r.options.screenshotPath.empty());
     TEST_ASSERT(r.options.preview == PreviewScreen::None);
+    TEST_ASSERT(r.options.renderSize.width == kDefaultRenderSize.width &&
+                r.options.renderSize.height == kDefaultRenderSize.height);
 
     // Phase 5: --pref-dir, and the developer tools --preview / --screenshot.
     r = ParseCommandLine(
@@ -1337,7 +1337,7 @@ void TestCommandLineParsing() {
     TEST_ASSERT(VersionString() == std::string("Neo-Wolf ") + NW_EXPECTED_VERSION);
     const std::string usage = CommandLineUsage("neo_wolf");
     for (const char* option : {"--help", "--version", "--data", "--pref-dir", "--level", "--frames", "--windowed",
-                               "--fullscreen", "--preview", "--screenshot", "campaign"}) {
+                               "--fullscreen", "--render-size", "--preview", "--screenshot", "campaign"}) {
         TEST_ASSERT(usage.find(option) != std::string::npos);
     }
 }
@@ -2783,11 +2783,34 @@ void TestThemeLoadingAndSwap() {
     }
 }
 
+// The render sizes the UI is checked at: the old fixed size, the default, 4:3 and 16:9 at UI
+// scale 2, 3 and 4, the smallest allowed height and the largest size, and the edges of the
+// shape limits: 5:4 at UI scale 1 and 4 (canvas 400x320, 337x270) and 64:27 at UI scale 1 and
+// 4 (canvas 640x270, 480x202).
+constexpr std::array<RenderSize, 11> kUiTestSizes = {{
+    {320, 240},
+    {640, 360},
+    {640, 480},
+    {960, 540},
+    {1280, 720},
+    {320, 200},
+    {1920, 1080},
+    {400, 320},
+    {1350, 1080},
+    {640, 270},
+    {1920, 810},
+}};
+
+std::string SizeName(int width, int height) {
+    return std::to_string(width) + "x" + std::to_string(height);
+}
+
 // Checks that everything drawn since the last ResetDrawBounds() lies inside the framebuffer,
-// at least UiLayout::kMargin pixels from every edge, and that nothing was clipped.
+// at least UiLayout::kMargin UI pixels (times the UI scale) from every edge, and that nothing
+// was clipped.
 void AssertInsideMargin(const Framebuffer& framebuffer, const std::string& what) {
     const DrawBounds& b = framebuffer.GetDrawBounds();
-    const int m = UiLayout::kMargin;
+    const int m = UiLayout::kMargin * UiLayout::UiScale(framebuffer.Width(), framebuffer.Height());
     const bool ok = b.any && b.clippedRects == 0 && b.minX >= m && b.minY >= m &&
                     b.maxX <= framebuffer.Width() - 1 - m && b.maxY <= framebuffer.Height() - 1 - m;
     if (!ok) {
@@ -2798,38 +2821,41 @@ void AssertInsideMargin(const Framebuffer& framebuffer, const std::string& what)
     }
 }
 
-void TestUiLayoutBounds() {
-    const int width = 320;
-    const int height = 240;
-
-    // Every preview screen, rendered by the real engine (headless).
+// Every preview screen, rendered by the real engine (headless) at `size`.
+void CheckPreviewScreensInsideMargin(const RenderSize& size) {
     for (const PreviewScreen screen : kPreviewScreens) {
         Engine engine;
         EngineOptions options = ShippedEngineOptions();
         options.preview = screen;
+        options.renderSize = size;
         TEST_ASSERT(engine.Init(options));
-        TEST_ASSERT(engine.framebuffer_.Width() == width && engine.framebuffer_.Height() == height);
+        TEST_ASSERT(engine.framebuffer_.Width() == size.width && engine.framebuffer_.Height() == size.height);
         engine.Render();
-        AssertInsideMargin(engine.framebuffer_, PreviewScreenName(screen));
+        AssertInsideMargin(engine.framebuffer_,
+                           std::string(PreviewScreenName(screen)) + " at " + SizeName(size.width, size.height));
     }
 
     // Play with everything on: minimap, level banner, debug overlay, a long message. On the
     // shipped campaign's last level (the biggest map, so the minimap follows the player).
-    {
-        Engine engine;
-        TEST_ASSERT(engine.Init(ShippedEngineOptions(static_cast<int>(ShippedCampaign().levels.size()))));
-        engine.minimapVisible_ = true;
-        engine.debugOverlayVisible_ = true;
-        engine.levelBannerTimer_ = 2.0f;
-        engine.ShowMessage(std::string(120, 'W'), 5.0f);
-        engine.playerHealth_ = 10000;
-        engine.playerAmmo_ = 10000;
-        engine.Render();
-        AssertInsideMargin(engine.framebuffer_, "gameplay with minimap, banner, debug overlay and long message");
-    }
+    Engine engine;
+    EngineOptions options = ShippedEngineOptions(static_cast<int>(ShippedCampaign().levels.size()));
+    options.renderSize = size;
+    TEST_ASSERT(engine.Init(options));
+    engine.minimapVisible_ = true;
+    engine.debugOverlayVisible_ = true;
+    engine.levelBannerTimer_ = 2.0f;
+    engine.ShowMessage(std::string(120, 'W'), 5.0f);
+    engine.playerHealth_ = 10000;
+    engine.playerAmmo_ = 10000;
+    engine.Render();
+    AssertInsideMargin(engine.framebuffer_, "gameplay with minimap, banner, debug overlay and long message at " +
+                                                SizeName(size.width, size.height));
+}
 
-    // Direct UI calls with extreme content.
-    Framebuffer framebuffer(width, height);
+// Direct UI calls with extreme content at `size`.
+void CheckExtremeScreensInsideMargin(const RenderSize& size) {
+    const std::string at = " at " + SizeName(size.width, size.height);
+    Framebuffer framebuffer(size.width, size.height);
     const std::string longName(80, 'M');
     UiRenderer::LevelSelectView select{};
     select.campaignTitle = longName;
@@ -2840,7 +2866,7 @@ void TestUiLayoutBounds() {
         select.selected = selected;
         framebuffer.ResetDrawBounds();
         UiRenderer::DrawLevelSelectScreen(framebuffer, select);
-        AssertInsideMargin(framebuffer, "level select, 25 long names, selected " + std::to_string(selected));
+        AssertInsideMargin(framebuffer, "level select, 25 long names, selected " + std::to_string(selected) + at);
     }
     UiRenderer::MenuView menu{};
     menu.campaignTitle = longName;
@@ -2848,32 +2874,64 @@ void TestUiLayoutBounds() {
     menu.selected = 4;
     framebuffer.ResetDrawBounds();
     UiRenderer::DrawMenuScreen(framebuffer, menu);
-    AssertInsideMargin(framebuffer, "menu with a long item");
+    AssertInsideMargin(framebuffer, "menu with a long item" + at);
     UiRenderer::LevelCompleteView complete{};
     complete.levelNumber = 99;
     complete.levelName = longName;
     complete.results = LevelResults{9999, 9999, 9999, 9999, 99999.0};
     framebuffer.ResetDrawBounds();
     UiRenderer::DrawLevelCompleteScreen(framebuffer, complete);
-    AssertInsideMargin(framebuffer, "level complete with extreme values");
+    AssertInsideMargin(framebuffer, "level complete with extreme values" + at);
     framebuffer.ResetDrawBounds();
     UiRenderer::DrawGameOverScreen(framebuffer, UiRenderer::LevelLabel(99, longName));
     UiRenderer::DrawPauseOverlay(framebuffer, UiRenderer::LevelLabel(99, longName));
     UiRenderer::DrawCampaignCompleteScreen(framebuffer, longName, 99);
-    AssertInsideMargin(framebuffer, "game over, pause, campaign complete with a long name");
-    TEST_ASSERT(UiRenderer::TextWidth(UiRenderer::FitText(longName, 100, 1), 1) <= 100);
-    TEST_ASSERT(UiRenderer::FitText("SHORT", 100, 1) == "SHORT");
-    TEST_ASSERT(UiRenderer::FormatDuration(42.9) == "0:42" && UiRenderer::FormatDuration(3725.0) == "1:02:05");
+    AssertInsideMargin(framebuffer, "game over, pause, campaign complete with a long name" + at);
+}
 
-    // Minimap: a small map is scaled to fill the panel; a big one follows the player and is
-    // cut at the panel edge.
-    const UiRenderer::MinimapLayout small = UiRenderer::ComputeMinimapLayout(width, height, 8, 6, 2.0f, 2.0f);
-    TEST_ASSERT(!small.followsPlayer && small.cellSize == UiRenderer::kMinimapMaxCell);
-    TEST_ASSERT(small.panelSize == height / 3);
+// Minimap: a small map is scaled to fill the panel; a big one follows the player and is cut
+// at the panel edge. The layout is in framebuffer pixels: UI pixels times the UI scale.
+void CheckMinimapLayout(const RenderSize& size) {
+    const int width = size.width;
+    const int height = size.height;
+    const std::string at = " at " + SizeName(width, height);
+    const int scale = UiLayout::UiScale(width, height);
+    const int canvasWidth = width / scale;
+    const int canvasHeight = height / scale;
+    const int panelSize = std::max(UiRenderer::kMinimapMinPanel, std::min(canvasWidth, canvasHeight) / 3) * scale;
+    const UiRenderer::MinimapLayout small = UiRenderer::ComputeMinimapLayout(width, height, 6, 5, 2.0f, 2.0f);
+    TEST_ASSERT(!small.followsPlayer && small.cellSize == UiRenderer::kMinimapMaxCell * scale);
+    TEST_ASSERT(small.panelSize == panelSize);
     const UiRenderer::MinimapLayout level = UiRenderer::ComputeMinimapLayout(width, height, 16, 12, 2.0f, 2.0f);
-    TEST_ASSERT(!level.followsPlayer && level.cellSize * 16 <= level.panelSize - 4);
+    TEST_ASSERT(!level.followsPlayer && level.cellSize * 16 <= level.panelSize - 4 * scale);
+    // A 24x14 map (the size of shipped level 2) is still drawn whole on the 16:9 canvas.
+    const UiRenderer::MinimapLayout wide = UiRenderer::ComputeMinimapLayout(width, height, 24, 14, 2.0f, 2.0f);
+    TEST_ASSERT(!wide.followsPlayer && wide.cellSize * 24 <= wide.panelSize - 4 * scale);
+    // Every shipped level's minimap has the panel and cell size (in UI pixels) it has at
+    // 320x240: the same part of the map, whole or around the player, at every render size
+    // whose canvas is less than 270 UI pixels high or wide. A bigger canvas (5:4 and 64:27 at
+    // their largest UI scale) has a bigger panel: cells at least as big, and every map shown
+    // whole at 320x240 still shown whole.
+    const bool basePanel = panelSize == UiRenderer::kMinimapMinPanel * scale;
+    for (const CampaignLevel& campaignLevel : ShippedCampaign().levels) {
+        Map shipped{};
+        std::vector<std::string> errors;
+        TEST_ASSERT(LoadMapFromFile(ResolveRepoPath(campaignLevel.map), shipped, errors));
+        const UiRenderer::MinimapLayout base =
+            UiRenderer::ComputeMinimapLayout(320, 240, shipped.Width(), shipped.Height(), 2.0f, 2.0f);
+        const UiRenderer::MinimapLayout scaled =
+            UiRenderer::ComputeMinimapLayout(width, height, shipped.Width(), shipped.Height(), 2.0f, 2.0f);
+        const bool same = scaled.followsPlayer == base.followsPlayer && scaled.cellSize == base.cellSize * scale &&
+                          scaled.panelSize == base.panelSize * scale;
+        const bool bigger = scaled.panelSize > base.panelSize * scale && scaled.cellSize >= base.cellSize * scale &&
+                            (base.followsPlayer || !scaled.followsPlayer);
+        if (basePanel ? !same : !bigger) {
+            FailTest(__FILE__, __LINE__, "minimap of " + campaignLevel.id + at + " differs from 320x240");
+        }
+    }
     const UiRenderer::MinimapLayout big = UiRenderer::ComputeMinimapLayout(width, height, 200, 150, 100.0f, 75.0f);
-    TEST_ASSERT(big.followsPlayer && big.cellSize == UiRenderer::kMinimapMinCell);
+    TEST_ASSERT(big.followsPlayer && big.cellSize == UiRenderer::kMinimapMinCell * scale);
+    Framebuffer framebuffer(width, height);
     Map bigMap(200, 150);
     BuildBorderWalls(bigMap);
     bigMap.SetCell(101, 75, TileType::Exit);
@@ -2882,9 +2940,160 @@ void TestUiLayoutBounds() {
         player.position = position;
         framebuffer.ResetDrawBounds();
         const int right = UiRenderer::DrawMinimap(framebuffer, bigMap, player, {});
-        TEST_ASSERT(right == UiLayout::kMargin + height / 3);
-        AssertInsideMargin(framebuffer, "minimap of a 200x150 map");
+        TEST_ASSERT(right == big.panelX + panelSize);
+        AssertInsideMargin(framebuffer, "minimap of a 200x150 map" + at);
     }
+}
+
+// The level banner's title and name stay clear of the debug overlay (top right; it can cover
+// only the banner's top border and padding), with and without the minimap on the left, and
+// the banner ends at least 3 UI pixels above the crosshair.
+void CheckLevelBannerClear(const RenderSize& size) {
+    const int width = size.width;
+    const int height = size.height;
+    const int scale = UiLayout::UiScale(width, height);
+    Framebuffer overlay(width, height);
+    overlay.Clear(0u);
+    UiRenderer::DrawDebugOverlay(overlay, 999.9f, 123.45f, 123.45f, 359.9f, 123, 123);
+    Framebuffer crosshair(width, height);
+    crosshair.Clear(0u);
+    UiRenderer::DrawCrosshair(crosshair);
+    for (const bool minimap : {false, true}) {
+        UiRenderer::HudView hud{};
+        hud.health = 100;
+        hud.ammo = 100;
+        hud.levelNumber = 10;
+        hud.levelName = std::string(80, 'M');
+        if (minimap) {
+            const UiRenderer::MinimapLayout layout =
+                UiRenderer::ComputeMinimapLayout(width, height, 40, 40, 20.0f, 20.0f);
+            hud.reservedLeft = layout.panelX + layout.panelSize;
+        }
+        Framebuffer without(width, height);
+        Framebuffer with(width, height);
+        without.Clear(0u);
+        with.Clear(0u);
+        UiRenderer::DrawHud(without, hud);
+        hud.showLevelBanner = true;
+        UiRenderer::DrawHud(with, hud);
+        int bannerTop = height;
+        for (int y = 0; y < height && bannerTop == height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (PixelAt(with, x, y) != PixelAt(without, x, y)) {
+                    bannerTop = y;
+                    break;
+                }
+            }
+        }
+        TEST_ASSERT(bannerTop < height);
+        // The title starts 5 UI pixels below the top (4 in the compact banner of a short canvas).
+        const int titleTop = bannerTop + 4 * scale;
+        constexpr int kCrosshairGap = 3;
+        for (int y = bannerTop; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (PixelAt(with, x, y) == PixelAt(without, x, y)) {
+                    continue;
+                }
+                const bool underOverlay = y >= titleTop && PixelAt(overlay, x, y) != 0u;
+                bool nearCrosshair = false;
+                for (int d = 0; d <= kCrosshairGap * scale && y + d < height; ++d) {
+                    nearCrosshair = nearCrosshair || PixelAt(crosshair, x, y + d) != 0u;
+                }
+                if (underOverlay || nearCrosshair) {
+                    FailTest(__FILE__, __LINE__,
+                             std::string(underOverlay ? "the debug overlay covers"
+                                                      : "the crosshair is within 3 UI pixels of") +
+                                 " the level banner at (" + std::to_string(x) + "," + std::to_string(y) + ") at " +
+                                 SizeName(width, height) + (minimap ? " with the minimap" : ""));
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// The pause, level-complete and game-over panels end above the HUD bar they are drawn over.
+void CheckOverlaysAboveHud(const RenderSize& size) {
+    Framebuffer framebuffer(size.width, size.height);
+    UiRenderer::HudView hud{};
+    hud.health = 100;
+    hud.ammo = 100;
+    hud.levelNumber = 1;
+    UiRenderer::DrawHud(framebuffer, hud);
+    const int barTop = framebuffer.GetDrawBounds().minY;
+    const std::string at = " at " + SizeName(size.width, size.height);
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawPauseOverlay(framebuffer, "LEVEL 1: A");
+    TEST_ASSERT(framebuffer.GetDrawBounds().maxY < barTop);
+    framebuffer.ResetDrawBounds();
+    UiRenderer::LevelCompleteView complete{};
+    complete.levelNumber = 1;
+    complete.levelName = "A";
+    UiRenderer::DrawLevelCompleteScreen(framebuffer, complete);
+    if (framebuffer.GetDrawBounds().maxY >= barTop) {
+        FailTest(__FILE__, __LINE__, "the level-complete panel reaches the HUD bar" + at);
+    }
+    framebuffer.ResetDrawBounds();
+    UiRenderer::DrawGameOverScreen(framebuffer, "LEVEL 1: A");
+    TEST_ASSERT(framebuffer.GetDrawBounds().maxY < barTop);
+}
+
+// The UI at a whole multiple of 320x240 is the 320x240 UI with every pixel scaled up.
+void CheckUiScalesUp(int factor) {
+    constexpr int kWidth = 320;
+    constexpr int kHeight = 240;
+    UiRenderer::MenuView menu{};
+    menu.campaignTitle = "OPERATION NEO-WOLF";
+    menu.items = {"NEW GAME", "CONTINUE", "LEVEL SELECT", "QUIT"};
+    const auto draw = [&](Framebuffer& framebuffer) {
+        UiRenderer::DrawMenuScreen(framebuffer, menu);
+        UiRenderer::DrawCrosshair(framebuffer);
+        UiRenderer::HudView hud{};
+        hud.health = 20;
+        hud.ammo = 7;
+        hud.levelNumber = 3;
+        hud.keys.Add(KeyColor::Blue);
+        UiRenderer::DrawHud(framebuffer, hud);
+    };
+    Framebuffer small(kWidth, kHeight);
+    Framebuffer big(kWidth * factor, kHeight * factor);
+    TEST_ASSERT(UiLayout::UiScale(big.Width(), big.Height()) == factor);
+    draw(small);
+    draw(big);
+    for (int y = 0; y < big.Height(); ++y) {
+        for (int x = 0; x < big.Width(); ++x) {
+            if (PixelAt(big, x, y) != PixelAt(small, x / factor, y / factor)) {
+                FailTest(__FILE__, __LINE__,
+                         "pixel (" + std::to_string(x) + "," + std::to_string(y) + ") of the UI at " +
+                             SizeName(big.Width(), big.Height()) + " differs from the 320x240 UI scaled up");
+                return;
+            }
+        }
+    }
+}
+
+void TestUiLayoutBounds() {
+    // The UI scale (UiLayout::UiScale): a whole number, at least 1, leaving a canvas of at
+    // least 320x180 UI pixels.
+    TEST_ASSERT(UiLayout::UiScale(320, 240) == 1 && UiLayout::UiScale(320, 200) == 1);
+    TEST_ASSERT(UiLayout::UiScale(640, 360) == 2 && UiLayout::UiScale(640, 480) == 2);
+    TEST_ASSERT(UiLayout::UiScale(960, 540) == 3 && UiLayout::UiScale(1280, 720) == 4);
+    TEST_ASSERT(UiLayout::UiScale(1920, 1080) == 6 && UiLayout::UiScale(1920, 200) == 1);
+
+    for (const RenderSize& size : kUiTestSizes) {
+        CheckPreviewScreensInsideMargin(size);
+        CheckExtremeScreensInsideMargin(size);
+        CheckMinimapLayout(size);
+        CheckLevelBannerClear(size);
+        CheckOverlaysAboveHud(size);
+    }
+    CheckUiScalesUp(2);
+    CheckUiScalesUp(3);
+
+    const std::string longName(80, 'M');
+    TEST_ASSERT(UiRenderer::TextWidth(UiRenderer::FitText(longName, 100, 1), 1) <= 100);
+    TEST_ASSERT(UiRenderer::FitText("SHORT", 100, 1) == "SHORT");
+    TEST_ASSERT(UiRenderer::FormatDuration(42.9) == "0:42" && UiRenderer::FormatDuration(3725.0) == "1:02:05");
 }
 
 // --- Scripted play-through ------------------------------------------------------------------
@@ -3627,7 +3836,7 @@ void TestCorpseAndHitFlash() {
         Framebuffer framebuffer(64, 48);
         framebuffer.Clear(0xFF000000u);
         const std::vector<SpriteEntity> one{SpriteEntity{{4.5f, 2.5f}, 0, -1, SpriteType::Enemy, true, true, flash}};
-        SpriteRenderer::Render(map, player, framebuffer, std::vector<float>(64, 100.0f), one, set, kFieldOfViewRadians);
+        SpriteRenderer::Render(map, player, framebuffer, std::vector<float>(64, 100.0f), one, set);
         return PixelAt(framebuffer, 32, 24);
     };
     const std::uint32_t normal = centrePixel(false);
@@ -3789,13 +3998,17 @@ void TestHudKeyIconsLayout() {
                 engine.keys_.Has(KeyColor::Gold));
     engine.Render();
     AssertInsideMargin(engine.framebuffer_, "items preview");
-    const UiRenderer::UiRect gold = UiRenderer::KeyCardRect(width, height, KeyColor::Gold);
-    TEST_ASSERT(PixelAt(engine.framebuffer_, gold.x + 1, gold.y + 1) == UiRenderer::KeyCardColor(KeyColor::Gold));
+    // Inside the card's border, which is one UI pixel (UI scale framebuffer pixels) wide.
+    const int scale = UiLayout::UiScale(engine.framebuffer_.Width(), engine.framebuffer_.Height());
+    const UiRenderer::UiRect gold =
+        UiRenderer::KeyCardRect(engine.framebuffer_.Width(), engine.framebuffer_.Height(), KeyColor::Gold);
+    TEST_ASSERT(PixelAt(engine.framebuffer_, gold.x + scale, gold.y + scale) ==
+                UiRenderer::KeyCardColor(KeyColor::Gold));
 }
 
 void TestAiStress20Enemies() {
     // Performance sanity check: 20 enemies chasing in a 48x48 map with pillars, 600 frames of
-    // Engine::Update + Engine::Render (headless, the real 320x240 renderer).
+    // Engine::Update + Engine::Render (headless, the real renderer at the default render size).
     const ScratchDir scratch("ai-stress");
     const std::filesystem::path root = scratch.Path() / "content";
     std::string mapText;
@@ -4162,7 +4375,7 @@ void TestSpriteVerticalCrop() {
         SpriteEntity sprite{};
         sprite.position = {2.0f + distance, 4.0f};
         sprite.textureId = static_cast<int>(SpriteTextureId::Decoration);
-        SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures, kFieldOfViewRadians);
+        SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures);
     };
     const int centreX = kWidth / 2;
     // 960 pixels tall: the screen shows texture rows 0.37..0.62, i.e. green at the top and blue
@@ -4425,6 +4638,224 @@ void TestLightZones() {
     TEST_ASSERT(fromDarkSide < 60);
 }
 
+void TestRenderSizeOption() {
+    // --render-size WxH: valid sizes, both separators, the inline form.
+    struct ValidCase {
+        const char* text = nullptr;
+        RenderSize size;
+    };
+    for (const ValidCase& valid :
+         {ValidCase{"640x360", {640, 360}}, ValidCase{"320x240", {320, 240}}, ValidCase{"320x200", {320, 200}},
+          ValidCase{"1920X1080", {1920, 1080}}, ValidCase{"1280x720", {1280, 720}},
+          ValidCase{"1280x1024", {1280, 1024}}, ValidCase{"1920x810", {1920, 810}}}) {
+        const CommandLineResult r = ParseCommandLine({"--render-size", valid.text});
+        TEST_ASSERT(r.action == CommandLineAction::Run);
+        TEST_ASSERT(r.options.renderSize.width == valid.size.width && r.options.renderSize.height == valid.size.height);
+    }
+    const CommandLineResult inlineForm = ParseCommandLine({"--render-size=960x540", "--frames", "3"});
+    TEST_ASSERT(inlineForm.action == CommandLineAction::Run && inlineForm.options.renderSize.width == 960 &&
+                inlineForm.options.renderSize.height == 540 && inlineForm.options.frames == 3);
+
+    // Invalid: missing or malformed, odd, outside the limits, narrower than 5:4 or wider than
+    // 64:27 (1920x808). The message names the option and the limits.
+    for (const char* text : {"",          "640",     "640x",      "x360",    "640x360x2",       "-640x360",
+                             "640 x 360", "640*360", "axb",       "641x360", "640x361",         "318x240",
+                             "1922x1080", "640x198", "1920x1082", "0x0",     "99999999999x360", "1920x200",
+                             "320x1080",  "640x514", "1920x808"}) {
+        const CommandLineResult bad = ParseCommandLine({"--render-size", text});
+        TEST_ASSERT(bad.action == CommandLineAction::Error);
+        if (bad.error.find("--render-size") == std::string::npos || bad.error.find("1920") == std::string::npos ||
+            bad.error.find("640x360") == std::string::npos) {
+            FailTest(__FILE__, __LINE__, std::string("--render-size ") + text + ": unclear error: " + bad.error);
+        }
+    }
+    TEST_ASSERT(ParseCommandLine({"--render-size"}).action == CommandLineAction::Error);
+
+    TEST_ASSERT(IsValidRenderSize(kDefaultRenderSize));
+    TEST_ASSERT(kDefaultRenderSize.width == 640 && kDefaultRenderSize.height == 360);
+
+    // The engine renders at the size it is given, and refuses an invalid one (C API, tests).
+    Engine engine;
+    EngineOptions options = ShippedEngineOptions(1);
+    options.renderSize = {960, 540};
+    TEST_ASSERT(engine.Init(options));
+    TEST_ASSERT(engine.framebuffer_.Width() == 960 && engine.framebuffer_.Height() == 540);
+    engine.Update(kFrameSeconds);
+    engine.Render();
+    TEST_ASSERT(engine.latestWallDepthBuffer_.size() == 960);
+    engine.Shutdown();
+    Engine invalid;
+    EngineOptions invalidOptions = ShippedEngineOptions(1);
+    invalidOptions.renderSize = {641, 360};
+    TEST_ASSERT(!invalid.Init(invalidOptions));
+    invalid.Shutdown();
+
+    // The initial window: the largest whole multiple of the render size within 1280x960, at
+    // least 1x.
+    const auto windowIs = [](const RenderSize& render, int width, int height) {
+        const RenderSize window = InitialWindowSize(render);
+        return window.width == width && window.height == height;
+    };
+    TEST_ASSERT(windowIs({640, 360}, 1280, 720) && windowIs({320, 240}, 1280, 960));
+    TEST_ASSERT(windowIs({640, 480}, 1280, 960) && windowIs({320, 200}, 1280, 800));
+    TEST_ASSERT(windowIs({960, 540}, 960, 540) && windowIs({1920, 1080}, 1920, 1080));
+    TEST_ASSERT(windowIs({1920, 810}, 1920, 810));
+
+    // PlatformSDL::FitWindow: the window fits within 90% of the desktop with its shape, never
+    // below the framebuffer unless the framebuffer does not fit, and the minimum size follows.
+    const auto fit = [](const RenderSize& render, int usableWidth, int usableHeight) {
+        PlatformConfig config{};
+        const RenderSize window = InitialWindowSize(render);
+        config.windowWidth = window.width;
+        config.windowHeight = window.height;
+        config.logicalWidth = render.width;
+        config.logicalHeight = render.height;
+        return PlatformSDL::FitWindow(config, usableWidth, usableHeight);
+    };
+    const auto fitIs = [](const WindowFit& f, int width, int height, int minWidth, int minHeight) {
+        return f.width == width && f.height == height && f.minWidth == minWidth && f.minHeight == minHeight;
+    };
+    TEST_ASSERT(fitIs(fit({640, 360}, 2560, 1440), 1280, 720, 640, 360));     // room enough
+    TEST_ASSERT(fitIs(fit({640, 360}, 0, 0), 1280, 720, 640, 360));           // desktop unknown
+    TEST_ASSERT(fitIs(fit({640, 360}, 1280, 800), 1152, 648, 640, 360));      // shrunk with its shape
+    TEST_ASSERT(fitIs(fit({320, 240}, 1366, 768), 921, 691, 320, 240));       // 4:3 on a short laptop
+    TEST_ASSERT(fitIs(fit({1920, 1080}, 1920, 1080), 1728, 972, 1728, 972));  // bigger than the desktop
+    TEST_ASSERT(fitIs(fit({1280, 720}, 1280, 720), 1152, 648, 1152, 648));    // framebuffer does not fit
+    TEST_ASSERT(fitIs(fit({640, 360}, 800, 600), 720, 405, 640, 360));        // between 1x and 2x
+}
+
+void TestProjectionSquarePixels() {
+    // The projection keeps the vertical field of view and makes pixels square at every render
+    // size ("Hor+", RenderMath.h): a wall one unit high at distance d is screenHeight / d pixels
+    // high, a wall face one unit wide as many pixels wide, and a sprite or particle at the same
+    // distance matches the wall. The player looks +x along y = 2.5 at a one-unit exit face
+    // (cell (5, 2), face x = 5, distance 2.5) between plain walls.
+    Map map(7, 5);
+    BuildBorderWalls(map);
+    map.SetCell(5, 1, TileType::Wall);
+    map.SetCell(5, 2, TileType::Exit);
+    map.SetCell(5, 3, TileType::Wall);
+    Texture white(4, 4);
+    Texture red(4, 4);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            white.SetPixel(x, y, Framebuffer::PackRGBA(255, 255, 255));
+            red.SetPixel(x, y, Framebuffer::PackRGBA(255, 0, 0));
+        }
+    }
+    RaycasterRenderParams params{};  // no floor, ceiling or missing texture: only walls are drawn
+    params.wallTexture = &white;
+    params.exitTexture = &white;
+    Player player{};
+    player.position = {2.5f, 2.5f};
+    player.directionAngleRadians = 0.0f;
+    constexpr float kDistance = 2.5f;
+    constexpr std::uint32_t kBlack = 0xFF000000u;
+
+    for (const RenderSize& size : {RenderSize{320, 240}, RenderSize{640, 360}, RenderSize{640, 480}}) {
+        const std::string at = " at " + std::to_string(size.width) + "x" + std::to_string(size.height);
+        const int expected = static_cast<int>(std::lround(static_cast<float>(size.height) / kDistance));
+        const int centreX = size.width / 2;
+        const int centreY = size.height / 2;
+        Framebuffer framebuffer(size.width, size.height);
+        framebuffer.Clear(kBlack);
+        std::vector<RaycastHit> hits;
+        Raycaster::RenderWalls(map, player, framebuffer, params, hits);
+
+        // Same vertical field of view: the wall is 1 / 2.5 of the screen height.
+        int wallRows = 0;
+        for (int y = 0; y < size.height; ++y) {
+            wallRows += PixelAt(framebuffer, centreX, y) != kBlack ? 1 : 0;
+        }
+        // Square pixels: the one-unit exit face is as wide as the wall is high.
+        int exitColumns = 0;
+        for (const RaycastHit& hit : hits) {
+            exitColumns += hit.hit && hit.tileType == TileType::Exit ? 1 : 0;
+        }
+        if (wallRows != expected || std::abs(exitColumns - expected) > 2) {
+            FailTest(__FILE__, __LINE__,
+                     "wall " + std::to_string(exitColumns) + " x " + std::to_string(wallRows) + " pixels, expected " +
+                         std::to_string(expected) + " x " + std::to_string(expected) + at);
+        }
+
+        // The horizontal field of view across the whole face: the ray through column x meets the
+        // face x = 5 at a sideways offset of (x - width / 2) / height * distance, so a column is
+        // as wide as a row is high at every column, not only the centre.
+        for (int x = 0; x < size.width; ++x) {
+            const float sideways = static_cast<float>(x - centreX) / static_cast<float>(size.height) * kDistance;
+            if (std::abs(sideways) > 1.4f) {
+                continue;  // past the cells (5, 1)-(5, 3) the ray meets the border walls
+            }
+            const RaycastHit& hit = hits[static_cast<std::size_t>(x)];
+            if (!hit.hit || std::abs(hit.hitPosition.x - 5.0f) > 1e-3f ||
+                std::abs(hit.hitPosition.y - (2.5f + sideways)) > 1e-3f) {
+                FailTest(__FILE__, __LINE__,
+                         "column " + std::to_string(x) + " meets the wall at y " + std::to_string(hit.hitPosition.y) +
+                             ", expected " + std::to_string(2.5f + sideways) + at);
+                break;
+            }
+        }
+
+        // A sprite at the same distance is a square of the same size.
+        SpriteTextureSet textures{};
+        textures.slots.fill(&red);
+        textures.missing = &red;
+        const std::vector<float> farDepth(static_cast<std::size_t>(size.width), 100.0f);
+        framebuffer.Clear(kBlack);
+        SpriteEntity sprite{};
+        sprite.position = {2.5f + kDistance, 2.5f};
+        SpriteRenderer::Render(map, player, framebuffer, farDepth, {sprite}, textures);
+        int spriteColumns = 0;
+        for (int x = 0; x < size.width; ++x) {
+            spriteColumns += PixelAt(framebuffer, x, centreY) != kBlack ? 1 : 0;
+        }
+        int spriteRows = 0;
+        for (int y = 0; y < size.height; ++y) {
+            spriteRows += PixelAt(framebuffer, centreX, y) != kBlack ? 1 : 0;
+        }
+        TEST_ASSERT(std::abs(spriteColumns - exitColumns) <= 2 && std::abs(spriteRows - wallRows) <= 2);
+
+        // A sprite off to the side (0.8 units at the same distance, still whole on screen) is
+        // centred on the column whose ray meets the wall 0.8 units to the side.
+        constexpr float kSideways = 0.8f;
+        framebuffer.Clear(kBlack);
+        SpriteEntity sideSprite{};
+        sideSprite.position = {2.5f + kDistance, 2.5f + kSideways};
+        SpriteRenderer::Render(map, player, framebuffer, farDepth, {sideSprite}, textures);
+        int sideLeft = size.width;
+        int sideRight = -1;
+        for (int x = 0; x < size.width; ++x) {
+            if (PixelAt(framebuffer, x, centreY) != kBlack) {
+                sideLeft = std::min(sideLeft, x);
+                sideRight = std::max(sideRight, x);
+            }
+        }
+        const int sideCentre = (sideLeft + sideRight + 1) / 2;
+        const RaycastHit& sideHit = hits[static_cast<std::size_t>(std::clamp(sideCentre, 0, size.width - 1))];
+        if (sideRight < 0 ||
+            std::abs(sideHit.hitPosition.y - (2.5f + kSideways)) > 1.5f * kDistance / static_cast<float>(size.height) ||
+            std::abs((sideRight - sideLeft + 1) - spriteColumns) > 2) {
+            FailTest(__FILE__, __LINE__,
+                     "side sprite at columns " + std::to_string(sideLeft) + "-" + std::to_string(sideRight) +
+                         ", the wall there is at y " + std::to_string(sideHit.hitPosition.y) + at);
+        }
+
+        // A particle of 0.2 world units is a square of 0.2 * screenHeight / distance pixels.
+        Particle particle{};
+        particle.position = sprite.position;
+        particle.size = 0.2f;
+        particle.lifetimeRemaining = 1.0f;
+        particle.lifetimeTotal = 1.0f;
+        particle.active = true;
+        framebuffer.ResetDrawBounds();
+        ParticleRenderer::Render(map, player, framebuffer, farDepth, {particle});
+        const DrawBounds& bounds = framebuffer.GetDrawBounds();
+        const int particleSize = static_cast<int>(0.2f * static_cast<float>(size.height) / kDistance);
+        TEST_ASSERT(bounds.any && bounds.maxX - bounds.minX + 1 == particleSize &&
+                    bounds.maxY - bounds.minY + 1 == particleSize);
+    }
+}
+
 struct TestCase {
     const char* id;    // used on the command line and as the CTest name (native.<id>)
     const char* name;  // human-readable description
@@ -4484,7 +4915,7 @@ const std::vector<TestCase>& AllTests() {
         {"progress_file_roundtrip", "progress.json round trip, atomic save, corrupt files", &TestProgressFileRoundTrip},
         {"pref_dir_resolution", "Per-user folder: --pref-dir, NEOWOLF_PREF_DIR, SDL default", &TestPrefDirResolution},
         {"theme_loading_and_swap", "Texture themes load and swap in place", &TestThemeLoadingAndSwap},
-        {"ui_layout_bounds", "Every screen stays inside the 320x240 framebuffer", &TestUiLayoutBounds},
+        {"ui_layout_bounds", "Every screen stays inside the margins at every tested render size", &TestUiLayoutBounds},
         {"campaign_playthrough", "Scripted play-through of every campaign level -> CampaignComplete",
          &TestCampaignPlaythrough},
         {"line_of_sight", "Line of sight: walls and closed doors block, open doors do not", &TestLineOfSight},
@@ -4515,6 +4946,9 @@ const std::vector<TestCase>& AllTests() {
          &TestContentParityFixtures},
         {"light_zones", "Entity-file light zones: order, range, bounds, default 1.0, wall faces (C21)",
          &TestLightZones},
+        {"render_size_option", "--render-size option and engine render size", &TestRenderSizeOption},
+        {"projection_square_pixels", "Projection keeps the vertical FOV and square pixels",
+         &TestProjectionSquarePixels},
     };
     return tests;
 }

@@ -14,16 +14,34 @@
 #include "engine/core/Vec2.h"
 #include "engine/world/Map.h"
 
+// The projection ("Hor+"). The vertical field of view is fixed: at distance 1 the view spans
+// kViewHalfHeight world units above and below the horizon, so a wall one unit high fills the
+// screen height (tan(vertical fov / 2) = 0.5, about 53.1 degrees, unchanged since 1.0.0).
+// Pixels are square, so the horizontal field of view follows from the framebuffer's shape: a
+// wider framebuffer shows more at the sides, never less above and below (about 67.4 degrees
+// at 4:3, 83.3 degrees at 16:9). Up to 1.0.0 the horizontal field of view was a fixed 60
+// degrees, which stretched the 320x240 image 1.15 times horizontally.
+inline constexpr float kViewHalfHeight = 0.5f;
+// The eye is half a wall high: the horizon is the middle row.
+inline constexpr float kEyeHeight = 0.5f;
+
+// Pixels per world unit at distance 1, across and up the screen alike: the screen height.
+inline float FocalLengthPixels(int screenHeight) {
+    return 0.5f * static_cast<float>(screenHeight) / kViewHalfHeight;
+}
+
 // The player's view as the renderers use it: the unit forward direction and the camera plane,
-// perpendicular to it, whose length tan(fov / 2) spans half the screen width at distance 1.
+// perpendicular to it, whose length spans half the screen width at distance 1
+// (kViewHalfHeight times the framebuffer's width / height).
 struct CameraBasis {
     Vec2 forward{};
     Vec2 plane{};
 };
 
-inline CameraBasis MakeCameraBasis(float directionAngleRadians, float fieldOfViewRadians) {
+inline CameraBasis MakeCameraBasis(float directionAngleRadians, int screenWidth, int screenHeight) {
     const Vec2 forward{std::cos(directionAngleRadians), std::sin(directionAngleRadians)};
-    const float planeScale = std::tan(fieldOfViewRadians * 0.5f);
+    const float planeScale =
+        screenHeight > 0 ? kViewHalfHeight * static_cast<float>(screenWidth) / static_cast<float>(screenHeight) : 0.0f;
     return {forward, {-forward.y * planeScale, forward.x * planeScale}};
 }
 
@@ -43,7 +61,7 @@ struct BillboardProjection {
     float invDet = 0.0f;
 };
 
-// Empty when the camera matrix cannot be inverted (a field of view of about 0).
+// Empty when the camera matrix cannot be inverted (a framebuffer of about 0 width).
 inline std::optional<BillboardProjection> MakeBillboardProjection(const Vec2& eye, const CameraBasis& camera) {
     constexpr float kMinDeterminant = 1e-6f;
     const float det = (camera.plane.x * camera.forward.y) - (camera.forward.x * camera.plane.y);

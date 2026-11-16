@@ -203,7 +203,8 @@ images:
 | `key_red`, `key_blue`, `key_gold` | `sprites/<slot>.ppm` | a key card in its colour with its initial (R, B, G), floating over a shadow |
 | `decoration` | `sprites/decoration.ppm` | a blue-and-white porcelain floor vase, 26 rows tall (the level landmark, [levels/README.md](levels/README.md) rule 13) |
 
-The enemies are told apart at 320×240 by **silhouette** (size and outline) as well as colour,
+The enemies are told apart at 320×240 (and so at every larger render size, such as the default
+640×360) by **silhouette** (size and outline) as well as colour,
 and every figure has a dark 1-pixel outline so it stands out against any wall. The key cards
 carry their initial, so they do not depend on colour alone. Reference screenshots:
 [GAMEPLAY.md](GAMEPLAY.md#enemies).

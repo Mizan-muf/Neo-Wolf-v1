@@ -118,6 +118,7 @@ Command-line options (`./build/macos/neo_wolf --help` lists them):
 | `--preview <screen>` / `--screenshot <file.bmp>` | Developer tools: show one screen with sample data / save the last frame as a BMP on exit ([TESTING.md](TESTING.md#screen-previews)). |
 | `--frames <N>` | Run N frames, then exit with code 0. For automated smoke tests; error dialogs are suppressed. |
 | `--windowed` / `--fullscreen` | Start in a window (default) or in desktop fullscreen. |
+| `--render-size <W>x<H>` | Draw the game at W×H pixels (default `640x360`), scaled to the window with black bars. W even from 320 to 1920, H even from 200 to 1080, W:H from 5:4 to 64:27 (2560×1080, sold as 21:9); anything else is a usage error (exit code 2). The window starts at the largest whole multiple of this size that fits in 1280×960 (1280×720 for 640×360), shrunk with the same shape on a smaller desktop. The UI scales with it ([ARCHITECTURE.md](ARCHITECTURE.md#ui-scale)); gameplay does not change. |
 | `--version` / `--help` | Print the version or the usage and exit. |
 
 Exit codes: `0` normal exit, `1` startup failed (for example content not found), `2` bad command line.

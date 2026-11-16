@@ -19,6 +19,7 @@
 #include "engine/core/GameState.h"
 #include "engine/core/InputState.h"
 #include "engine/core/PreviewScreen.h"
+#include "engine/core/RenderSize.h"
 #include "engine/core/TimeState.h"
 #include "engine/interop/CommandBridge.h"
 #include "engine/particles/Particle.h"
@@ -49,6 +50,9 @@ struct EngineOptions {
     // Empty = progress is neither loaded nor saved (C API, tests).
     std::filesystem::path prefDir;
     PreviewScreen preview = PreviewScreen::None;  // --preview: a still screen with sample data
+    // --render-size: the framebuffer size (IsValidRenderSize, else Init fails). Only drawing
+    // depends on it, never the simulation.
+    RenderSize renderSize = kDefaultRenderSize;
     bool fullscreen = false;
     // Show a message box for fatal startup errors. Off for automated runs (--frames).
     bool errorDialogs = true;
@@ -74,8 +78,9 @@ public:
     Engine& operator=(Engine&&) = delete;
 
     // Returns false (after logging and, if enabled, showing an error box) when the game
-    // cannot start: no content root, an invalid gameplay.json or campaign.json, a --level
-    // outside the campaign, no window/renderer, or the first level fails to load.
+    // cannot start: an invalid render size, no content root, an invalid gameplay.json or
+    // campaign.json, a --level outside the campaign, no window/renderer, or the first level
+    // fails to load.
     bool Init(const EngineOptions& options = EngineOptions{});
     void Update(double deltaSeconds);
     void Render();

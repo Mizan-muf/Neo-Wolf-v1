@@ -126,7 +126,7 @@ a Windows PC yet. It looks for
 folders above it (so `build\windows-msvc\Release\neo_wolf.exe` finds the repository's `game\`),
 else in the working directory and its parent. If no content is found it shows an error box and
 exits with code 1. The options (`--data`, `--pref-dir`, `--level`, `--frames`, `--windowed`, `--fullscreen`,
-`--preview`, `--screenshot`, `--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
+`--render-size`, `--preview`, `--screenshot`, `--version`, `--help`) are described in [BUILD_MACOS.md](BUILD_MACOS.md#running-the-game). Paths
 with non-ASCII characters should work (the command line is read as UTF-16 and converted;
 content-root resolution with a non-ASCII path is unit-tested), but this has not been tried on
 Windows yet (KNOWN_ISSUES B14).

@@ -48,25 +48,37 @@ std::string SdlError() {
     return SDL_GetError();
 }
 
-struct WindowSize {
-    int width = 0;
-    int height = 0;
-};
-
-// The configured window size, shrunk (keeping its shape) to fit the usable desktop area of
-// small or scaled displays, but never smaller than the framebuffer.
-WindowSize FitWindowToDesktop(const PlatformConfig& config) {
-    WindowSize size{config.windowWidth, config.windowHeight};
+// The window for `config` on the primary display's usable desktop area (small or scaled
+// displays); without that area, the configured size.
+WindowFit FitWindowToDesktop(const PlatformConfig& config) {
     SDL_Rect usable{};
-    if (SDL_GetDisplayUsableBounds(kPrimaryDisplay, &usable) == 0 && usable.w > 0 && usable.h > 0) {
-        const double scale = std::min({1.0, kMaxDesktopFraction * usable.w / static_cast<double>(size.width),
-                                       kMaxDesktopFraction * usable.h / static_cast<double>(size.height)});
-        size.width = std::max(config.logicalWidth, static_cast<int>(size.width * scale));
-        size.height = std::max(config.logicalHeight, static_cast<int>(size.height * scale));
+    if (SDL_GetDisplayUsableBounds(kPrimaryDisplay, &usable) != 0) {
+        usable = SDL_Rect{};
     }
-    return size;
+    return PlatformSDL::FitWindow(config, usable.w, usable.h);
 }
 }  // namespace
+
+WindowFit PlatformSDL::FitWindow(const PlatformConfig& config, int usableWidth, int usableHeight) {
+    WindowFit fit{config.windowWidth, config.windowHeight, 0, 0};
+    if (usableWidth > 0 && usableHeight > 0) {
+        const double maxWidth = kMaxDesktopFraction * usableWidth;
+        const double maxHeight = kMaxDesktopFraction * usableHeight;
+        const auto shrink = [&](int width, int height) {
+            const double scale = std::min({1.0, maxWidth / width, maxHeight / height});
+            fit.width = std::max(1, static_cast<int>(width * scale));
+            fit.height = std::max(1, static_cast<int>(height * scale));
+        };
+        shrink(config.windowWidth, config.windowHeight);
+        if (fit.width < config.logicalWidth || fit.height < config.logicalHeight) {
+            shrink(config.logicalWidth, config.logicalHeight);
+        }
+    }
+    // Never smaller than the framebuffer, unless the framebuffer is bigger than the desktop.
+    fit.minWidth = std::min(config.logicalWidth, fit.width);
+    fit.minHeight = std::min(config.logicalHeight, fit.height);
+    return fit;
+}
 
 void PlatformSDL::WindowDeleter::operator()(SDL_Window* window) const {
     SDL_DestroyWindow(window);
@@ -202,7 +214,7 @@ bool PlatformSDL::Init(const PlatformConfig& config) {
 }
 
 bool PlatformSDL::OpenWindow(const PlatformConfig& config) {
-    const WindowSize size = FitWindowToDesktop(config);
+    const WindowFit size = FitWindowToDesktop(config);
     Uint32 windowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
     if (config.fullscreen) {
         windowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -214,7 +226,7 @@ bool PlatformSDL::OpenWindow(const PlatformConfig& config) {
         return false;
     }
     hasFocus_ = (SDL_GetWindowFlags(window_.get()) & SDL_WINDOW_INPUT_FOCUS) != 0;
-    SDL_SetWindowMinimumSize(window_.get(), config.logicalWidth, config.logicalHeight);
+    SDL_SetWindowMinimumSize(window_.get(), size.minWidth, size.minHeight);
     return true;
 }
 
@@ -245,7 +257,7 @@ bool PlatformSDL::CreateRenderer() {
                 ", output " + std::to_string(outputWidth) + "x" + std::to_string(outputHeight) + " pixels");
     }
 
-    // Letterboxed, aspect-correct scaling of the 320x240 framebuffer at any window size.
+    // Letterboxed, aspect-correct scaling of the framebuffer (the render size) at any window size.
     if (SDL_RenderSetLogicalSize(renderer_.get(), logicalWidth_, logicalHeight_) != 0) {
         LogWarning("SDL_RenderSetLogicalSize failed: " + SdlError());
     }

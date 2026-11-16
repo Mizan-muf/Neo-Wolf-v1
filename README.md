@@ -4,7 +4,7 @@
 
 A first-person shooter in the style of early-1990s raycasting games, with a 10-level
 campaign. The engine is written in C++17 on SDL2 and draws every frame in software into a
-320×240 image. Levels, enemies and gameplay values are plain files you can edit without
+640×360 image by default (`--render-size` sets another size). Levels, enemies and gameplay values are plain files you can edit without
 recompiling. It builds on macOS and Windows (Linux best effort), and a headless bot proves in CI
 that every level can be finished.
 

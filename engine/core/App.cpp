@@ -80,6 +80,7 @@ EngineOptions MakeEngineOptions(const CommandLineOptions& options, const PrefDir
     engineOptions.startLevel = options.level;
     engineOptions.prefDir = prefDir.directory;
     engineOptions.preview = options.preview;
+    engineOptions.renderSize = options.renderSize;
     engineOptions.fullscreen = options.windowMode == WindowModeOption::Fullscreen;
     engineOptions.errorDialogs = options.frames == 0;  // never block an automated run on a dialog
     return engineOptions;

@@ -28,8 +28,9 @@ struct RaycastHit {
     RayHitSide side = RayHitSide::Vertical;
 };
 
+// The textures RenderWalls draws with. The projection (field of view) comes from the
+// framebuffer's size (RenderMath.h).
 struct RaycasterRenderParams {
-    float fieldOfViewRadians = 1.04719755f;  // 60 degrees
     const Texture* wallTexture = nullptr;
     const Texture* wallAltATexture = nullptr;
     const Texture* wallAltBTexture = nullptr;

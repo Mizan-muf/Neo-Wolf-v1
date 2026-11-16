@@ -13,10 +13,6 @@
 #include "engine/platform/PlatformSDL.h"
 
 namespace {
-constexpr int kWindowWidth = 1024;
-constexpr int kWindowHeight = 768;
-constexpr int kRenderWidth = 320;
-constexpr int kRenderHeight = 240;
 constexpr const char* kErrorTitle = "Neo-Wolf cannot start";
 constexpr std::size_t kShownErrors = 3;  // errors listed in the start-up dialog; the log has all of them
 
@@ -59,6 +55,10 @@ std::string DescribeMissingContent(const std::vector<ContentRootCandidate>& cand
     return message;
 }
 
+std::string DescribeRenderSize(const RenderSize& size) {
+    return std::to_string(size.width) + "x" + std::to_string(size.height);
+}
+
 // Logs every message collected by a loader (they are otherwise silently dropped).
 void LogLoadErrors(std::vector<std::string>& errors) {
     for (const std::string& error : errors) {
@@ -71,6 +71,13 @@ void LogLoadErrors(std::vector<std::string>& errors) {
 bool Engine::Init(const EngineOptions& options) {
     LogInfo("Initializing Neo-Wolf Engine...");
 
+    // The command line validates --render-size; this also covers the C API and tests.
+    if (!IsValidRenderSize(options.renderSize)) {
+        ReportFatal("Invalid render size " + DescribeRenderSize(options.renderSize) + ": it needs " +
+                        DescribeRenderSizeLimits() + ".",
+                    options.errorDialogs);
+        return false;
+    }
     if (!InitContentRoot(options) || !InitDefinitions(options)) {
         return false;
     }
@@ -82,10 +89,11 @@ bool Engine::Init(const EngineOptions& options) {
     if (!InitWindow(options)) {
         return false;
     }
-    if (!framebuffer_.Resize(kRenderWidth, kRenderHeight)) {
+    if (!framebuffer_.Resize(options.renderSize.width, options.renderSize.height)) {
         ReportFatal("Failed to allocate the framebuffer.", options.errorDialogs);
         return false;
     }
+    LogInfo("Render size: " + DescribeRenderSize(options.renderSize) + ".");
 
     // Audio is optional.
     if (options.headless) {
@@ -159,10 +167,12 @@ bool Engine::InitWindow(const EngineOptions& options) {
     auto platform = std::make_unique<PlatformSDL>();
     PlatformConfig platformConfig{};
     platformConfig.title = "Neo-Wolf";
-    platformConfig.windowWidth = kWindowWidth;
-    platformConfig.windowHeight = kWindowHeight;
-    platformConfig.logicalWidth = kRenderWidth;
-    platformConfig.logicalHeight = kRenderHeight;
+    const RenderSize& size = options.renderSize;
+    const RenderSize window = InitialWindowSize(size);
+    platformConfig.windowWidth = window.width;
+    platformConfig.windowHeight = window.height;
+    platformConfig.logicalWidth = size.width;
+    platformConfig.logicalHeight = size.height;
     platformConfig.fullscreen = options.fullscreen;
     if (!platform->Init(platformConfig)) {
         ReportFatal("Could not open the game window (see the log for the SDL error).", options.errorDialogs);

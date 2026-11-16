@@ -1,7 +1,9 @@
 #pragma once
 
 // Billboard sprites (enemies, corpses, pickups, keys, decorations): sorted far to near and
-// clipped per column against the wall depth buffer; magenta pixels are transparent.
+// clipped per column against the wall depth buffer; magenta pixels are transparent. A sprite
+// is a square one world unit across, projected like the walls (RenderMath.h), so it keeps its
+// size relative to them at every framebuffer size.
 
 #include <array>
 #include <cstddef>
@@ -32,5 +34,5 @@ public:
 
     static void Render(const Map& map, const Player& player, Framebuffer& framebuffer,
                        const std::vector<float>& wallDepthBuffer, const std::vector<SpriteEntity>& sprites,
-                       const SpriteTextureSet& textures, float fieldOfViewRadians);
+                       const SpriteTextureSet& textures);
 };

@@ -315,6 +315,8 @@ if(NEOWOLF_BUILD_TESTS)
         sprite_vertical_crop
         content_parity_fixtures
         light_zones
+        render_size_option
+        projection_square_pixels
     )
     foreach(test_name IN LISTS NEOWOLF_NATIVE_TESTS)
         add_test(NAME native.${test_name}
@@ -373,15 +375,26 @@ if(NEOWOLF_BUILD_TESTS)
         "NEOWOLF_PREF_DIR=unset:")
     set(NEOWOLF_TEST_PREF_ROOT "${CMAKE_BINARY_DIR}/test-pref")
     set(NEOWOLF_GAME_TESTS "")
-    # neowolf_add_game_test(<name> <expected exit code> <regex> <game args...>)
+    # neowolf_add_game_test(<name> <expected exit code> <regex> <game args...>
+    #                       [SCREENSHOT <file.bmp> <width>x<height>])
+    # SCREENSHOT passes --screenshot <file.bmp> and checks the saved image's size.
     function(neowolf_add_game_test name expect_exit regex)
-        set(game_args ${ARGN} --pref-dir "${NEOWOLF_TEST_PREF_ROOT}/${name}")
+        cmake_parse_arguments(PARSE_ARGV 3 arg "" "" "SCREENSHOT")
+        set(game_args ${arg_UNPARSED_ARGUMENTS} --pref-dir "${NEOWOLF_TEST_PREF_ROOT}/${name}")
+        set(screenshot_checks "")
+        if(arg_SCREENSHOT)
+            list(GET arg_SCREENSHOT 0 screenshot_file)
+            list(GET arg_SCREENSHOT 1 screenshot_size)
+            list(APPEND game_args --screenshot "${screenshot_file}")
+            set(screenshot_checks "-DEXPECT_BMP=${screenshot_file}" "-DEXPECT_BMP_SIZE=${screenshot_size}")
+        endif()
         add_test(NAME ${name}
                  COMMAND ${CMAKE_COMMAND}
                          -DGAME_EXE=$<TARGET_FILE:neo_wolf>
                          "-DGAME_ARGS=${game_args}"
                          -DEXPECT_EXIT=${expect_exit}
                          "-DEXPECT_REGEX=${regex}"
+                         ${screenshot_checks}
                          -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
         set(NEOWOLF_GAME_TESTS ${NEOWOLF_GAME_TESTS} ${name} PARENT_SCOPE)
@@ -421,11 +434,21 @@ if(NEOWOLF_BUILD_TESTS)
     neowolf_add_game_test(game_smoke_level_out_of_range 1
         "--level ${neowolf_level_past_end}: the campaign has ${neowolf_campaign_levels} level"
         --level ${neowolf_level_past_end} --frames 10)
-    # Screen previews (developer tool): each renders and saves a screenshot.
+    # Screen previews (developer tool): each renders and saves a screenshot at the default
+    # render size.
     foreach(screen menu levelselect hud minimap pause levelcomplete gameover campaigncomplete enemies items)
         neowolf_add_game_test(game_preview_${screen} 0 "Preview: ${screen} .*Screenshot saved"
-            --preview ${screen} --frames 5 --screenshot "${CMAKE_BINARY_DIR}/test-shots/${screen}.bmp")
+            --preview ${screen} --frames 5
+            SCREENSHOT "${CMAKE_BINARY_DIR}/test-shots/${screen}.bmp" 640x360)
     endforeach()
+    # --render-size: a valid size is used for the frame and the screenshot; an invalid one is a
+    # usage error (exit code 2) that names the limits.
+    neowolf_add_game_test(game_render_size 0 "Render size: 320x240\\..*Screenshot saved"
+        --level 1 --frames 5 --render-size 320x240
+        SCREENSHOT "${CMAKE_BINARY_DIR}/test-shots/render-size-320x240.bmp" 320x240)
+    neowolf_add_game_test(game_render_size_invalid 2
+        "--render-size needs a size WIDTHxHEIGHT: an even width from 320 to 1920, .* from 5:4 to 64:27"
+        --render-size 641x360 --frames 5)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/test-shots")
     set_tests_properties(${NEOWOLF_GAME_TESTS} PROPERTIES
         LABELS game

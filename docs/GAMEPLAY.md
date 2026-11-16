@@ -115,7 +115,9 @@ The values are the shipped `gameplay.json` (`player`, `weapon`;
 `PerformPlayerAttack` (`engine/world/InteractionRules.cpp`).
 
 - **Movement:** 3.0 cells/s (`player.moveSpeed`) forward, back and sideways; moving diagonally
-  is not faster. Turning: 1.8 radians/s (`player.turnSpeed`). The view is 60° wide.
+  is not faster. Turning: 1.8 radians/s (`player.turnSpeed`). The view is about 53° high; its
+  width follows the image shape: about 67° at 4:3 (320×240), 83° at the default 16:9
+  (640×360).
 - **Collision:** the player is a circle of radius 0.22 cells (`player.collisionRadius`). Walls,
   closed doors, the exit switch and living enemies stop it; corpses, pickups, decorations and
   triggers do not. Each move is tried along x and then along y in steps of at most 0.05 cells,
@@ -157,7 +159,8 @@ Every enemy placement names an archetype with `"variant"`; a placement without o
 | `runner` | small, slim, mid-stride; cyan suit, orange visor | 25 | 6 | 2.8 | 8.0 | 1.0 | 0.6 s | 0.2 s | 150 | fast, fragile (1 shot), low damage |
 
 The player's weapon does 35 damage per hit. The three types differ in silhouette (size and
-shape) as well as colour, so they read at 320×240 without relying on colour alone.
+shape) as well as colour, so they read at 320×240 (and at every larger render size) without
+relying on colour alone.
 
 - **Hit flash:** an enemy that is hit is drawn brightened for 0.15 s (`kEnemyHitFlashSeconds`).
 - **Corpses:** a killed enemy stays where it fell, drawn with its type's corpse sprite on the
@@ -304,9 +307,10 @@ stands still; the HUD stays visible behind the pause panel.
   (see [Keys and locked doors](#keys-and-locked-doors)) and the level number.
 - At the start of a level a banner shows the level number and name for 3 seconds.
 - Messages (pickups, hits, checkpoints) appear above the bar.
-- `M` or `Tab` toggles the minimap (off by default). It sits in a square panel of a third of
-  the screen height in the top-left corner. Small maps are scaled to fill it; maps too big for
-  3 pixels per cell are drawn at 3 pixels per cell, centred on the player. The exit switch is a
+- `M` or `Tab` toggles the minimap (off by default). It sits in a square panel in the top-left
+  corner, a third of the screen height at 4:3 and a little under half at 16:9, so it shows the
+  same part of the map at every render size. Small maps are scaled to fill it; maps too big for
+  3 UI pixels per cell are drawn at 3 UI pixels per cell, centred on the player. The exit switch is a
   green cell with a white **X cross** over it (a shape, not only a colour), and a legend under
   the map repeats the symbol when there is room. Enemies are red dots, pickups green dots, key
   cards key shapes and locked doors barred cells in the key's colour; corpses are not shown.
@@ -323,8 +327,9 @@ with a different theme loads. See [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.m
 
 ## Screens
 
-All screens are drawn for the 320×240 framebuffer with a 4-pixel margin (test
-`ui_layout_bounds`). Reference images, produced with `--preview <screen> --frames 5
+All screens are laid out on a canvas of at least 320×180 UI pixels with a 4-pixel margin and
+drawn at a whole-number UI scale (2 at the default 640×360 render size, 1 at 320×240;
+[ARCHITECTURE.md](ARCHITECTURE.md#ui-scale), test `ui_layout_bounds`). Reference images, produced with `--preview <screen> --frames 5
 --screenshot <file>` ([TESTING.md](TESTING.md#screen-previews)):
 
 | Menu | Level select | Pause |

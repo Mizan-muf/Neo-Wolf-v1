@@ -80,7 +80,8 @@ void RenderFloorAndCeiling(const Map& map, const Vec2& eye, const CameraBasis& c
     const Texture* floorTexture = IsDrawable(params.floorTexture) ? params.floorTexture : params.missingTexture;
     const Texture* ceilingTexture = IsDrawable(params.ceilingTexture) ? params.ceilingTexture : params.missingTexture;
 
-    const float cameraZ = 0.5f * static_cast<float>(height);
+    // A floor row's distance: the eye height over the row's slope below the horizon.
+    const float cameraZ = kEyeHeight * FocalLengthPixels(height);
     for (int y = horizon + 1; y < height; ++y) {
         const int mirroredY = height - y - 1;
         const auto rowsBelowHorizon = static_cast<float>(y - horizon);
@@ -134,10 +135,10 @@ float WallShade(const Map& map, const RaycastHit& hit, const Vec2& rayDirection)
     return Clamp(sideShade * distanceShade * mapLight, kWallMinLight, 1.0f);
 }
 
-// One textured wall column, centred on the horizon; its height is screen height / distance.
+// One textured wall column, centred on the horizon; its height is the focal length / distance.
 void DrawWallColumn(Framebuffer& framebuffer, int x, float distance, const Texture& texture, float wallU, float shade) {
     const int height = framebuffer.Height();
-    const int projectedWallHeight = std::max(1, static_cast<int>(std::round(static_cast<float>(height) / distance)));
+    const int projectedWallHeight = std::max(1, static_cast<int>(std::round(FocalLengthPixels(height) / distance)));
     const int yStart = (height - projectedWallHeight) / 2;
     const int yEnd = yStart + projectedWallHeight - 1;
     for (int y = yStart; y <= yEnd; ++y) {
@@ -254,7 +255,7 @@ void Raycaster::RenderWalls(const Map& map, const Player& player, Framebuffer& f
     }
 
     outHits.resize(static_cast<std::size_t>(width));
-    const CameraBasis camera = MakeCameraBasis(player.directionAngleRadians, params.fieldOfViewRadians);
+    const CameraBasis camera = MakeCameraBasis(player.directionAngleRadians, width, height);
     RenderFloorAndCeiling(map, player.position, camera, framebuffer, params);
 
     for (int x = 0; x < width; ++x) {

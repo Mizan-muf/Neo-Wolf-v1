@@ -10,7 +10,7 @@
 
 // The union of every DrawRect request since the last ResetDrawBounds(), and how many requests
 // reached outside the framebuffer (and were clipped). The UI layout tests use it to prove
-// that every screen fits inside 320x240 (known issue C8).
+// that every screen stays inside the margins at every tested render size (known issue C8).
 struct DrawBounds {
     bool any = false;
     int minX = 0;

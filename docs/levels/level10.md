@@ -6,7 +6,7 @@
 
 ![Start view of level10](../images/levels/level10.png)
 
-*Start view (headless `--frames 5` screenshot, 320×240): the gatehouse in the `classic` theme's blue-grey stone, the ammo crate, and across the courtyard the vase pair of the red door Dr with a guard in front of it.*
+*Start view (headless `--frames 5` screenshot, 640×360): the gatehouse in the `classic` theme's blue-grey stone, the ammo crate, and across the courtyard the vase pair of the red door Dr with a guard in front of it.*
 
 ![The dim chapel (0.5) from its corridor at (11, 9), looking west down the nave.](../images/levels/level10-chapel.png)
 
