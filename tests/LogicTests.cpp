@@ -3734,10 +3734,10 @@ void TestHudKeyIconsLayout() {
     const int width = 320;
     const int height = 240;
     const int barY = height - UiLayout::kMargin - UiLayout::kHudBarHeight;
-    // UiRenderer::DrawHud: the health label is 6 pixels into the bar, the ammo label 80 further
-    // right; the level label ends 6 pixels before the bar's right end.
-    const int ammoTextEnd = UiLayout::kMargin + 6 + 80 + UiRenderer::TextWidth("AMMO 10000", 1);
-    const int levelLabelStart = width - UiLayout::kMargin - 6 - UiRenderer::TextWidth("LEVEL 99", 1);
+    // UiRenderer::DrawHud: the ammo label starts at kHudAmmoX; the level label ends one text
+    // inset before the bar's right end.
+    const int ammoTextEnd = UiLayout::kHudAmmoX + UiRenderer::TextWidth("AMMO 10000", 1);
+    const int levelLabelStart = width - UiLayout::kMargin - UiLayout::kTextInset - UiRenderer::TextWidth("LEVEL 99", 1);
     int previousRight = ammoTextEnd;
     for (const KeyColor color : kKeyColors) {
         const UiRenderer::UiRect card = UiRenderer::KeyCardRect(width, height, color);

@@ -436,7 +436,10 @@ class TestDoctor(unittest.TestCase):
             encoding="utf-8",
         )
         env = FakeEnv({"cmake", "ninja", "g++"}, {"cmake": "cmake version 3.28.3", "ninja": "1.11.1", "g++": "g++ 13"})
-        sdl = lambda **kw: self.doctor("Linux", env, root=root, **kw).find("SDL2 source")  # noqa: E731
+
+        def sdl(**kw):  # the "SDL2 source" check of a Linux doctor run
+            return self.doctor("Linux", env, root=root, **kw).find("SDL2 source")
+
         self.assertEqual(sdl(check_network=False).status, "INFO")
         self.assertEqual(sdl(check_network=True, network=lambda: True).status, "PASS")
         offline = sdl(check_network=True, network=lambda: False)

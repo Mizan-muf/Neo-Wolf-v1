@@ -49,7 +49,10 @@ class TestGenIcon(unittest.TestCase):
     def test_shape(self) -> None:
         rows = gen_icon.icon_pixels(128)
         self.assertEqual(len(rows), 128)
-        alpha = lambda x, y: rows[y][x * 4 + 3]  # noqa: E731
+
+        def alpha(x: int, y: int) -> int:
+            return rows[y][x * 4 + 3]
+
         self.assertEqual(alpha(0, 0), 0)  # transparent corner (rounded square)
         self.assertEqual(alpha(127, 127), 0)
         self.assertEqual(alpha(64, 64), 255)  # opaque middle
