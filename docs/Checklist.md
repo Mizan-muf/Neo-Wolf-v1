@@ -91,7 +91,7 @@ Build the core engine structure before real rendering starts.
 - [x] Create `Engine::Render()`
 - [x] Create `Engine::Shutdown()`
 - [x] Separate startup/update/render/shutdown into different files
-- [x] Keep SDL calls mostly inside platform layer — **partial**: SDL is also used in `App.cpp`, `Paths.cpp` and `AudioSystem.h/.cpp` ([ARCHITECTURE.md](ARCHITECTURE.md#dependencies)); [Phase 12 of ROADMAP](ROADMAP.md#phase-12--clean-code-review) reviews it
+- [x] Keep SDL calls mostly inside platform layer — **partial**: SDL is also used in `App.cpp`, `Paths.cpp` and `AudioSystem.cpp` ([ARCHITECTURE.md](ARCHITECTURE.md#dependencies)); [Phase 12 of ROADMAP](ROADMAP.md#phase-12--clean-code-review) reviews it
 
 ### Done When
 - [x] Main loop calls engine update and render functions cleanly

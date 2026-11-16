@@ -94,20 +94,20 @@ Edges worth knowing:
 - **`ui` → `core`** only for `GameFlow.h` (menu items) and the colour helpers.
 
 **Where SDL is used.** SDL is linked into `neowolf_engine` (`neowolf_sdl2`, a public
-dependency), and five engine files (and the test runner) include `<SDL.h>`:
+dependency), and four engine files (and the test runner) include `<SDL.h>`:
 
 | File | Why |
 |---|---|
 | `engine/platform/PlatformSDL.cpp` | Window, renderer, events, presentation, message box, BMP saving |
-| `engine/audio/AudioSystem.h`, `.cpp` | Audio device and WAV loading; the header has an `SDL_AudioDeviceID` member |
+| `engine/audio/AudioSystem.cpp` | Audio device and WAV loading |
 | `engine/core/App.cpp` | Logs the SDL version and platform; `SDL_Delay` for frame pacing |
 | `engine/core/Paths.cpp` | `SDL_GetBasePath` (content root) and `SDL_GetPrefPath` (per-user folder) |
 | `tests/LogicTests.cpp` | Synthetic SDL key and window events for the key-binding tests |
 
-Because `Engine.h` includes `AudioSystem.h`, every file that includes `Engine.h` also sees the
-SDL headers. Everything else (`world`, `render`, `ui`, `particles`, `assets`, `GameFlow`) has no
-SDL dependency and runs in the headless tests. Moving SDL out of `core` and the audio header is
-a Phase 12 review item ([ROADMAP.md](ROADMAP.md#phase-12--clean-code-review)).
+No engine header includes SDL: `PlatformSDL.h` and `AudioSystem.h` only forward-declare the SDL
+types they hold, so files that include `Engine.h` do not see the SDL headers. Everything else
+(`world`, `render`, `ui`, `particles`, `assets`, `GameFlow`) has no SDL dependency and runs in
+the headless tests. Moving SDL out of `core` is a Phase 12 review item ([ROADMAP.md](ROADMAP.md#phase-12--clean-code-review)).
 
 ## Frame loop
 
