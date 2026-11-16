@@ -255,6 +255,26 @@ class TestPackagerSuccess(PackagerTestCase):
             self.assertEqual(exe.mode & 0o777, 0o755)
             self.assertEqual((exe.uid, exe.gid, exe.uname), (0, 0, ""))
 
+    def test_executable_bit_forced_when_host_has_none(self) -> None:
+        """A host without exec bits (Windows) must still produce 0755 executables in the
+        archive; regression for CI run 43862713525, where both tests above failed on Windows."""
+        tree = self.base / "tree-no-exec"
+        exe_rel = "NeoWolf.app/Contents/MacOS/NeoWolf"
+        (tree / exe_rel).parent.mkdir(parents=True)
+        (tree / exe_rel).write_bytes(b"binary")
+        (tree / "README.txt").write_text("readme", encoding="utf-8")
+        os.chmod(tree / exe_rel, 0o644)  # what a Windows filesystem reports
+        out = self.base / "archives"
+        out.mkdir()
+        zip_path = packager.write_archive(tree, out, "pkg", "zip", executables=[exe_rel])
+        with zipfile.ZipFile(zip_path) as zf:
+            self.assertEqual((zf.getinfo("pkg/" + exe_rel).external_attr >> 16) & 0o777, 0o755)
+            self.assertEqual((zf.getinfo("pkg/README.txt").external_attr >> 16) & 0o777, 0o644)
+        tar_path = packager.write_archive(tree, out, "pkg", "tar.gz", executables=[exe_rel])
+        with tarfile.open(tar_path) as tf:
+            self.assertEqual(tf.getmember("pkg/" + exe_rel).mode & 0o777, 0o755)
+            self.assertEqual(tf.getmember("pkg/README.txt").mode & 0o777, 0o644)
+
     def test_checksums_keep_other_packages(self) -> None:
         self.out.mkdir(parents=True)
         other = self.out / "neo-wolf-0.9.0-windows-x64.zip"

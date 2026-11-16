@@ -197,9 +197,15 @@ def _zip_date(seconds: float):
     return time.localtime(max(seconds, 315532800 + 86400))[:6]  # zip dates start in 1980
 
 
-def write_archive(tree: Path, out_dir: Path, package: str, fmt: str) -> Path:
-    """<out_dir>/<package>.<fmt> containing tree as the folder <package>/ (sorted, with the
-    files' Unix permissions, so the executable stays executable after extraction)."""
+def write_archive(tree: Path, out_dir: Path, package: str, fmt: str,
+                  executables: Sequence[str] = ()) -> Path:
+    """<out_dir>/<package>.<fmt> containing tree as the folder <package>/ (sorted, with Unix
+    permissions, so the executable stays executable after extraction).
+
+    `executables` lists paths relative to `tree` that are always stored as 0755. The host
+    filesystem cannot be trusted for this: Windows has no exec bit, so a macOS or Linux package
+    assembled there would otherwise lose it."""
+    forced_exec = {Path(e).as_posix() for e in executables}
     entries = sorted(tree.rglob("*"), key=lambda p: p.relative_to(tree).as_posix())
     archive = out_dir / f"{package}.{fmt}"
     if archive.exists():
@@ -217,7 +223,8 @@ def write_archive(tree: Path, out_dir: Path, package: str, fmt: str) -> Path:
                     zi.external_attr = ((stat.S_IFDIR | 0o755) << 16) | 0x10
                     zf.writestr(zi, b"")
                 else:
-                    perm = 0o755 if path.stat().st_mode & stat.S_IXUSR else 0o644
+                    is_exec = rel in forced_exec or path.stat().st_mode & stat.S_IXUSR
+                    perm = 0o755 if is_exec else 0o644
                     zi.external_attr = (stat.S_IFREG | perm) << 16
                     zi.compress_type = zipfile.ZIP_DEFLATED
                     zf.writestr(zi, path.read_bytes())
@@ -225,7 +232,9 @@ def write_archive(tree: Path, out_dir: Path, package: str, fmt: str) -> Path:
         def normalise(ti: tarfile.TarInfo) -> tarfile.TarInfo:
             ti.uid = ti.gid = 0
             ti.uname = ti.gname = ""
-            ti.mode = 0o755 if (ti.isdir() or ti.mode & stat.S_IXUSR) else 0o644
+            rel = ti.name.split("/", 1)[1] if "/" in ti.name else ""
+            is_exec = ti.isdir() or rel in forced_exec or ti.mode & stat.S_IXUSR
+            ti.mode = 0o755 if is_exec else 0o644
             return ti
 
         with tarfile.open(archive, "w:gz") as tf:
@@ -351,7 +360,8 @@ def create_release_package(
     result.files = _relative_files(staging)
 
     # 5. Archive and checksum.
-    archive = write_archive(staging, output_dir, str(info["package"]), str(info["format"]))
+    archive = write_archive(staging, output_dir, str(info["package"]), str(info["format"]),
+                            executables=[str(info["executable"])])
     result.archive = archive
     result.checksum_file = update_checksums(output_dir, [archive])
     if not keep_staging:
