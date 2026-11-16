@@ -107,7 +107,9 @@ dependency), and four engine files (and the test runner) include `<SDL.h>`:
 No engine header includes SDL: `PlatformSDL.h` and `AudioSystem.h` only forward-declare the SDL
 types they hold, so files that include `Engine.h` do not see the SDL headers. Everything else
 (`world`, `render`, `ui`, `particles`, `assets`, `GameFlow`) has no SDL dependency and runs in
-the headless tests. Moving SDL out of `core` is a Phase 12 review item ([ROADMAP.md](ROADMAP.md#phase-12--clean-code-review)).
+the headless tests. The Phase 12 review kept SDL in `App.cpp` and `Paths.cpp`: both are thin
+uses of SDL services (version log, frame delay, base and per-user paths), and wrapping them in
+`platform` would add an interface with one caller ([CLEAN_CODE_REVIEW.md](CLEAN_CODE_REVIEW.md#changes-made-while-merging)).
 
 ## Frame loop
 

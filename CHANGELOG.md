@@ -12,8 +12,8 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ## [Unreleased]
 
-The completion work toward 1.0.0 (Roadmap Phases 0–10, [docs/ROADMAP.md](docs/ROADMAP.md)),
-commits `eb14c78` … `38c9573` and the Phase 10 audit fixes. Builds from this branch
+The completion work toward 1.0.0 (Roadmap Phases 0–10 and 12, [docs/ROADMAP.md](docs/ROADMAP.md)),
+commits `eb14c78` … `38c9573`, the Phase 10 audit fixes and the Phase 12 clean-code review. Builds from this branch
 report version 0.9.0; Roadmap Phase 12 sets 1.0.0 and tags it.
 
 Verification status: everything below builds and passes its tests on macOS, and the build, the
@@ -102,6 +102,14 @@ listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 - **Documentation pass** (Phase 10): README, `docs/ARCHITECTURE.md` and `docs/GAMEPLAY.md`
   rewritten or corrected against the code; `docs/Checklist.md` reconciled with the code; stale
   documents moved to `docs/history/`.
+- **Clean-code review** (Phase 12): coding standards in `docs/CODING_STANDARDS.md`; all C++
+  formatted with clang-format and all Python with ruff (both formatting commits are listed in
+  `.git-blame-ignore-revs`); clang-tidy (374 diagnostics) and ruff (261 findings) brought to
+  zero; every module reviewed by hand against the ten principles, 297 findings (244 fixed,
+  53 kept with a reason), recorded in `docs/CLEAN_CODE_REVIEW.md`. No behaviour change: the
+  autoplay bot's report is byte-identical before and after. CI has a new `lint` job (pinned
+  clang-format, clang-tidy and ruff) and uses `actions/checkout@v7`, `actions/setup-python@v7`
+  and `actions/upload-artifact@v7`. Engine headers no longer include SDL.
 
 ### Deprecated
 
@@ -149,6 +157,7 @@ Known-issue numbers refer to [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) ("Reso
   as fact before it was verified, outdated messages and examples, level-page distances and
   captions, the level-authoring steps for a new campaign level); DevKit `create-map --register
   --force` reported the wrong campaign position for a replaced level.
+- CI: the actions ran on the deprecated Node.js 20 (B17, Phase 12).
 
 ## [0.4.0] - 2026-08-26 (back-filled)
 
