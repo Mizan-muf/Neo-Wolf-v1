@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "completion/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (universal, clang)
+            os: macos-14
+            preset: ci-macos
+            exe: build/ci-macos/neo_wolf
+          - name: Windows (MSVC x64)
+            os: windows-latest
+            preset: ci-windows-msvc
+            exe: build/ci-windows-msvc/Release/neo_wolf.exe
+          - name: Linux (gcc)
+            os: ubuntu-latest
+            preset: ci-linux
+            exe: build/ci-linux/neo_wolf
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test (native + DevKit + content validation)
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Headless smoke run
+        run: python tools/ci/smoke_run.py ${{ matrix.exe }} --seconds 5
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.preset }}
+          path: |
+            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+            build/${{ matrix.preset }}/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
+
+  windows-scripts:
+    # Exercises the user-facing Windows entry points (vswhere lookup, generator pinning,
+    # exit-code propagation) that the preset-based job above bypasses.
+    name: Windows build scripts (build.cmd / build.ps1)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: build.cmd (Release, from Command Prompt)
+        shell: cmd
+        run: build.cmd
+
+      - name: build.ps1 -Config Debug (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\build.ps1 -Config Debug
