@@ -2979,7 +2979,7 @@ void TestNewGameResetsWorld() {
 }
 
 void TestKeyBindings() {
-    InputAction actions[2] = {InputAction::Count, InputAction::Count};
+    std::array<InputAction, PlatformSDL::kMaxActionsPerKey> actions = {InputAction::Count, InputAction::Count};
     // B13: Ctrl fires, but not while Cmd/Windows is held (Cmd+Ctrl+F is the fullscreen chord).
     TEST_ASSERT(PlatformSDL::MapKeyToActions(SDL_SCANCODE_LCTRL, KMOD_NONE, actions) == 1);
     TEST_ASSERT(actions[0] == InputAction::Attack);
