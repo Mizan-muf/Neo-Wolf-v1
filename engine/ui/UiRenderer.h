@@ -25,7 +25,11 @@ inline constexpr int kMargin = 4;      // minimum distance of any UI element fro
 inline constexpr int kGlyphWidth = 5;  // per scale unit
 inline constexpr int kGlyphHeight = 7;
 inline constexpr int kGlyphAdvance = 6;  // glyph width + 1 pixel spacing
+inline constexpr int kTextInset = 6;     // horizontal padding between a panel's or bar's edge and its text
 inline constexpr int kHudBarHeight = 14;
+// The HUD bar's "HEALTH" and "AMMO" labels (x); the bar starts at the left margin at every width.
+inline constexpr int kHudHealthX = kMargin + kTextInset;
+inline constexpr int kHudAmmoX = kHudHealthX + 80;
 // Key-card icons (Phase 6): one slot per key colour (red, blue, gold, in that order) of
 // kKeyCardSlotWidth pixels in the HUD bar, between the ammo counter and the level label. A
 // held key is drawn as a card of kKeyCardWidth x kKeyCardHeight in its colour with its
