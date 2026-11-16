@@ -5,21 +5,26 @@ All notable changes to Neo-Wolf are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as described in
 [docs/RELEASE.md](docs/RELEASE.md#versioning).
 
-No version has been tagged yet. The 0.x entries below were written afterwards, on 2026-11-16,
-from the commit history; those versions never existed as releases. The source for every entry
+1.0.0 is the first tagged release. The 0.x entries below were written afterwards, on
+2026-11-16, from the commit history; those versions never existed as releases. The source for every entry
 is `git log` (commit messages and diffs) on branch `completion/v1`; the known problems come
 from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ## [Unreleased]
 
-The completion work toward 1.0.0 (Roadmap Phases 0–10 and 12, [docs/ROADMAP.md](docs/ROADMAP.md)),
-commits `eb14c78` … `38c9573`, the Phase 10 audit fixes and the Phase 12 clean-code review. Builds from this branch
-report version 0.9.0; Roadmap Phase 12 sets 1.0.0 and tags it.
+Nothing yet.
+
+## [1.0.0] - 2026-11-16
+
+The completion work (Roadmap Phases 0–10 and 12, [docs/ROADMAP.md](docs/ROADMAP.md)), commits
+`eb14c78` … `38c9573`, the Phase 10 audit fixes and the Phase 12 clean-code review. Tagged
+`v1.0.0`; development builds before it reported version 0.9.0.
 
 Verification status: everything below builds and passes its tests on macOS, and the build, the
 tests and the autoplay bot over all 10 levels pass headless in Windows and Linux CI, and CI
-builds and smoke-tests the macOS and Windows packages (CI run 43866272111, all six jobs green;
-the first all-green run with the package jobs was 43864756039). The macOS package's Intel slice
+builds and smoke-tests the macOS and Windows packages and runs the lint checks (CI run
+43879209370, all seven jobs green; the first all-green run with the package jobs was
+43864756039). The macOS package's Intel slice
 has only been run under Rosetta. Not yet done: a play-through by hand on any OS (known issue
 C13), a run on a real Windows PC, and opening the packages by hand from Finder and Explorer
 (known issue D5). Open problems are

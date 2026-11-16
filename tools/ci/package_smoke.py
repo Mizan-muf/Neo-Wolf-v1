@@ -25,7 +25,7 @@ Standard library only. Exit codes: 0 pass, 1 a check failed, 2 bad usage.
 
 Usage:
   python3 tools/ci/package_smoke.py release/                    # every archive in SHA256SUMS
-  python3 tools/ci/package_smoke.py release/neo-wolf-0.9.0-macos-universal.zip
+  python3 tools/ci/package_smoke.py release/neo-wolf-1.0.0-macos-universal.zip
   python3 tools/ci/package_smoke.py <archive> --no-run          # static checks only
 Options: --level N (default 10), --frames N (default 300), --timeout S (per run, default 180),
 --keep (keep the extracted folder).

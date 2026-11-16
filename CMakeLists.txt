@@ -20,7 +20,7 @@ endif()
 # NeoWolf.app's Info.plist, neo_wolf.exe's version resource, the package README.txt and the
 # package file names (cmake/Packaging.cmake). Change it here only, in the release commit that
 # is tagged v<version> (docs/RELEASE.md, "Versioning"); 1.0.0 is set by Roadmap Phase 12.
-project(NeoWolf VERSION 0.9.0 LANGUAGES C CXX)
+project(NeoWolf VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

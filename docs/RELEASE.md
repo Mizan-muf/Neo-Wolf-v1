@@ -21,8 +21,8 @@ Each run also writes or updates `SHA256SUMS` next to the archives.
   (Explorer → Properties → Details), the package `README.txt`, and the package file names
   (`cmake/Packaging.cmake`, which also writes `build/<preset>/neowolf-package.json` for the
   DevKit).
-- **Scheme:** `MAJOR.MINOR.PATCH`. Development is `0.9.0` until the v1 release; Roadmap Phase 12
-  sets `1.0.0` and tags `v1.0.0`. After that: patch for fixes, minor for new content or
+- **Scheme:** `MAJOR.MINOR.PATCH`. Development was `0.9.0` until the v1 release; Roadmap Phase 12
+  set `1.0.0` and tagged `v1.0.0`. After that: patch for fixes, minor for new content or
   features, major for save or content-format breaks.
 - **Why a literal and not a cache variable** (decision of Phase 9): a CMake cache variable
   keeps its first value in an existing build folder, so a later edit of the default would not
@@ -138,7 +138,7 @@ sha256sum -c SHA256SUMS --ignore-missing         # Linux
 ```
 
 ```powershell
-Get-FileHash .\neo-wolf-0.9.0-windows-x64.zip -Algorithm SHA256   # compare with SHA256SUMS
+Get-FileHash .\neo-wolf-1.0.0-windows-x64.zip -Algorithm SHA256   # compare with SHA256SUMS
 ```
 
 The checksums prove the download is the file CI built; they are not a signature.

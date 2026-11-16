@@ -144,7 +144,7 @@ Each phase has a **Done when** gate. Only tick an item after it has been verifie
 
 ## Phase 12 — Clean-code review
 Checks the finished code against clean-code principles and fixes what falls short. Runs last so it reviews the final code; behaviour must not change, and every test, the bot run and CI must still pass after each fix.
-> Status: review done and merged on `completion/v1`, verified on macOS (110/110 CTest tests, DevKit suite, bot JSON byte-identical to the pre-review run, clang-format, clang-tidy and ruff all at zero) and in a local Linux container (the CI `lint` job's steps). CI confirmation and the `v1.0.0` tag are pending. Findings and results: [CLEAN_CODE_REVIEW.md](CLEAN_CODE_REVIEW.md).
+> Status: done. Verified on macOS (110/110 CTest tests, DevKit suite, bot JSON byte-identical to the pre-review run, clang-format, clang-tidy and ruff all at zero), in a local Linux container (the CI `lint` job's steps) and in CI run 43879209370 (all seven jobs green, the new `lint` job included). Version set to 1.0.0 and tagged `v1.0.0` on 2026-11-16 at the owner's request, before the Phase 11 hands-on play-throughs. Findings and results: [CLEAN_CODE_REVIEW.md](CLEAN_CODE_REVIEW.md).
 - [x] Agree the review criteria and record them in `docs/CODING_STANDARDS.md`:
   - meaningful names
   - small functions with one responsibility
@@ -159,6 +159,6 @@ Checks the finished code against clean-code principles and fixes what falls shor
 - [x] Automated checks: `.clang-format` and `clang-tidy` (readability, modernize, bugprone, cppcoreguidelines subsets) for C++, `ruff` for the Python DevKit; all three added to CI (job `lint`: pinned tools, `tools/ci/lint.py --all`; before the review 374 clang-tidy diagnostics and 261 ruff findings, now 0)
 - [x] Manual review of every module (core, platform, render, world, assets, audio, ui, interop, DevKit), with findings recorded in `docs/CLEAN_CODE_REVIEW.md` (finding → principle → fix → status); also `src/`, `particles`, `autoplay`, `tests/` and `tools/ci`
 - [x] Fix every finding, or record why it was kept; one commit per module (297 findings: 244 fixed, 53 kept with a reason; 14 module commits plus one for the changes made while merging; kept findings that are real defects are in KNOWN_ISSUES C25–C27 and V6)
-- [ ] Re-run the full verification from Phase 11 (macOS + Windows CI, bot 10/10)
-- [ ] Tag `v1.0.0`
+- [x] Re-run the full verification from Phase 11 (macOS + Windows CI, bot 10/10): CI run 43879209370, all seven jobs green; locally `build.sh`, `ctest --preset ci-macos`, `package.sh --expect-version 1.0.0` and `package_smoke.py` pass, and the bot's report is identical to the pre-review one apart from the version
+- [x] Tag `v1.0.0` (`project(NeoWolf VERSION 1.0.0)`; the tag is on the version commit)
 - **Done when:** formatting, clang-tidy and ruff checks pass in CI; every review finding is fixed or justified; Phase 11 verification passes again
