@@ -276,7 +276,7 @@ void TestTextureLoaderAndFallback() {
     TEST_ASSERT(fallback.GetPixel(0, 0) != fallback.GetPixel(8, 0));
 
     Texture fileTexture{};
-    const std::string validPath = ResolveRepoPath("game/assets/wall_main.ppm");
+    const std::string validPath = ResolveRepoPath("game/assets/themes/classic/wall.ppm");
     const bool loaded = TextureLoader::LoadPPM(validPath, fileTexture);
     TEST_ASSERT(loaded);
     TEST_ASSERT(fileTexture.Width() > 0);
@@ -474,7 +474,7 @@ void TestAssetManagerFallbackLoad() {
     assets.SetTexture("__missing", fallback);
 
     std::vector<std::string> errors;
-    TEST_ASSERT(assets.LoadTextureFromPPM("wall", ResolveRepoPath("game/assets/wall_main.ppm"), errors));
+    TEST_ASSERT(assets.LoadTextureFromPPM("wall", ResolveRepoPath("game/assets/themes/classic/wall.ppm"), errors));
     TEST_ASSERT(assets.GetTexture("wall") != nullptr);
 
     const bool missingLoaded =
@@ -923,11 +923,11 @@ void TestMapPerimeterAndReachabilityValidation() {
 
 void TestAssetInventoryAndErrorResilience() {
     const std::vector<std::string> textures = {
-        "game/assets/wall_main.ppm",
-        "game/assets/wall_alt_a.ppm",
-        "game/assets/wall_alt_b.ppm",
-        "game/assets/floor.ppm",
-        "game/assets/ceiling.ppm",
+        "game/assets/themes/classic/wall.ppm",
+        "game/assets/themes/classic/wall_alt_a.ppm",
+        "game/assets/themes/classic/wall_alt_b.ppm",
+        "game/assets/themes/classic/floor.ppm",
+        "game/assets/themes/classic/ceiling.ppm",
         "game/assets/sprite_decor.ppm",
     };
 

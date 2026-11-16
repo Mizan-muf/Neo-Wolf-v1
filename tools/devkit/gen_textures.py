@@ -6,8 +6,8 @@ Writes 32x32 plain-text PPM (P3) textures to game/assets/themes/<theme>/:
     wall.ppm  wall_alt_a.ppm  wall_alt_b.ppm  door.ppm  floor.ppm  ceiling.ppm  exit.ppm
     door_red.ppm  door_blue.ppm  door_gold.ppm   (locked doors, Roadmap Phase 6)
 
-for the themes "bunker", "stone" and "tech", plus game/assets/themes/classic/exit.ppm and
-door_<colour>.ppm (the "classic" theme otherwise uses the original textures).
+for the themes "bunker", "stone", "tech" and "classic" (the finale's castle; it replaced the
+original 8x8 textures in Phase 8).
 
 A locked door is the theme's door with a band in the lock's colour across the middle, and on
 it the colour's initial (R, B, G) and a keyhole, so it differs from a plain door, and the
@@ -312,20 +312,105 @@ def tech(name: str, rng: random.Random) -> Image:
     return img
 
 
+CLASSIC_STONE: Color = (92, 102, 122)
+CLASSIC_MORTAR: Color = (52, 56, 66)
+
+
+def classic_blocks(img: Image, rng: random.Random) -> None:
+    """Large blue-grey castle blocks (16x8, staggered) with a lit top edge per block."""
+    bricks(img, rng, CLASSIC_STONE, CLASSIC_MORTAR, 8, 16, 5)
+    for y in range(1, SIZE, 8):  # a lighter top row on every block reads as cut stone
+        for x in range(SIZE):
+            if img.get(x, y) != CLASSIC_MORTAR:
+                img.set(x, y, shade(img.get(x, y), 1.18))
+
+
 def classic(name: str, rng: random.Random) -> Image:
-    # The classic theme reuses the original textures; only its exit switch and locked doors
-    # are generated (the locked doors on a plain grey door).
-    if name.startswith("door_"):
-        base = Image()
-        noisy_fill(base, rng, (112, 112, 120), 5)
-        base.frame(0, 0, SIZE, SIZE, (60, 60, 66))
-        return base
-    return exit_switch_image(rng, (110, 110, 120), (180, 180, 190))
-
-
-def exit_switch_image(rng: random.Random, plate: Color, trim: Color) -> Image:
+    """The finale's castle ("Wolf's Den"): blue-grey stone blocks, oak panelling, a red banner,
+    a riveted steel door that does not look like any wall, and calm floor and ceiling textures
+    (low contrast, large features) so that they do not shimmer into stripes at a distance."""
     img = Image()
-    exit_switch(img, rng, plate, trim)
+    if name == "wall":
+        classic_blocks(img, rng)
+    elif name == "wall_alt_a":  # oak panelling: two raised panels between dark rails
+        oak = (118, 80, 46)
+        for y in range(SIZE):
+            for x in range(SIZE):
+                grain = ((x * 7 + (y // 3) * 3) % 11) - 5  # soft vertical grain
+                d = rng.randint(-4, 4) + grain
+                img.set(x, y, (oak[0] + d, oak[1] + d, oak[2] + d // 2))
+        rail = (70, 46, 26)
+        img.rect(0, 0, SIZE, 2, rail)
+        img.rect(0, 15, SIZE, 2, rail)
+        img.rect(0, 30, SIZE, 2, rail)
+        for x0 in (0, 16):
+            img.rect(x0, 0, 1, SIZE, rail)
+            # raised panel: a light top/left bevel and a dark bottom/right bevel
+            for y0 in (3, 18):
+                img.rect(x0 + 3, y0, 11, 1, shade(oak, 1.35))
+                img.rect(x0 + 3, y0, 1, 11, shade(oak, 1.35))
+                img.rect(x0 + 3, y0 + 10, 11, 1, shade(oak, 0.6))
+                img.rect(x0 + 13, y0, 1, 11, shade(oak, 0.6))
+    elif name == "wall_alt_b":  # a red banner with a gold border and emblem, hung on the stone
+        classic_blocks(img, rng)
+        red, dark_red, gold = (168, 28, 30), (110, 16, 20), (226, 182, 60)
+        img.rect(7, 0, 18, 2, (60, 44, 30))  # the hanging rod
+        for y in range(2, 30):
+            for x in range(9, 23):
+                # a swallow-tail notch at the bottom
+                if y >= 26 and abs(x - 15.5) < (y - 25):
+                    continue
+                d = rng.randint(-5, 5)
+                img.set(x, y, (red[0] + d, red[1] + d // 2, red[2] + d // 2))
+        for y in range(2, 26):  # gold side borders
+            img.set(9, y, gold)
+            img.set(22, y, gold)
+            img.set(10, y, dark_red)
+            img.set(21, y, dark_red)
+        img.rect(9, 2, 14, 1, gold)
+        # emblem: a gold ring with a dark centre
+        for y in range(8, 21):
+            for x in range(10, 22):
+                r2 = (x - 15.5) ** 2 + (y - 14) ** 2
+                if 12 <= r2 <= 26:
+                    img.set(x, y, gold)
+                elif r2 < 12:
+                    img.set(x, y, (40, 20, 18))
+        img.rect(15, 12, 2, 5, gold)  # a stylised sword through the ring
+        img.rect(13, 13, 6, 1, gold)
+    elif name == "door":  # riveted steel double door in a dark frame, so it never reads as a wall
+        steel = (70, 120, 132)
+        noisy_fill(img, rng, steel, 4)
+        img.frame(0, 0, SIZE, SIZE, (24, 28, 32))
+        img.frame(1, 1, SIZE - 2, SIZE - 2, (36, 44, 50))
+        img.rect(15, 2, 2, SIZE - 4, (26, 34, 38))  # the seam between the two leaves
+        for y0 in (5, 25):  # reinforcement plates with rivets
+            img.rect(2, y0, SIZE - 4, 3, shade(steel, 0.72))
+            for x in range(4, SIZE - 4, 5):
+                if x not in (15, 16):
+                    img.set(x, y0 + 1, (190, 210, 214))
+        for x0 in (4, 18):  # recessed panels
+            img.frame(x0, 10, 10, 13, shade(steel, 0.65))
+            img.rect(x0 + 1, 10, 9, 1, shade(steel, 1.3))
+        img.rect(12, 15, 2, 4, (220, 200, 120))  # brass handles
+        img.rect(18, 15, 2, 4, (220, 200, 120))
+    elif name == "floor":  # worn flagstones, one stone per cell, low contrast
+        base = (78, 74, 70)
+        noisy_fill(img, rng, base, 3)
+        for y in range(SIZE):
+            for x in range(SIZE):
+                c = img.get(x, y)
+                f = 1.0 + 0.05 * ((x + y) / SIZE - 1.0)  # a gentle slope, no repeating stripes
+                img.set(x, y, shade(c, f))
+        edge = shade(base, 0.82)
+        img.rect(0, 0, SIZE, 1, edge)
+        img.rect(0, 0, 1, SIZE, edge)
+    elif name == "ceiling":  # dark plaster between broad oak beams (one beam per cell)
+        noisy_fill(img, rng, (64, 62, 66), 3)
+        img.rect(0, 0, SIZE, 9, (74, 52, 34))
+        img.rect(0, 8, SIZE, 1, (54, 38, 26))
+    elif name == "exit":
+        exit_switch(img, rng, (92, 102, 122), (226, 182, 60))
     return img
 
 
@@ -335,7 +420,7 @@ THEMES: Dict[str, Tuple[Callable[[str, random.Random], Image], List[str]]] = {
     "bunker": (bunker, SLOTS),
     "stone": (stone, SLOTS),
     "tech": (tech, SLOTS),
-    "classic": (classic, ["exit"] + LOCKED_DOOR_SLOTS),
+    "classic": (classic, SLOTS),
 }
 
 
@@ -348,8 +433,7 @@ def generate() -> Dict[str, str]:
             if slot in LOCKED_DOOR_SLOTS:
                 # The theme's own door (same seed, so the same pixels) plus the lock band.
                 door_key = f"{theme}/door"
-                base = draw("door" if theme != "classic" else slot,
-                            random.Random(SEED ^ zlib.crc32(door_key.encode("utf-8"))))
+                base = draw("door", random.Random(SEED ^ zlib.crc32(door_key.encode("utf-8"))))
                 color = slot[len("door_"):]
                 image = locked_door(base, LOCK_COLORS[color], color[0].upper())
             else:

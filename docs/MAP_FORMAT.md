@@ -13,19 +13,27 @@ DevKit validator is stricter; its extra rules are listed separately below.
 ## Example (`game/maps/level01.map`)
 
 ```text
-################
-#..............#
-#..............#
-#..##A####B##..#
-#..............#
-#.......A......#
-#..............#
-#.......D......#
-#............T.X
-#.......B......#
-#..............#
-################
+; level01 - Outpost Gate (bunker)
+; Tutorial: walk over a pickup, shoot a guard at range, open a door (E), use the exit switch.
+####################
+#....####..........#
+#..............A...#
+#....####..........#
+#....####..A.......#
+#########..........#
+#########ADA###BBBBB
+#######........B...B
+#######............X
+#######............B
+#######........B...B
+########.######BBBBB
+####################
 ```
+
+The first lines are comments (`;` in column 1): the level's id, name and theme, then its idea
+([levels/README.md](levels/README.md#design-rules-every-level), rule 1). The door `D` at
+(10, 6) is framed by `A` walls, the exit switch `X` at (19, 8) by `B` walls. Level 1 has no
+trigger; level 3's checkpoint `T` at (21, 2) is the first ([level03.md](levels/level03.md)).
 
 ## Tiles
 
@@ -56,7 +64,7 @@ one of five rays fanned up to about 20° either side of the view direction must 
 and walls stop the rays, so a switch behind the player, beside the player, behind a wall or out
 of reach is not activated ([GAMEPLAY.md](GAMEPLAY.md#winning-and-losing-a-level); test
 `exit_switch_activation`). The switch needs no entity. Put it in a wall the player can walk up
-to; it may be on the outer wall (it counts as solid there). `level01` has one at `(15, 8)`, at
+to; it may be on the outer wall (it counts as solid there). `level01` has one at `(19, 8)`, at
 the east end of row 8.
 
 **Triggers (`T`).** A `trigger` entity turns its cell into a `T` tile. Walking within 0.8 cells

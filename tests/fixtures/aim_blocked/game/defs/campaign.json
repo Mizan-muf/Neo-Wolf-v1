@@ -1,0 +1,12 @@
+{
+  "title": "Aim-blocked fixture",
+  "levels": [
+    {
+      "id": "aim_blocked",
+      "name": "Runner behind a corner",
+      "map": "game/maps/aim_blocked.map",
+      "entities": "game/defs/aim_blocked.entities.json",
+      "theme": "fixture"
+    }
+  ]
+}

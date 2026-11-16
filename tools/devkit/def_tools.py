@@ -151,11 +151,30 @@ def json_to_csv(json_path: Path, csv_path: Path) -> int:
     return dropped
 
 
-def sync_entity_definitions(project_root: Path, from_csv: bool = False) -> List[str]:
+def entity_file_pair(entities_path: Path) -> Tuple[Path, Path, str]:
+    """(JSON path, CSV path, base name) of the entity file pair that `entities_path` (either the
+    ``<base>.entities.json`` or the ``<base>.entities.csv``) belongs to; both in its folder."""
+    entities_path = Path(entities_path)
+    name = entities_path.name
+    for suffix in (".entities.json", ".entities.csv"):
+        if name.endswith(suffix):
+            base_name = name[: -len(suffix)]
+            break
+    else:
+        raise ValueError(f"{entities_path} is not a <level>.entities.json or <level>.entities.csv file")
+    folder = entities_path.parent
+    return folder / f"{base_name}.entities.json", folder / f"{base_name}.entities.csv", base_name
+
+
+def sync_entity_definitions(project_root: Path, from_csv: bool = False,
+                            entities_path: Optional[Path] = None) -> List[str]:
     """Synchronize the entity files in game/defs/.
 
     Default: JSON (canonical) -> CSV export, overwriting every <level>.entities.csv.
     from_csv=True: the reverse, CSV -> JSON, overwriting every <level>.entities.json.
+    entities_path: sync only the pair this file belongs to (a campaign level's ``entities``,
+    sync-entities --level); its source file (the JSON, or the CSV with from_csv) must exist,
+    else ValueError and nothing is written.
 
     Returns one line per file pair; lines starting with "Warning:" report light zones the
     CSV cannot hold. With from_csv, the JSON's light zones are kept (a note says so), and a
@@ -164,12 +183,21 @@ def sync_entity_definitions(project_root: Path, from_csv: bool = False) -> List[
     defs_dir = Path(project_root) / "game" / "defs"
     synced: List[str] = []
 
+    # (JSON, CSV, base name) of every pair to sync, in a stable order.
+    pairs: List[Tuple[Path, Path, str]] = []
+    if entities_path is not None:
+        json_file, csv_file, base_name = entity_file_pair(entities_path)
+        source = csv_file if from_csv else json_file
+        if not source.is_file():
+            raise ValueError(f"{source} not found; nothing was synced")
+        pairs.append((json_file, csv_file, base_name))
+    else:
+        pattern = "*.entities.csv" if from_csv else "*.entities.json"
+        for source in sorted(defs_dir.glob(pattern)):
+            pairs.append(entity_file_pair(source))
+
     if from_csv:
-        pairs = []
-        for csv_file in sorted(defs_dir.glob("*.entities.csv")):
-            base_name = csv_file.name.replace(".entities.csv", "")
-            pairs.append((csv_file, defs_dir / f"{base_name}.entities.json", base_name))
-        for _, json_file, _ in pairs:  # refuse before writing anything
+        for json_file, _, _ in pairs:  # refuse before writing anything
             if json_file.exists():
                 try:
                     load_entity_lights(json_file)
@@ -179,14 +207,12 @@ def sync_entity_definitions(project_root: Path, from_csv: bool = False) -> List[
                         "each JSON's light zones (\"lights\"), so it does not overwrite a JSON it cannot read. "
                         "Fix the JSON, or delete it to rebuild it from the CSV."
                     ) from exc
-        for csv_file, json_file, base_name in pairs:
+        for json_file, csv_file, base_name in pairs:
             kept = csv_to_json(csv_file, json_file, level_id=base_name)
             synced.append(f"Synced {csv_file.name} -> {json_file.name}"
                           + (f" (kept its {kept} light zone(s); the CSV has none)" if kept else ""))
     else:
-        for json_file in sorted(defs_dir.glob("*.entities.json")):
-            base_name = json_file.name.replace(".entities.json", "")
-            csv_file = defs_dir / f"{base_name}.entities.csv"
+        for json_file, csv_file, _ in pairs:
             dropped = json_to_csv(json_file, csv_file)
             synced.append(f"Synced {json_file.name} -> {csv_file.name}")
             if dropped:

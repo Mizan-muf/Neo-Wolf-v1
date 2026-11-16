@@ -7,7 +7,9 @@ build environment and packages releases. Every command and flag is listed below;
 <command> --help` prints the same.
 
 To prove a level can actually be *played* to the end, use the autoplay bot as well:
-`neo_wolf_autoplay` ([TESTING.md](TESTING.md#autoplay-bot)). Adding a level step by step:
+`neo_wolf_autoplay` ([TESTING.md](TESTING.md#autoplay-bot)); its `--trace FILE` writes a
+per-event log (hits taken and dealt, kills, pickups, doors, the exit) for balancing
+([TESTING.md](TESTING.md#event-trace---trace)). Adding a level step by step:
 [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md).
 
 ## Running it
@@ -269,11 +271,14 @@ The shipped sprites and theme textures come from `gen_sprites.py` and `gen_textu
 ```bash
 ./tools/devkit/neo_devkit sync-entities              # every game/defs/<level>.entities.json -> .csv
 ./tools/devkit/neo_devkit sync-entities --from-csv   # the reverse: overwrites the JSON files
+./tools/devkit/neo_devkit sync-entities --level level03   # only campaign level level03
+./tools/devkit/neo_devkit sync-entities --level 3 --from-csv   # only level 3, CSV -> JSON
 ```
 
 | Option | Meaning |
 |---|---|
 | `--from-csv` | Convert CSV to JSON instead (overwrites every `<level>.entities.json` that has a CSV). |
+| `--level ID\|N` | Only one campaign level: its id from `campaign.json` (e.g. `level03`) or its 1-based number, as for `inspect-map --level`. The pair is the level's `entities` file and the `.entities.csv` next to it; no other file is written. An unknown id, a number outside 1…N, or a missing source file (the JSON, or the CSV with `--from-csv`) is an `Error:` with exit code 1 and nothing written. |
 
 The JSON files are canonical (the game loads them); the CSV files are an optional, **lossy**
 export: they cannot hold light zones. JSON → CSV prints a `Warning:` line for every level with
@@ -324,6 +329,7 @@ Runs every `tools/devkit/tests/test_*.py` (`unittest`); CTest runs it as `devkit
 | `term.py` | When to use colours (Windows VT mode, `NO_COLOR`, terminals) |
 | `def_tools.py` | Entity JSON/CSV conversion (`sync-entities`) |
 | `asset_tools.py`, `gen_sprites.py`, `gen_textures.py` | Asset inspection and generation |
+| `level_docs.py` | Level pages: checks that `docs/levels/levelNN.md` shows the shipped map byte for byte and regenerates its annotated entity grid (`python3 -m tools.devkit.level_docs [--write]`; [LEVEL_AUTHORING.md](LEVEL_AUTHORING.md#8-document-it)) |
 | `packager.py` | `package` |
 | `tests/` | Unit tests; `fixture_builder.py` builds the multi-level fixture campaigns they use |
 

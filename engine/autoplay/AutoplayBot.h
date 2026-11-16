@@ -21,8 +21,10 @@
 // when they can be opened (unlocked, or the key is held). The bot walks to a closed door on its
 // path and presses Interact. A living enemy in line of sight (HasLineOfSight, the engine's own
 // sight test) and within weapon range is fought first: the bot stops, turns to it and fires
-// until it is dead. With no progress for AutoplayConfig::stuckSeconds the bot backs off and
-// re-plans; after maxStuckReplans such attempts it gives up (result "stuck").
+// until it is dead; if a ready shot stays blocked by a corner for 2 s (the enemy's centre is
+// in sight, the shot's line is not), the bot ignores that enemy for 3 s and walks on. With no
+// progress for AutoplayConfig::stuckSeconds the bot backs off and re-plans; after
+// maxStuckReplans such attempts it gives up (result "stuck").
 //
 // Limits (docs/TESTING.md): no dodging or retreating, it fights where it stands; it does not
 // plan around living enemies (they block the player, known issue C15) except by shooting them;
@@ -200,6 +202,11 @@ private:
     int stuckStrikes_ = 0;
     double unstickTimer_ = 0.0;
 
+    // An enemy in sight that cannot be shot (the shot grazes a corner): skipped for a while.
+    double aimBlockedSeconds_ = 0.0;
+    int skippedEnemyId_ = -1;
+    double skipTimer_ = 0.0;
+
     // Statistics for the current level.
     int doorsOpened_ = 0;
     int replans_ = 0;
@@ -211,13 +218,19 @@ private:
 // `wholeCampaign` the engine must be on the main menu: the bot starts New Game and plays every
 // level in order with health and ammo carried over, and the report checks the carry-over.
 // Otherwise it plays the level the engine is in (started with --level) once.
-AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& config, bool wholeCampaign);
+// With `trace`, the event log of the run (--trace, docs/TESTING.md "Autoplay bot") is appended
+// to it: one line per event (level start/end, enemy state changes, hits taken and dealt,
+// pickups, keys, doors, triggers, the exit), found by comparing the engine's state before and
+// after every frame. Deterministic: game time and frame numbers only, a fixed order.
+AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& config, bool wholeCampaign,
+                                     std::string* trace = nullptr);
 
 struct AutoplayRunOptions {
     std::string dataDir;               // --data; empty = the automatic content-root search
     std::filesystem::path prefDir;     // progress.json goes here (must be set)
     int level = 0;                     // 1-based campaign level; 0 = the whole campaign (--all)
     AutoplayConfig config{};
+    std::string* trace = nullptr;      // --trace: receives the event log (see RunAutoplaySession)
 };
 
 // Starts a headless engine (EngineOptions::headless, no error dialogs) and runs the session.

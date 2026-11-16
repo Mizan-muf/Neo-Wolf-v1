@@ -3,9 +3,10 @@
 //
 //   neo_wolf_autoplay --level 1
 //   neo_wolf_autoplay --all --json autoplay-report.json
+//   neo_wolf_autoplay --level 3 --trace level03-trace.txt
 //
 // Exit codes: 0 every requested level was completed, 1 otherwise (or the game could not start,
-// or the report could not be written), 2 usage error.
+// or the report or trace could not be written), 2 usage error.
 
 #include <chrono>
 #include <filesystem>
@@ -119,10 +120,40 @@ int main(int argc, char* argv[]) {
         std::filesystem::create_directories(options.prefDir, ec);
     }
 
+    // --trace: open the file before playing, so a bad path fails at once.
+    std::ofstream traceFile;
+    std::string trace;
+    if (!parsed.tracePath.empty()) {
+        const std::filesystem::path tracePath = PathFromUtf8(parsed.tracePath);
+        std::error_code ec;
+        if (tracePath.has_parent_path()) {
+            std::filesystem::create_directories(tracePath.parent_path(), ec);
+        }
+        traceFile.open(tracePath, std::ios::out | std::ios::trunc | std::ios::binary);
+        if (!traceFile) {
+            std::cerr << program << ": cannot write the trace to " << parsed.tracePath << "\n";
+            if (temporaryPrefDir) {
+                std::filesystem::remove_all(options.prefDir, ec);
+            }
+            return 1;
+        }
+        options.trace = &trace;
+    }
+
     const AutoplayRunReport report = RunAutoplay(options);
     std::cout << FormatAutoplayTable(report) << std::flush;
 
     int exitCode = report.Success() ? 0 : 1;
+    if (traceFile.is_open()) {
+        traceFile << trace;
+        traceFile.close();
+        if (!traceFile) {
+            std::cerr << program << ": cannot write the trace to " << parsed.tracePath << "\n";
+            exitCode = 1;
+        } else {
+            std::cout << "Trace: " << parsed.tracePath << "\n";
+        }
+    }
     if (!parsed.jsonPath.empty()) {
         const std::filesystem::path jsonPath = PathFromUtf8(parsed.jsonPath);
         std::error_code ec;

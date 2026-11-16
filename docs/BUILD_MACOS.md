@@ -103,7 +103,7 @@ Command-line options (`./build/macos/neo_wolf --help` lists them):
 |---|---|
 | `--data <dir>` | Use the content in `<dir>` (the folder that contains `game/`). |
 | `--pref-dir <dir>` | Keep the log and `progress.json` in `<dir>` instead of the per-user folder (overrides `NEOWOLF_PREF_DIR`; used by every automated run). |
-| `--level <N>` | Start campaign level N (1-based index into `game/defs/campaign.json`, 3 levels for now) directly, skipping the menu and the unlocked-level check. For development and tests. |
+| `--level <N>` | Start campaign level N (1-based index into `game/defs/campaign.json`, 10 levels) directly, skipping the menu and the unlocked-level check. For development and tests. |
 | `--preview <screen>` / `--screenshot <file.bmp>` | Developer tools: show one screen with sample data / save the last frame as a BMP on exit ([TESTING.md](TESTING.md#screen-previews)). |
 | `--frames <N>` | Run N frames, then exit with code 0. For automated smoke tests; error dialogs are suppressed. |
 | `--windowed` / `--fullscreen` | Start in a window (default) or in desktop fullscreen. |

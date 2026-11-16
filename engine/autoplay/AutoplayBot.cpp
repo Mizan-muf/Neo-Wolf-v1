@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "engine/core/Progress.h"
 #include "engine/render/Raycaster.h"
 #include "engine/world/EnemyAi.h"
+#include "engine/world/InteractionRules.h"
 #include "engine/world/Navigation.h"
 
 namespace {
@@ -30,6 +32,11 @@ constexpr std::size_t kLookahead = 6;         // path cells the bot may cut acro
 constexpr double kInteractRepeat = 0.3;       // seconds between two Interact presses
 constexpr double kUnstickSeconds = 0.6;
 constexpr double kProgressStep = 0.25;        // cells closer to the goal count as progress
+// An enemy whose centre is in sight but whose shot grazes a corner: after this long aimed at it
+// without a clear shot, the bot ignores it for kSkipEnemySeconds and walks on (an idle enemy
+// out of its own notice range would otherwise hold the bot there for good).
+constexpr double kAimBlockedGiveUp = 2.0;
+constexpr double kSkipEnemySeconds = 3.0;
 
 float WrapAngle(float angle) {
     while (angle > kPi) {
@@ -200,6 +207,9 @@ void AutoplayBot::StartLevel() {
     sinceProgress_ = 0.0;
     stuckStrikes_ = 0;
     unstickTimer_ = 0.0;
+    aimBlockedSeconds_ = 0.0;
+    skippedEnemyId_ = -1;
+    skipTimer_ = 0.0;
     doorsOpened_ = 0;
     replans_ = -1;  // the first plan of a level is not a re-plan
     keysCollected_.clear();
@@ -366,11 +376,17 @@ bool AutoplayBot::FightVisibleEnemy() {
     if (engine_.playerAmmo_ <= 0) {
         return false;  // nothing to fight with: keep walking (towards ammo when it is low)
     }
+    if (skipTimer_ > 0.0) {
+        skipTimer_ -= config_.fixedStepSeconds;
+        if (skipTimer_ <= 0.0) {
+            skippedEnemyId_ = -1;
+        }
+    }
     const Player& player = engine_.player_;
     const Entity* target = nullptr;
     float targetDistance = engine_.gameplay_.weapon.range;
     for (const Entity& entity : engine_.entityManager_.Entities()) {
-        if (!IsEnemyAlive(entity)) {
+        if (!IsEnemyAlive(entity) || entity.id == skippedEnemyId_) {
             continue;
         }
         const float distance = Length(entity.position - player.position);
@@ -383,6 +399,7 @@ bool AutoplayBot::FightVisibleEnemy() {
         }
     }
     if (target == nullptr) {
+        aimBlockedSeconds_ = 0.0;
         return false;
     }
 
@@ -397,6 +414,15 @@ bool AutoplayBot::FightVisibleEnemy() {
         const float along = Dot(target->position - player.position, direction);
         if (!wall.hit || wall.distanceRaw > along) {
             Tap(InputAction::Attack);
+            aimBlockedSeconds_ = 0.0;
+        } else {
+            aimBlockedSeconds_ += config_.fixedStepSeconds;
+            if (aimBlockedSeconds_ >= kAimBlockedGiveUp) {
+                skippedEnemyId_ = target->id;
+                skipTimer_ = kSkipEnemySeconds;
+                aimBlockedSeconds_ = 0.0;
+                return false;
+            }
         }
     }
     return true;
@@ -695,6 +721,253 @@ void AutoplayBot::FollowPath() {
 // --- Sessions ----------------------------------------------------------------------------------
 
 namespace {
+// --- Event trace (--trace) ---------------------------------------------------------------------
+// Events are found by comparing the engine's state after each Gameplay frame with a snapshot
+// taken before it; nothing in the engine reports them. Within one frame the lines follow the
+// engine's own order: the player's shot, pickups and keys, triggers, doors, the exit switch,
+// then the enemy AI (state changes, hits on the player). Entities are listed in entity order.
+// Only game time, frame numbers, ids and cells appear: two runs of a build give the same text.
+
+const char* EnemyStateName(EnemyState state) {
+    switch (state) {
+    case EnemyState::Idle:
+        return "idle";
+    case EnemyState::Alert:
+        return "alert";
+    case EnemyState::Chase:
+        return "chase";
+    case EnemyState::Attack:
+        return "attack";
+    case EnemyState::Dead:
+        return "dead";
+    case EnemyState::Search:
+        return "search";
+    }
+    return "unknown";
+}
+
+std::string TraceCell(const Vec2i& cell) {
+    return std::to_string(cell.x) + "," + std::to_string(cell.y);
+}
+
+std::string TracePosition(const Vec2& position) {
+    char buffer[64] = {};
+    std::snprintf(buffer, sizeof(buffer), "%.2f,%.2f", static_cast<double>(position.x),
+                  static_cast<double>(position.y));
+    return buffer;
+}
+
+std::string TraceEnemy(const Entity& enemy) {
+    return std::string(EnemyVariantName(enemy.variant)) + "#" + std::to_string(enemy.id);
+}
+
+std::string HeldKeys(const KeyRing& keys) {
+    std::string held;
+    for (int i = 0; i < kKeyColorCount; ++i) {
+        if (keys.Has(kKeyColors[i])) {
+            held += (held.empty() ? "" : ",") + std::string(KeyColorName(kKeyColors[i]));
+        }
+    }
+    return held.empty() ? "none" : held;
+}
+
+class TraceRecorder {
+public:
+    explicit TraceRecorder(std::string* out) : out_(out) {
+        if (out_ != nullptr) {
+            *out_ += "# neo_wolf_autoplay trace 1: one event per line, \"L<level> t=<game seconds> f=<frame> "
+                     "<event> key=value...\" (docs/TESTING.md, Autoplay bot)\n";
+        }
+    }
+
+    // Before the first frame of a level: the snapshot every later frame is compared with.
+    void BeginLevel(const Engine& engine, int levelNumber) {
+        if (out_ == nullptr) {
+            return;
+        }
+        levelNumber_ = levelNumber;
+        unlockedDoors_.clear();
+        int enemies = 0;
+        int pickups = 0;
+        for (const Entity& entity : engine.entityManager_.Entities()) {
+            enemies += entity.type == EntityType::Enemy ? 1 : 0;
+            pickups += entity.type == EntityType::Pickup ? 1 : 0;
+        }
+        const CampaignLevel* level = engine.CurrentCampaignLevel();
+        Line(engine, 0, "level-start id=" + (level != nullptr ? level->id : std::string("?")) +
+                            " hp=" + std::to_string(engine.playerHealth_) + " ammo=" + std::to_string(engine.playerAmmo_) +
+                            " pos=" + TracePosition(engine.player_.position) + " enemies=" + std::to_string(enemies) +
+                            " pickups=" + std::to_string(pickups));
+        Snapshot(engine);
+    }
+
+    // After an Engine::Update that started in Gameplay; `frame` counts this level's frames.
+    void AfterFrame(const Engine& engine, std::uint64_t frame) {
+        if (out_ == nullptr) {
+            return;
+        }
+        const std::vector<Entity>& entities = engine.entityManager_.Entities();
+
+        // 1. The player's shot (it comes first in a frame): health lost by an enemy.
+        for (const Entity& entity : entities) {
+            const Snap* was = Find(entity.id);
+            if (entity.type != EntityType::Enemy || was == nullptr || entity.health >= was->health) {
+                continue;
+            }
+            Line(engine, frame, "hit-dealt target=" + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) +
+                                    " damage=" + std::to_string(was->health - entity.health) +
+                                    " hp=" + std::to_string(entity.health) + "/" + std::to_string(entity.maxHealth) +
+                                    (entity.enemyState == EnemyState::Dead ? " killed" : ""));
+        }
+
+        // 2. Pickups (key cards as "key" lines), 3. triggers, 4. doors.
+        for (const Entity& entity : entities) {
+            const Snap* was = Find(entity.id);
+            if (was == nullptr) {
+                continue;
+            }
+            const std::string cell = TraceCell(entity.type == EntityType::Door || entity.type == EntityType::Trigger
+                                                   ? Vec2i{entity.mapX, entity.mapY}
+                                                   : CellOf(entity.position));
+            if (entity.type == EntityType::Pickup && entity.collected && !was->collected) {
+                if (entity.pickupType == PickupType::Key) {
+                    Line(engine, frame, std::string("key colour=") + KeyColorName(entity.keyColor) + " cell=" + cell +
+                                            " held=" + HeldKeys(engine.keys_));
+                } else {
+                    Line(engine, frame, std::string("pickup kind=") +
+                                            (entity.pickupType == PickupType::Health ? "health" : "ammo") +
+                                            " value=" + std::to_string(entity.pickupValue) + " cell=" + cell +
+                                            " hp=" + std::to_string(engine.playerHealth_) +
+                                            " ammo=" + std::to_string(engine.playerAmmo_));
+                }
+            }
+        }
+        for (const Entity& entity : entities) {
+            const Snap* was = Find(entity.id);
+            if (entity.type == EntityType::Trigger && was != nullptr && entity.triggerActivated && !was->triggerActivated) {
+                Line(engine, frame, "trigger id=" + std::to_string(entity.id) + " cell=" +
+                                        TraceCell(Vec2i{entity.mapX, entity.mapY}) +
+                                        " pos=" + TracePosition(engine.player_.position));
+            }
+        }
+        for (const Entity& entity : entities) {
+            const Snap* was = Find(entity.id);
+            if (entity.type != EntityType::Door || was == nullptr || entity.doorOpen == was->doorOpen) {
+                continue;
+            }
+            std::string line = std::string(entity.doorOpen ? "door-open" : "door-close") +
+                               " cell=" + TraceCell(Vec2i{entity.mapX, entity.mapY}) +
+                               " lock=" + (entity.doorLock == KeyColor::None ? "none" : KeyColorName(entity.doorLock));
+            if (entity.doorOpen && entity.doorLock != KeyColor::None &&
+                std::find(unlockedDoors_.begin(), unlockedDoors_.end(), entity.id) == unlockedDoors_.end()) {
+                unlockedDoors_.push_back(entity.id);
+                line += " unlocked";
+            }
+            Line(engine, frame, line);
+        }
+
+        // 5. The exit switch: the frame ends there (no enemy AI in that frame).
+        const bool exited = engine.GetState() == GameState::LevelComplete;
+        if (exited) {
+            const ExitSwitchHit exitHit = FindExitSwitchInReach(engine.map_, engine.player_);
+            Line(engine, frame, "exit cell=" + (exitHit.found ? TraceCell(Vec2i{exitHit.mapX, exitHit.mapY}) : "?") +
+                                    " pos=" + TracePosition(engine.player_.position) +
+                                    " hp=" + std::to_string(engine.playerHealth_) +
+                                    " ammo=" + std::to_string(engine.playerAmmo_));
+        }
+
+        // 6. Enemy AI: state changes (one line per frame and enemy: old -> new; a change and its
+        // reverse within one frame are not seen), then attacks on the player.
+        for (const Entity& entity : entities) {
+            const Snap* was = Find(entity.id);
+            if (entity.type == EntityType::Enemy && was != nullptr && entity.enemyState != was->enemyState) {
+                Line(engine, frame, "enemy " + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) + " " +
+                                        EnemyStateName(was->enemyState) + "->" + EnemyStateName(entity.enemyState));
+            }
+        }
+        // An enemy attacked this frame when the AI ran (the level clock moved and the exit was
+        // not used) and it is in Attack with its cooldown just set to attackRate: the cooldown
+        // counts down in every AI update and is only set back by an attack.
+        const bool aiRan = !exited && engine.levelTimeSeconds_ != levelTime_;
+        const int lost = std::max(0, engine.levelDamageTaken_ - damageTaken_);
+        int health = engine.playerHealth_ + lost;  // before the attacks of this frame
+        int attributed = 0;
+        for (const Entity& entity : entities) {
+            if (!aiRan || !IsEnemyAlive(entity) || entity.enemyState != EnemyState::Attack ||
+                entity.attackCooldown != entity.attackRate) {
+                continue;
+            }
+            const int after = std::max(0, health - entity.damage);
+            attributed += health - after;
+            health = after;
+            Line(engine, frame, "hit-taken by=" + TraceEnemy(entity) + " from=" + TraceCell(CellOf(entity.position)) +
+                                    " damage=" + std::to_string(entity.damage) + " hp=" + std::to_string(after) +
+                                    " pos=" + TracePosition(engine.player_.position));
+        }
+        if (lost > attributed) {
+            Line(engine, frame, "hit-taken by=unknown damage=" + std::to_string(lost - attributed) +
+                                    " hp=" + std::to_string(engine.playerHealth_) +
+                                    " pos=" + TracePosition(engine.player_.position));
+        }
+
+        Snapshot(engine);
+    }
+
+    void EndLevel(const Engine& engine, const AutoplayLevelReport& report) {
+        if (out_ == nullptr) {
+            return;
+        }
+        std::string line = std::string("level-end result=") + AutoplayResultName(report.result) +
+                           " hp=" + std::to_string(report.healthEnd) + " ammo=" + std::to_string(report.ammoEnd) +
+                           " damage=" + std::to_string(report.damageTaken) + " kills=" + std::to_string(report.kills) +
+                           "/" + std::to_string(report.totalEnemies) + " pickups=" + std::to_string(report.pickups) +
+                           "/" + std::to_string(report.totalPickups) + " shots=" + std::to_string(report.shotsFired);
+        if (!report.reason.empty()) {
+            line += " reason=\"" + report.reason + "\"";
+        }
+        Line(engine, report.frames, line);
+    }
+
+private:
+    struct Snap {
+        int health = 0;
+        EnemyState enemyState = EnemyState::Idle;
+        float attackCooldown = 0.0f;
+        bool collected = false;
+        bool doorOpen = false;
+        bool triggerActivated = false;
+    };
+
+    void Snapshot(const Engine& engine) {
+        snaps_.clear();
+        for (const Entity& entity : engine.entityManager_.Entities()) {
+            snaps_[entity.id] = Snap{entity.health,   entity.enemyState, entity.attackCooldown,
+                                     entity.collected, entity.doorOpen,   entity.triggerActivated};
+        }
+        damageTaken_ = engine.levelDamageTaken_;
+        levelTime_ = engine.levelTimeSeconds_;
+    }
+
+    const Snap* Find(int id) const {
+        const auto it = snaps_.find(id);
+        return it == snaps_.end() ? nullptr : &it->second;
+    }
+
+    void Line(const Engine& engine, std::uint64_t frame, const std::string& event) {
+        char prefix[64] = {};
+        std::snprintf(prefix, sizeof(prefix), "L%d t=%.3f f=%llu ", levelNumber_, engine.levelTimeSeconds_,
+                      static_cast<unsigned long long>(frame));
+        *out_ += prefix + event + "\n";
+    }
+
+    std::string* out_ = nullptr;
+    int levelNumber_ = 0;
+    std::map<int, Snap> snaps_;
+    std::vector<int> unlockedDoors_;
+    int damageTaken_ = 0;
+    double levelTime_ = 0.0;
+};
+
 struct LevelTracker {
     AutoplayLevelReport* report = nullptr;
     int levelIndex = -1;
@@ -732,7 +1005,8 @@ void FinishLevel(const Engine& engine, const AutoplayBot& bot, AutoplayLevelRepo
 }
 } // namespace
 
-AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& config, bool wholeCampaign) {
+AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& config, bool wholeCampaign,
+                                     std::string* trace) {
     AutoplayRunReport report{};
     report.campaignTitle = engine.campaign_.title;
     report.campaignLevels = static_cast<int>(engine.campaign_.levels.size());
@@ -750,6 +1024,7 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
 
     AutoplayBot bot(engine, config);
     engine.SetInputInjector([&bot](InputState& input) { bot.Fill(input); });
+    TraceRecorder recorder(trace);
 
     std::vector<PlayerStats> entered;
     std::vector<PlayerStats> completed;
@@ -769,6 +1044,7 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
             level.report->healthStart = engine.playerHealth_;
             level.report->ammoStart = engine.playerAmmo_;
             entered.push_back(engine.CurrentStats());
+            recorder.BeginLevel(engine, level.report->levelNumber);
         }
 
         engine.Update(config.fixedStepSeconds);
@@ -782,6 +1058,7 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
         }
         if (before == GameState::Gameplay) {
             ++level.report->frames;
+            recorder.AfterFrame(engine, level.report->frames);
         }
         const GameState after = engine.GetState();
         const std::string where = " at " + FormatPosition(engine.player_.position);
@@ -810,6 +1087,7 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
                         engine.CurrentLevelResults());
         }
         if (level.ended) {
+            recorder.EndLevel(engine, *level.report);
             const bool completedLevel = level.report->result == AutoplayResult::Complete;
             stop = !wholeCampaign || !completedLevel;
         }
@@ -818,6 +1096,7 @@ AutoplayRunReport RunAutoplaySession(Engine& engine, const AutoplayConfig& confi
         FinishLevel(engine, bot, *level.report, AutoplayResult::Timeout,
                     "the frame limit of the run was reached (" + std::to_string(frame) + " frames)",
                     engine.CurrentLevelResults());
+        recorder.EndLevel(engine, *level.report);
     }
     engine.SetInputInjector(nullptr);
 
@@ -882,7 +1161,7 @@ AutoplayRunReport RunAutoplay(const AutoplayRunOptions& options) {
         report.error = "the engine did not start (see the messages above)";
         return report;
     }
-    AutoplayRunReport report = RunAutoplaySession(engine, options.config, options.level == 0);
+    AutoplayRunReport report = RunAutoplaySession(engine, options.config, options.level == 0, options.trace);
     engine.Shutdown();
     return report;
 }

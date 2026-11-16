@@ -238,7 +238,7 @@ Every message names the file, the entity and the field, for example:
 
 ```text
 .../level01.entities.json: entities[2] (pickup): field "kind" is required ("health" or "ammo")
-.../level01.entities.json: entities[4] (door): map cell (16, 7) is outside the 16x12 map
+.../level01.entities.json: entities[4] (door): map cell (20, 6) is outside the 20x13 map
 .../level01.entities.csv:5 (entity 3) (door): fields "mapX" and "mapY" are required (...)
 .../level03.entities.json: entities[7] (enemy): field "variant" must be "guard", "brute" or "runner", got "ninja"
 .../level02.entities.json: entities[6] (pickup): field "key" must be "red", "blue" or "gold", got "green"
@@ -479,9 +479,8 @@ Errors: the file cannot be read; invalid JSON or a repeated key; a missing or mi
 an empty `levels`; a repeated or malformed id; a missing map, entity or theme file. Unknown keys
 are warnings. A title or name longer than 32 characters is a warning and is shortened on
 screen. The shipped campaign has its final 10 levels (ids `level01` to `level10`, names and
-themes from the Phase 8 design, [levels/README.md](levels/README.md)); `level01` to `level03`
-are still the Phase 7 levels and `level04` to `level10` are **stubs** (a small room with an
-exit switch, marked `STUB` in the map's header comment) until they are built. CTest
+themes from the Phase 8 design, [levels/README.md](levels/README.md)), all built in Phase 8
+(one page per level in `docs/levels/`). CTest
 `content_validation_campaign_size` requires exactly 10 (`validate --strict --require-levels 10`).
 
 Every campaign level must contain at least one exit switch (`X`) that the player can reach
@@ -511,7 +510,7 @@ exit=game/assets/themes/bunker/exit.ppm
 | `bunker` | concrete, olive steel, hazard stripes, blast door (generated, 32×32) | level01, level04, level07 |
 | `stone` | stone bricks, moss, granite, wooden door (generated, 32×32) | level02, level05, level09 |
 | `tech` | blue panels, circuits, server racks, sliding door (generated, 32×32) | level03, level06, level08 |
-| `classic` | the original 8×8 textures (formerly `wall_textures.cfg`) plus a generated exit switch and locked doors | level10 |
+| `classic` | castle: blue-grey stone blocks, oak panelling, a red banner, a riveted steel door (generated, 32×32; replaced the original 8×8 textures in Phase 8) | level10 |
 
 Each full theme's locked doors are its own door with a band in the lock's colour (see
 [ASSET_GUIDE.md](ASSET_GUIDE.md#4-texture-themes)).

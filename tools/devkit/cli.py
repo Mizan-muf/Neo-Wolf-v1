@@ -113,7 +113,8 @@ def _find_campaign_level(root: Path, wanted: str) -> Tuple[Optional[CampaignLeve
     for level in levels:
         if level.id == wanted or (wanted.isdigit() and int(wanted) == level.index + 1):
             return level, []
-    return None, scratch.errors or [f"campaign.json has no level '{wanted}' (ids: {', '.join(l.id for l in levels)})"]
+    return None, scratch.errors or [f"campaign.json has no level '{wanted}' (ids: {', '.join(l.id for l in levels)}; "
+                                    f"or a number from 1 to {len(levels)})"]
 
 
 def cmd_inspect_map(args: argparse.Namespace) -> int:
@@ -370,8 +371,18 @@ def cmd_create_asset(args: argparse.Namespace) -> int:
 
 def cmd_sync_entities(args: argparse.Namespace) -> int:
     root = resolve_root(args)
+    entities_path: Optional[Path] = None
+    if args.level is not None:
+        # One campaign level (by id or 1-based number, like inspect-map --level): its entity
+        # file pair, wherever campaign.json puts it.
+        level, problems = _find_campaign_level(root, args.level)
+        if level is None:
+            for problem in problems:
+                print(f"Error: {problem}")
+            return 1
+        entities_path = root / level.entities
     try:
-        synced = sync_entity_definitions(root, from_csv=args.from_csv)
+        synced = sync_entity_definitions(root, from_csv=args.from_csv, entities_path=entities_path)
     except ValueError as exc:
         print(f"Error: {exc}")
         return 1
@@ -495,6 +506,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_p.add_argument("--from-csv", action="store_true",
                         help="Reverse direction: overwrite each <level>.entities.json from its CSV.")
+    sync_p.add_argument("--level", type=str, default=None, metavar="ID|N",
+                        help="Only this campaign level (its id, e.g. level03, or its 1-based number); "
+                             "default: every entity file in game/defs/.")
     # JSON -> CSV is the default since Phase 4; the old flag is still accepted and does nothing.
     sync_p.add_argument("--prefer-json", action="store_true", help=argparse.SUPPRESS)
 

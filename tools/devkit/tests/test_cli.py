@@ -181,6 +181,103 @@ class TestInspectMap(CliTest):
         self.assertIn("the engine cannot load", out)
 
 
+class TestSyncEntities(CliTest):
+    """sync-entities, and --level (one campaign level by id or 1-based number)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.defs = self.root / "game" / "defs"
+        # Stale CSVs for every level: only the synced ones change.
+        for level_id in ("alpha", "beta", "gamma"):
+            (self.defs / f"{level_id}.entities.csv").write_text("# stale\nplayer,9.5,9.5\n", encoding="utf-8")
+
+    def csv_text(self, level_id: str) -> str:
+        return (self.defs / f"{level_id}.entities.csv").read_text(encoding="utf-8")
+
+    def test_without_level_syncs_every_pair(self) -> None:
+        code, out = run_cli("--root", str(self.root), "sync-entities")
+        self.assertEqual(code, 0, out)
+        self.assertIn("(3 file pairs)", out)
+        for level_id in ("alpha", "beta", "gamma"):
+            self.assertNotIn("# stale", self.csv_text(level_id))
+
+    def test_level_by_id_and_by_number(self) -> None:
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "beta")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Synced beta.entities.json -> beta.entities.csv", out)
+        self.assertIn("(1 file pairs)", out)
+        self.assertNotIn("# stale", self.csv_text("beta"))
+        self.assertIn("# stale", self.csv_text("alpha"))
+        self.assertIn("# stale", self.csv_text("gamma"))
+        # Number 3 is gamma (1-based campaign order); alpha stays stale.
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "3")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Synced gamma.entities.json -> gamma.entities.csv", out)
+        self.assertNotIn("alpha", out)
+        self.assertNotIn("# stale", self.csv_text("gamma"))
+        self.assertIn("# stale", self.csv_text("alpha"))
+
+    def test_level_from_csv(self) -> None:
+        (self.defs / "alpha.entities.csv").write_text("player,2.5,2.5\n", encoding="utf-8")
+        beta_before = (self.defs / "beta.entities.json").read_text(encoding="utf-8")
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "1", "--from-csv")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Synced alpha.entities.csv -> alpha.entities.json", out)
+        alpha = json.loads((self.defs / "alpha.entities.json").read_text(encoding="utf-8"))
+        self.assertEqual(alpha["entities"], [{"type": "player", "x": 2.5, "y": 2.5}])
+        self.assertEqual((self.defs / "beta.entities.json").read_text(encoding="utf-8"), beta_before)
+        # A level without a CSV: an error, nothing written.
+        (self.defs / "gamma.entities.csv").unlink()
+        gamma_before = (self.defs / "gamma.entities.json").read_text(encoding="utf-8")
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "gamma", "--from-csv")
+        self.assertEqual(code, 1, out)
+        self.assertIn("gamma.entities.csv not found; nothing was synced", out)
+        self.assertEqual((self.defs / "gamma.entities.json").read_text(encoding="utf-8"), gamma_before)
+
+    def test_level_keeps_the_light_zone_warning(self) -> None:
+        path = self.defs / "beta.entities.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["lights"] = [{"x": 1, "y": 1, "w": 2, "h": 1, "level": 0.35}]
+        path.write_text(json.dumps(document), encoding="utf-8")
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "beta")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Warning: beta.entities.json has 1 light zone(s); the CSV cannot hold them", out)
+        self.assertIn("# lights: 1 light zone(s) in the JSON are not exported", self.csv_text("beta"))
+
+    def test_unknown_level_fails_without_writing(self) -> None:
+        for wanted in ("delta", "0", "4", "99", "-1", ""):
+            with self.subTest(level=wanted):
+                code, out = run_cli("--root", str(self.root), "sync-entities", "--level", wanted)
+                self.assertEqual(code, 1, out)
+                self.assertIn(f"Error: campaign.json has no level '{wanted}'", out)
+                self.assertIn("or a number from 1 to 3", out)
+        for level_id in ("alpha", "beta", "gamma"):
+            self.assertIn("# stale", self.csv_text(level_id))
+        # A campaign level whose entity file is missing: an error, not a crash.
+        (self.defs / "beta.entities.json").unlink()
+        code, out = run_cli("--root", str(self.root), "sync-entities", "--level", "beta")
+        self.assertEqual(code, 1, out)
+        self.assertIn("not found", out)
+        self.assertIn("beta.entities.json", out)
+        self.assertIn("# stale", self.csv_text("beta"))
+
+    def test_every_shipped_campaign_level_resolves(self) -> None:
+        # Data-driven over the shipped campaign.json, on a scratch copy of game/defs (the real
+        # CSVs are not touched): id and number name the same entity pair.
+        campaign = json.loads((REPO_ROOT / "game" / "defs" / "campaign.json").read_text(encoding="utf-8"))
+        scratch = Path(self.temp.name) / "shipped"
+        shutil.copytree(REPO_ROOT / "game" / "defs", scratch / "game" / "defs")
+        shutil.copytree(REPO_ROOT / "game" / "maps", scratch / "game" / "maps")
+        for number, level in enumerate(campaign["levels"], start=1):
+            stem = Path(level["entities"]).name.replace(".entities.json", "")
+            for selector in (str(number), level["id"]):
+                with self.subTest(level=selector):
+                    code, out = run_cli("--root", str(scratch), "sync-entities", "--level", selector)
+                    self.assertEqual(code, 0, out)
+                    self.assertIn(f"Synced {stem}.entities.json -> {stem}.entities.csv", out)
+                    self.assertIn("(1 file pairs)", out)
+
+
 class FakeEnv:
     """A stand-in for which/run so doctor can be tested for every platform."""
 

@@ -1,113 +1,23 @@
-# Phase 8 build notes (working document)
+# Phase 8 build notes (history)
 
-Briefs for the two level builders. **Temporary**: the integrator condenses or deletes this file
-when the campaign is done. The design, the economy, the bot targets and the rules every level
-follows are in [README.md](README.md); this file says what to build, level by level.
+> **History, frozen 2026-11-16.** These are the per-level briefs the two builders worked from
+> in Roadmap Phase 8. The levels as built are described in their pages,
+> [level01.md](level01.md) to [level10.md](level10.md), whose "Deviations and exceptions"
+> sections say where and why a level differs from its brief. Do not update this file; change
+> the level pages instead.
+>
+> The working parts of the original notes moved when the campaign was integrated:
+> verification steps and light-zone how-to → [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md);
+> balancing lessons → [LEVEL_AUTHORING.md, Balancing tips](../LEVEL_AUTHORING.md#balancing-tips-learned-building-the-10-level-campaign);
+> the light zones as built → the level pages of levels 5, 7 and 10; the design, economy, bot
+> targets, rules and measured results → [README.md](README.md).
 
-- **Builder A**: levels 01–05. Rework `level01` into a proper tutorial, replace the Phase 7
-  placeholders `level02` and `level03`, and replace the stubs `level04` and `level05`.
-- **Builder B**: levels 06–10, replacing the stubs `level06` to `level10`.
-
-## Ground rules for both builders
-
-- **Your files only**: `game/maps/levelNN.map`, `game/defs/levelNN.entities.json`,
-  `game/defs/levelNN.entities.csv` (generated) and `docs/levels/levelNN.md` for your levels.
-  Do not edit `campaign.json` (ids, names, themes and order are final), `gameplay.json`, themes,
-  sprites, the engine, the tests or the other builder's levels. If you need any of those
-  changed, write it down for the integrator.
-- **Keep** each level's id, name and theme from the table in [README.md](README.md).
-- **Map header**: the first lines of every map are `;` comments: `; levelNN - Name (theme)`, then
-  one line naming the level's idea. Remove the `STUB` lines.
-- **Coordinates** below are guidance: room positions are approximate (± 2 cells), counts and
-  the order of events are not. Sizes are width × height in cells.
-- **Counts are exact**: the enemy, pickup and key counts per level are the ones in the README
-  table, because the economy is computed from them. If a layout needs a different count, note it
-  in the level page and tell the integrator.
-- **Rules**: README "Design rules" 1–16 and the economy placement rules 1–5 apply everywhere.
-  The ones most often broken: enemies at cell centres (C20); no enemy within 1.5 cells of a
-  door's far side except in designated ambush rooms (levels 6+); doors not adjacent and not
-  `D.D` (C19); at least half the ammo on the critical path; health after fights.
-- **Vocabulary** in the plans: *critical path* = the shortest route the bot takes (spawn → keys
-  in order → exit); *on path* = in a 1-wide corridor or doorway approach of that route, so
-  walking it collects the pickup; *side* = off the route, within 6 cells of it unless stated;
-  *pair / line / cluster* = the decoration landmarks of README rule 13.
-- **Scratch work** goes in `/tmp/nw-p8-<a|b>-*`; never open a game window (use the dummy SDL
-  drivers below); do not commit unless the integrator asks.
-
-## Verification (every level)
-
-```bash
-python3 tools/devkit/devkit.py sync-entities                         # JSON -> CSV
-python3 tools/devkit/devkit.py validate --strict                     # 0 errors, 0 warnings
-python3 tools/devkit/devkit.py inspect-map --level N                 # exit 0, keys in the intended order
-cmake --build --preset macos                                         # re-configures (content changed)
-build/macos/neo_wolf_autoplay --level N --pref-dir /tmp/nw-p8-x-pref --json /tmp/nw-p8-x-levelNN.json
-build/macos/neo_wolf_autoplay --all --pref-dir /tmp/nw-p8-x-pref     # the whole campaign still passes
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --level N --frames 5 \
-    --pref-dir /tmp/nw-p8-x-pref --screenshot /tmp/nw-p8-x-levelNN.bmp   # look at it (sips -> png)
-ctest --preset macos                                                 # all green
-```
-
-Before handing a level over, `validate --strict --require-levels 10` must still pass (CTest
-`content_validation_campaign_size`).
-
-`sync-entities` prints a `Warning:` line for levels with light zones (the CSV cannot hold them;
-the JSON keeps them): expected, not a problem. The headless `--level N --frames 5 --screenshot`
-run shows gameplay (headless video drivers ignore focus loss), so use it to look at any level,
-including its dark areas.
-
-## Light zones (levels 5, 7 and 10)
-
-Known issue C21 is resolved: a level's entity JSON takes an optional top-level `lights` array
-of cell rectangles (schema: [CONTENT_DEFINITIONS.md](../CONTENT_DEFINITIONS.md#light-zones-lights);
-how-to and fairness rules: [LEVEL_AUTHORING.md](../LEVEL_AUTHORING.md#dark-and-dim-areas-light-zones)).
-Add the zones to your `levelNN.entities.json` yourself; nothing else needs changing.
-
-```json
-  "lights": [
-    { "x": 3, "y": 14, "w": 9, "h": 7, "level": 0.5 }
-  ]
-```
-
-- `x`, `y` = the top-left cell, `w`, `h` ≥ 1 cells, fully inside the map; `level` from **0.2 to
-  1.0** (0.5 dim, 0.35 dark). Applied in order (later zones override); every other cell is 1.0.
-- Cover the area's floor cells; walls take the light of the cell in front of them. Start and
-  end a zone at a doorway or corridor mouth (edges are hard).
-- Light is **cosmetic**: enemies see and hear the player in the dark as in the light, and the bot
-  ignores it. So the bot's numbers do not change, and fairness is judged by looking: take the
-  preview screenshot of every zone and check that each enemy reads against the background.
-- Keep at **≥ 0.5**: the cell in front of a locked door, the exit room, and the cell of a key on
-  the critical path. Mark every dark zone's entrance with a decoration pair. In zones below 0.5,
-  no brute within 3 cells of the entrance and no enemy within 3 cells of a door's far side.
-- Run `validate --strict` (range, fields, bounds) and `inspect-map --level N` (lists the zones).
-
-The intended zones (rectangles follow your final room positions):
-
-| Level | Zone | Level | Notes |
-|---|---|---|---|
-| 05 Catacombs | **R4 crypt**: every floor cell of the crypt, starting one cell inside Dr | 0.5 | The blue door Db and the blue key stay at 0.5 (readable). Optional: the side alcove with the health at 0.35 (a later zone). R5 tomb and everything else 1.0. |
-| 07 Blackout Barracks | **R2 west wing**: the corridor and its 2–3 bunk rooms, up to the key room's doorway | 0.35 | The key rooms at the far ends stay **1.0** (lit key rooms; the brutes stand in the light). Optional soft edge: the wing's first corridor row from the hub at 0.5. |
-| 07 Blackout Barracks | **R3 east wing**: the corridor and its armoury bays, up to the key room's doorway | 0.35 | As the west wing. Hub, mess hall and exit wing 1.0. |
-| 10 Wolf's Den | **R5 chapel corridor and crypt** | 0.5 | The gold key and the brute across the nave stay readable at 0.5. Optional: the side alcoves with the health and ammo at 0.35. The arena behind Dg 1.0. |
-
-No other level uses light zones.
-
-**Report per level** (in its page `docs/levels/levelNN.md`, and to the integrator): the
-`--level N` row (time, damage, HP and ammo at exit, kills, pickups, keys, shots) against the
-README targets; whether `--all` still passes and the level's row in it; the start screenshot
-checked; the light zones (levels 5, 7 and 10, see [Light zones](#light-zones-levels-5-7-and-10)
-below) with their screenshot; anything that breaks a rule on purpose, and why.
-
-**Level page** `docs/levels/levelNN.md`: name, id, theme, size; the idea; a minimap or the
-`inspect-map` grid; enemies, pickups, keys and locks; the critical path in one paragraph;
-difficulty target; the bot's results (fresh and campaign) with the date; light zones (5, 7, 10):
-each zone's rectangle and level as in the entity file, and what it covers.
-
-**Builder B and the campaign run.** Levels 6–10 start, in `--all`, with whatever builder A's
-levels leave. Until A's levels are in, judge levels 6–10 with `--level N` (fresh start) against
-the README targets and keep a margin: a level whose fresh-start bot run ends below the
-"Fresh: HP at exit" floor will fail the campaign targets later. The integrator balances the
-full campaign.
+Builder A built levels 01–05 (reworking `level01` into a tutorial and replacing the Phase 7
+`level02`/`level03` and the stubs `level04`/`level05`); builder B built levels 06–10. Vocabulary:
+*critical path* = the shortest route the bot takes (spawn → keys in order → exit); *on path* =
+in a 1-wide corridor or doorway approach of that route; *side* = off the route, within 6 cells
+of it unless stated; *pair / line / cluster* = the decoration landmarks of README rule 13.
+Coordinates were guidance (± 2 cells); counts and the order of events were exact.
 
 ---
 
@@ -242,7 +152,7 @@ gold key and door.
 ### level05 — Catacombs (`stone`, 28×24) — runners, two keys, a branch, a dim crypt
 
 Idea: runners (fast, fragile, they rush from far), two keys in sequence, a fork with two
-routes to the first key, and a dim crypt (a light zone, see [Light zones](#light-zones-levels-5-7-and-10)).
+routes to the first key, and a dim crypt (a light zone; as built: [level05.md](level05.md#light-zones)).
 
 ```text
                          R1 stair landing (spawn, north centre) P

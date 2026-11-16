@@ -1,0 +1,7 @@
+{
+  "level": "aim_blocked",
+  "entities": [
+    {"type": "player", "x": 12.09, "y": 10.14, "angle": 317.5},
+    {"type": "enemy", "x": 20.394, "y": 2.527, "variant": "runner"}
+  ]
+}

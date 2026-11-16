@@ -6,7 +6,7 @@
     { "type": "door", "x": 19.5, "y": 4.5, "mapX": 19, "mapY": 4, "lock": "gold" },
     { "type": "enemy", "x": 12.5, "y": 1.5, "variant": "brute" },
     { "type": "enemy", "x": 2.5, "y": 2.5, "variant": "guard" },
-    { "type": "enemy", "x": 23.5, "y": 2.5, "variant": "guard" },
+    { "type": "enemy", "x": 23.5, "y": 3.5, "variant": "guard" },
     { "type": "enemy", "x": 2.5, "y": 5.5, "variant": "guard" },
     { "type": "enemy", "x": 24.5, "y": 6.5, "variant": "guard" },
     { "type": "enemy", "x": 15.5, "y": 11.5, "variant": "guard" },

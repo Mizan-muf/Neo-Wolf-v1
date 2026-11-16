@@ -7,6 +7,7 @@ from pathlib import Path
 
 from tools.devkit.def_tools import (
     csv_to_json,
+    entity_file_pair,
     json_to_csv,
     load_entity_csv,
     load_entity_json,
@@ -84,6 +85,30 @@ class TestDefTools(unittest.TestCase):
 
         synced = sync_entity_definitions(self.dir_path, from_csv=True)
         self.assertEqual(synced, ["Synced level01.entities.csv -> level01.entities.json"])
+
+    def test_sync_one_pair(self) -> None:
+        # entities_path (sync-entities --level): only that level's pair, either direction.
+        defs = self.dir_path / "game" / "defs"
+        defs.mkdir(parents=True)
+        for level_id in ("level01", "level02"):
+            save_entity_json(level_id, [{"type": "player", "x": 1.5, "y": 1.5}], defs / f"{level_id}.entities.json")
+            (defs / f"{level_id}.entities.csv").write_text("# stale\nplayer,9.5,9.5\n", encoding="utf-8")
+        synced = sync_entity_definitions(self.dir_path, entities_path=defs / "level02.entities.json")
+        self.assertEqual(synced, ["Synced level02.entities.json -> level02.entities.csv"])
+        self.assertEqual(load_entity_csv(defs / "level02.entities.csv"), [{"type": "player", "x": 1.5, "y": 1.5}])
+        self.assertIn("# stale", (defs / "level01.entities.csv").read_text(encoding="utf-8"))
+        # The pair is found from either file of it.
+        synced = sync_entity_definitions(self.dir_path, from_csv=True, entities_path=defs / "level01.entities.csv")
+        self.assertEqual(synced, ["Synced level01.entities.csv -> level01.entities.json"])
+        self.assertEqual(load_entity_json(defs / "level01.entities.json")[1], [{"type": "player", "x": 9.5, "y": 9.5}])
+        self.assertEqual(load_entity_json(defs / "level02.entities.json")[1], [{"type": "player", "x": 1.5, "y": 1.5}])
+        # A missing source file or a name that is not an entity file: ValueError, nothing written.
+        with self.assertRaises(ValueError):
+            sync_entity_definitions(self.dir_path, entities_path=defs / "level03.entities.json")
+        with self.assertRaises(ValueError):
+            sync_entity_definitions(self.dir_path, entities_path=defs / "level01.map")
+        self.assertEqual(entity_file_pair(defs / "x.entities.csv"),
+                         (defs / "x.entities.json", defs / "x.entities.csv", "x"))
 
     def _defs_with_lights(self) -> Path:
         defs = self.dir_path / "game" / "defs"

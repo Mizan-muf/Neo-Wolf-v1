@@ -19,6 +19,7 @@ struct AutoplayCommandLine {
     std::string prefDir;        // --pref-dir DIR (empty: a temporary folder, removed afterwards)
     double timeLimitSeconds = AutoplayConfig{}.timeLimitSeconds;  // --time-limit SECONDS
     std::string jsonPath;       // --json FILE
+    std::string tracePath;      // --trace FILE: the per-event log (RunAutoplaySession)
     bool verbose = false;       // --verbose: print the engine's log to the console
 };
 

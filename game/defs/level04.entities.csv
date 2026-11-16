@@ -4,7 +4,7 @@ door,6.5,4.5,6,4
 door,19.5,4.5,19,4,,,,,,gold
 enemy,12.5,1.5,,,,,,brute
 enemy,2.5,2.5,,,,,,guard
-enemy,23.5,2.5,,,,,,guard
+enemy,23.5,3.5,,,,,,guard
 enemy,2.5,5.5,,,,,,guard
 enemy,24.5,6.5,,,,,,guard
 enemy,15.5,11.5,,,,,,guard

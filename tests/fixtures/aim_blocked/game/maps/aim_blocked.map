@@ -1,0 +1,16 @@
+; Autoplay regression fixture (tests/fixtures/aim_blocked): level 10's great hall, cropped.
+; An idle runner stands in the east alcove (20, 2), beyond its notice range from the bot's
+; route, where the centre is in sight but a shot grazes the alcove's corner. The bot must not
+; stall aiming at it (CTest autoplay.fixture_aim_blocked).
+#######################
+#A..................###
+#....................##
+#A...A..A....A..A...###
+#A..................###
+#...................X##
+#A..................###
+#A..................###
+#....A..A....A..A....##
+##..................###
+##..................###
+#######################

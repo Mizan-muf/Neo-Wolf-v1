@@ -72,9 +72,10 @@ looks to +x (right on the map), 90 to +y (down).
 - [ ] **Pickups**: `"kind": "health"` or `"ammo"` (optional `"value"`), where the player can reach
       them; **decorations** anywhere on the floor (they block nothing).
 - [ ] Nothing inside a wall, the exit switch or a door cell (only the door itself).
-- [ ] Optional: `neo_devkit sync-entities` refreshes the CSV exports (`*.entities.csv`). A level
-      with light zones prints a `Warning:` line: expected, the CSV cannot hold them (the JSON,
-      which the game loads, keeps them).
+- [ ] Optional: `neo_devkit sync-entities --level levelNN` (or `--level N`) refreshes this
+      level's CSV export (`levelNN.entities.csv`) and nothing else; without `--level` it
+      rewrites every level's CSV. A level with light zones prints a `Warning:` line: expected,
+      the CSV cannot hold them (the JSON, which the game loads, keeps them).
 
 ### Dark and dim areas (light zones)
 
@@ -125,17 +126,18 @@ harder to spot at range. Rules:
       Pickups off the path may sit in the dark as a reward for exploring.
 - [ ] No ambush at a dark doorway: the rule "no enemy within 1.5 cells of a door's far side"
       applies twice as strictly in the dark (use 3 cells).
-- [ ] Look at it: put the level in a scratch copy of the content as campaign level 1, move the
-      player to look into the zone, and take a preview screenshot (below). Check that each
-      enemy is visible against the background and that nothing on the critical path is lost.
+- [ ] Look at it: copy the content to a scratch folder, move the player there so that it looks
+      into the zone, and take a headless screenshot (headless runs show gameplay). Check that
+      each enemy is visible against the background and that nothing on the critical path is
+      lost. Never edit the shipped files for a screenshot.
 
 ```bash
 rm -rf /tmp/levelNN-light && mkdir -p /tmp/levelNN-light && cp -R game /tmp/levelNN-light/game
-# edit /tmp/levelNN-light/game/defs/campaign.json: levels[0] "map", "entities", "theme" -> levelNN's;
-# edit the copy's levelNN.entities.json: the player's x, y and angle look into the zone
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --data /tmp/levelNN-light \
-    --pref-dir /tmp/levelNN-light/prefs --preview minimap --frames 5 --screenshot /tmp/levelNN-light/zone.bmp
-sips -s format png -z 480 640 /tmp/levelNN-light/zone.bmp --out /tmp/levelNN-light/zone.png
+# edit /tmp/levelNN-light/game/defs/levelNN.entities.json: the player's x, y and angle look into the zone
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --data /tmp/levelNN-light --level N \
+    --frames 5 --pref-dir /tmp/levelNN-light/prefs --screenshot /tmp/levelNN-light/zone.bmp
+sips -s format png /tmp/levelNN-light/zone.bmp --out /tmp/levelNN-light/zone.png   # 320x240
+sips -z 480 640 /tmp/levelNN-light/zone.png --out /tmp/levelNN-light/zone-big.png   # easier to judge
 ```
 
 ## 5. Validate
@@ -177,6 +179,68 @@ ctest --preset macos -L autoplay             # autoplay.level.1 ... N and autopl
 - [ ] Windows: the CI job runs `neo_wolf_autoplay --all --json` on every OS and uploads the
       report (`autoplay-report-<preset>`); check it after pushing.
 
+### Balancing with `--trace`
+
+The table says *how much* damage the bot took; the event trace says *where and from whom*.
+`--trace FILE` writes one line per event (format: [TESTING.md](TESTING.md#event-trace---trace)):
+
+```bash
+build/macos/neo_wolf_autoplay --level N --trace /tmp/levelNN-trace.txt
+build/macos/neo_wolf_autoplay --all --trace /tmp/campaign-trace.txt    # with carried-over health/ammo
+grep hit-taken /tmp/levelNN-trace.txt          # every hit on the player: time, attacker, damage, where
+grep -E 'hit-taken|pickup kind=health' /tmp/campaign-trace.txt | grep '^LN '   # damage vs healing on level N
+grep -E 'idle->|->attack' /tmp/levelNN-trace.txt   # when and where enemies notice and engage
+```
+
+- A `hit-taken` line gives the attacker (`by=brute#12`, its cell `from=3,19`), the damage, the
+  player's health after it and the player's position `pos=`: look the cells up with
+  `neo_devkit inspect-map --level N`. Several hits from one spot point at an ambush corner or
+  an enemy that reaches the player before the player can see it.
+- `hp=` after the last hits plus the `pickup kind=health` lines show how close the level runs
+  to the 40 % health detour (and to `died`); with `--all`, `level-start hp=` shows what the next
+  level inherits.
+- `enemy … idle->alert` far from the player's path (or never) shows enemies the route never
+  meets; `hit-dealt` lines count the shots each kill needed.
+- The trace is deterministic: change one thing, run again and `diff` the two traces to see
+  exactly which encounters changed.
+
+### Balancing tips (learned building the 10-level campaign)
+
+The calibration table "What hurts the bot" in [docs/levels/README.md](levels/README.md#what-hurts-the-bot-measured)
+gives the bot's damage per situation. What the Phase 8 builders and the integrator learned on
+top of it:
+
+- **Open sight lines cost the bot nothing.** It shoots everything it can see before it arrives
+  (2 shots per guard, 4 per brute, 1 per runner). Damage comes from brutes met at close range,
+  enemies converging from two directions, and enemies that step out beside or behind it.
+- **Gunfire is heard 10 path cells along open cells; closed doors block it.** A squad behind an
+  open doorway within 10 path cells of a fight hears it, walks out into the open and is shot at
+  range (level 8's bays first had open doorways: 0 damage). To keep a squad for a close fight,
+  put it behind a closed (unlocked) door, or more than 10 path cells from the earlier fights
+  (level 9's key-room brute sits behind a winding 12-cell passage).
+- **Alcoves:** a straight 1-cell alcove lets the bot see and shoot its occupant first; an
+  L-shaped niche hides it until it steps out beside the player (level 5's gallery).
+- **Two enemies in one place arrive one after the other; two from different directions arrive
+  together.** Two guards round the same bend are both shot (0); one round the bend and one in a
+  side store across it cost 12–24 (level 4's depot). Guards spread to both sides of a door's far
+  side make a pincer (61 in an early level 6); a line across the room 3 cells in costs about 12.
+- **A brute 1.2 cells behind a door costs exactly one brute hit (25)**; at 1.6 cells or more, 0.
+- **Pickups on the critical path must be in a 1-wide corridor or a doorway approach.** The bot
+  does not reliably collect a pickup in a 2-wide corridor: it may walk the other half (level 10's
+  gate ammo). The bot fetches health only at 40 % or less and ammo at 6 or less.
+- **Damage comes in steps** (guard 12, brute 25, runner 6), so a band floor above 0 on a
+  guards-only level rests on one hit landing. Check that it is not luck (below).
+
+### Is the result luck? A robustness check
+
+Runs are deterministic per build, but a hit that lands by a few hundredths of a second may not
+land on another compiler or CPU (known issue V3). Before trusting a number near a band edge,
+move each enemy by up to ±0.15 cells in a scratch copy of the content (keep them 0.25 or more
+from walls) and run `--level N --data <copy>` a few times: the Phase 8 campaign was checked with
+8 seeded variants per level (results in each level page). If the damage leaves the band in some
+variants, nudge the layout until it does not (level 4's store guard moved one cell), or widen the
+band with a reason in the README.
+
 ## 7. Look at it
 
 ```bash
@@ -193,10 +257,26 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy build/macos/neo_wolf --level N --fra
 
 ## 8. Document it
 
-- [ ] `docs/levels/levelNN.md` (Phase 8): theme, size, enemies, pickups, keys and locks, the new
-      mechanic, difficulty, a minimap or screenshot, and the bot's result (time, damage, kills).
-- [ ] The design table in `docs/levels/README.md` and the campaign table in
-      [GAMEPLAY.md](GAMEPLAY.md#the-campaign).
+- [ ] `docs/levels/levelNN.md` (Phase 8), with the same sections as the other level pages:
+      a header table (id, name, theme, size, difficulty, human time, new mechanic), the start
+      screenshot, **Idea**, **Map** (the shipped `.map` file byte for byte, then the annotated
+      grid), **Areas**, **Enemies**, **Pickups**, **Keys, doors and triggers**, **Landmarks
+      (decorations)**, **Light zones**, **Walkthrough (critical path)**, **Bot results** (fresh
+      and campaign rows against the README targets, where the bot takes its damage from
+      `--trace`, the robustness check) and **Deviations and exceptions** (anything that breaks a
+      design rule on purpose, and why).
+- [ ] Generate the annotated grid and check both map blocks:
+
+```bash
+python3 -m tools.devkit.level_docs --write   # rewrite the annotated grids from the entity files
+python3 -m tools.devkit.level_docs           # check: exit 1 if a page's map differs from its .map file
+```
+
+  DevKit test `test_level_docs` runs the check on every campaign level, so a map edit without
+  the matching page edit fails `ctest`. The shipped-map block is never rewritten for you: copy
+  the `.map` file in by hand, so a changed map is also a visible change of the page.
+- [ ] The design table and the measured table in `docs/levels/README.md`, and the campaign
+      table in [GAMEPLAY.md](GAMEPLAY.md#the-campaign).
 
 ## 9. Before committing
 

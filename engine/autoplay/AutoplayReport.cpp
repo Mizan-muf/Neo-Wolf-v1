@@ -105,7 +105,7 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
         } else if (arg == "--verbose") {
             result.verbose = true;
         } else if (arg == "--level" || arg == "--data" || arg == "--pref-dir" || arg == "--time-limit" ||
-                   arg == "--json") {
+                   arg == "--json" || arg == "--trace") {
             if (!hasValue) {
                 return fail(arg + " needs a value");
             }
@@ -126,8 +126,10 @@ AutoplayCommandLine ParseAutoplayCommandLine(const std::vector<std::string>& arg
                 if (!ParseSeconds(value, result.timeLimitSeconds)) {
                     return fail("--time-limit must be a number of seconds above 0 (at most 86400), got '" + value + "'");
                 }
-            } else {
+            } else if (arg == "--json") {
                 result.jsonPath = value;
+            } else {
+                result.tracePath = value;
             }
             if (value.empty()) {
                 return fail(arg + " needs a non-empty value");
@@ -160,11 +162,14 @@ std::string AutoplayUsage(std::string_view programName) {
         << "  --time-limit SECONDS game time allowed per level (default "
         << Fixed(AutoplayConfig{}.timeLimitSeconds, 0) << ")\n"
         << "  --json FILE          also write a machine-readable report\n"
+        << "  --trace FILE         also write an event log, one line per event (level start/end,\n"
+        << "                       enemy states, hits taken and dealt, pickups, keys, doors,\n"
+        << "                       triggers, the exit); deterministic, for balancing\n"
         << "  --verbose            print the engine's log (default: warnings and errors only)\n"
         << "  --help, --version\n"
         << "\n"
         << "Exit codes: 0 every requested level was completed, 1 otherwise (or the game could not\n"
-        << "start), 2 usage error.\n";
+        << "start, or the JSON report or trace could not be written), 2 usage error.\n";
     return out.str();
 }
 

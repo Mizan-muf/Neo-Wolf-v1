@@ -6,11 +6,6 @@ All game content assets reside under `game/assets/`:
 
 ```text
 game/assets/
-|-- wall_main.ppm         # Primary solid wall texture
-|-- wall_alt_a.ppm        # Secondary wall variant A texture
-|-- wall_alt_b.ppm        # Secondary wall variant B texture
-|-- floor.ppm             # Floor plane texture
-|-- ceiling.ppm           # Ceiling plane texture
 |-- sprite_decor.ppm      # Ambient decoration sprite texture (16x16, hand-made)
 |-- sfx_door_open.wav     # Door open sound effect
 |-- sfx_pickup.wav        # Item pickup sound effect
@@ -22,14 +17,15 @@ game/assets/
     |                     # floor, ceiling, exit (.ppm, 32x32)
     |-- stone/
     |-- tech/
-    `-- classic/          # exit.ppm and door_<colour>.ppm (otherwise the original textures above)
+    `-- classic/          # the finale's castle (level 10)
 ```
 
 `sprite_enemy.ppm` and `sprite_pickup.ppm` were deleted in Phase 6; `game/assets/sprites/`
 replaces them.
 
-The original 8×8 wall, floor and ceiling textures above belong to the `classic` theme
-(`game/defs/themes/classic.cfg`). Which textures a level uses is decided by its theme
+The original 8×8 wall, floor and ceiling textures (`wall_main.ppm`, `wall_alt_a.ppm`,
+`wall_alt_b.ppm`, `floor.ppm`, `ceiling.ppm`) were removed in Phase 8, when the `classic` theme
+got its own generated textures. Which textures a level uses is decided by its theme
 ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#themes)).
 
 ---
@@ -115,8 +111,8 @@ and `exit` (the exit switch, map tile `X`). Format and loading:
 
 ### The generator: `tools/devkit/gen_textures.py`
 
-The textures of the `bunker`, `stone` and `tech` themes, and the exit switch and locked doors
-of the `classic` theme, are drawn by a Python script:
+The textures of all four themes, `bunker`, `stone`, `tech` and `classic`, are drawn by a Python
+script:
 
 ```bash
 python3 tools/devkit/gen_textures.py            # (re)write game/assets/themes/<theme>/*.ppm
@@ -130,16 +126,34 @@ python3 tools/devkit/gen_textures.py --out /tmp/themes   # write somewhere else
   process and is not used). Running the script again, on any OS or Python 3 version, writes the
   same bytes; files are written with `\n` line endings.
 - **Output:** 32×32 plain-text PPM (`P3`, max value 255) with a comment line naming the theme,
-  the slot and the seed; 34 files, about 12 KB each.
+  the slot and the seed; 40 files, about 12 KB each.
 - The exit switch has the same layout in every theme (an "EXIT" label, a lever box, a green
   lamp) so it is recognisable by its shape, not only its colour.
 - **Locked doors** (Phase 6) are the theme's own `door` texture (drawn from the same seed, so
   pixel for pixel the same) with a band in the lock's colour across rows 11–20, a light plate
   with the colour's initial (R, B, G) and a dark keyhole: distinct from a plain door, and from
   each other, by shape as well as colour. The lock colours (`LOCK_COLORS`) are shared with the
-  sprite generator. The `classic` theme's locked doors use a plain grey door underneath.
-- DevKit test `test_gen_textures` checks that two runs are identical and that the committed
-  files match the generator (`--check`), so the script and the files cannot drift apart.
+  sprite generator.
+- DevKit test `test_gen_textures` checks that two runs are identical, that the committed
+  files match the generator (`--check`), so the script and the files cannot drift apart, and
+  that every theme's `door` differs from its three wall textures (a door must read as a door).
+
+| Theme | `wall` | `wall_alt_a` (`A`) | `wall_alt_b` (`B`) | `door` | `floor` / `ceiling` | Levels |
+|---|---|---|---|---|---|---|
+| `bunker` | concrete with form-work seams | olive painted steel, rivets | hazard stripes | steel blast door, slats | worn concrete with a crack / dark panels with a light fixture | 1, 4, 7 |
+| `stone` | stone bricks | mossy stone | dark granite blocks | wooden planks with iron bands | cobblestones / wooden beams | 2, 5, 9 |
+| `tech` | blue panels with a cyan strip | circuit traces | server rack with status lights | sliding door with yellow edge stripes | grid tiles / light panels | 3, 6, 8 |
+| `classic` | blue-grey castle blocks, a lit top edge per block | oak panelling, two raised panels | a red banner with a gold border and emblem, hung on the stone | riveted steel double door in a dark frame, brass handles | worn flagstones, one per cell / dark plaster between oak beams | 10 |
+
+**Floor and ceiling: avoid stripes.** Floors and ceilings are sampled per pixel with nearest
+filtering, one texture per cell, so fine high-contrast detail (a checkerboard, thin bright
+lines) turns into moiré stripes and radial patterns towards the horizon; that is what the old
+8×8 `classic` ceiling did. Keep them low in contrast with large features (one flagstone or one
+beam per cell, mortar only slightly darker than the stone). The `classic` theme was checked in
+headless screenshots of level 10's start view, the dim chapel, the barracks and blue doors and
+the throne room ([level10.md](levels/level10.md)).
+
+![The classic theme in level 10: the throne room's exit between red banners](images/levels/level10-throne.png)
 
 To change a theme, edit the drawing function for that theme in the script, run it, look at the
 result in the game (`neo_wolf --level N`, or `--preview hud --screenshot out.bmp --frames 5`),

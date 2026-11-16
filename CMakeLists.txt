@@ -449,6 +449,52 @@ if(NEOWOLF_BUILD_TESTS)
         "unwinnable +stuck.*no route to an exit switch.*Result: FAIL"
         --level 1 --data "${PROJECT_SOURCE_DIR}/tests/fixtures/unwinnable"
         --json "${NEOWOLF_AUTOPLAY_REPORTS}/fixture-unwinnable.json")
+    # Phase 8 regression: an idle enemy whose centre is in sight but whose shot grazes a corner
+    # must not hold the bot (it gives up on it after 2 s); the old bot needed 33 s here.
+    neowolf_add_autoplay_test(autoplay.fixture_aim_blocked 0
+        "aim_blocked +complete.*Result: PASS"
+        --level 1 --data "${PROJECT_SOURCE_DIR}/tests/fixtures/aim_blocked" --time-limit 15
+        --json "${NEOWOLF_AUTOPLAY_REPORTS}/fixture-aim-blocked.json")
+    # --trace (event log): campaign level 3 (a key, a locked door, kills, the exit) played twice;
+    # the events must be there and the two traces byte-identical (cmake/CheckAutoplayTrace.cmake).
+    # Plus the error paths: a trace file that cannot be created (exit 1) and --trace without a
+    # value (exit 2).
+    if(neowolf_campaign_levels GREATER_EQUAL 3)
+        string(JSON trace_level_id ERROR_VARIABLE trace_level_error GET "${neowolf_campaign_json}" levels 2 id)
+        if(trace_level_error)
+            set(trace_level_id "[a-z0-9_-]+")
+        endif()
+        set(trace_events
+            "^L3 t=0\\.000 f=0 level-start id=${trace_level_id} hp=[0-9]+ ammo=[0-9]+ "
+            "^L3 .* enemy [a-z]+#[0-9]+ cell=[0-9]+,[0-9]+ idle->alert$"
+            "^L3 .* hit-dealt target=[a-z]+#[0-9]+ cell=[0-9]+,[0-9]+ damage=[0-9]+ hp=0/[0-9]+ killed$"
+            "^L3 .* enemy [a-z]+#[0-9]+ cell=[0-9]+,[0-9]+ [a-z]+->dead$"
+            "^L3 .* key colour=[a-z]+ cell=[0-9]+,[0-9]+ held="
+            "^L3 .* door-open cell=[0-9]+,[0-9]+ lock=[a-z]+ unlocked$"
+            "^L3 .* exit cell=[0-9]+,[0-9]+ pos="
+            "^L3 .* level-end result=complete ")
+        add_test(NAME autoplay.trace
+                 COMMAND ${CMAKE_COMMAND}
+                         -DGAME_EXE=$<TARGET_FILE:neo_wolf_autoplay>
+                         "-DGAME_ARGS=--level;3;--data;${PROJECT_SOURCE_DIR}"
+                         "-DTRACE_DIR=${NEOWOLF_AUTOPLAY_REPORTS}/trace"
+                         "-DEXPECT_EVENTS=${trace_events}"
+                         -P ${PROJECT_SOURCE_DIR}/cmake/CheckAutoplayTrace.cmake
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        list(APPEND NEOWOLF_AUTOPLAY_TESTS autoplay.trace)
+    endif()
+    neowolf_add_autoplay_test(autoplay.trace_unwritable 1 "cannot write the trace to "
+        --level 1 --data "${PROJECT_SOURCE_DIR}" --trace "${CMAKE_BINARY_DIR}/CMakeCache.txt/trace.txt")
+    # Not through neowolf_add_autoplay_test: its --pref-dir would become the value of --trace.
+    add_test(NAME autoplay.trace_usage
+             COMMAND ${CMAKE_COMMAND}
+                     -DGAME_EXE=$<TARGET_FILE:neo_wolf_autoplay>
+                     "-DGAME_ARGS=--level;1;--trace"
+                     -DEXPECT_EXIT=2
+                     "-DEXPECT_REGEX=--trace needs a value"
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunGame.cmake
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    list(APPEND NEOWOLF_AUTOPLAY_TESTS autoplay.trace_usage)
     set_tests_properties(${NEOWOLF_AUTOPLAY_TESTS} PROPERTIES
         LABELS autoplay
         TIMEOUT 300

@@ -15,22 +15,22 @@ campaign through the real engine with simulated input. Keys per screen: [CONTROL
 
 The levels and their order come from `game/defs/campaign.json`
 ([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#campaign)). The campaign has its final ten
-levels (Roadmap Phase 8); the design, difficulty curve and resource economy are in
-[levels/README.md](levels/README.md). Levels 1–3 are still the Phase 7 levels and levels 4–10
-are **stubs** (a small room with an exit switch) until the builders replace them:
+levels (Roadmap Phase 8, built and integrated); the design, difficulty curve, resource economy
+and the autoplay bot's measured results are in [levels/README.md](levels/README.md), and each
+level has its own page:
 
-| # | Id | Name | Theme | Status |
-|---|---|---|---|---|
-| 1 | `level01` | Outpost Gate | `bunker` | Phase 7 level (one guard, a health and an ammo pickup); becomes the tutorial |
-| 2 | `level02` | Old Cellars | `stone` | Phase 7 placeholder: a guard, and a blue key card that opens the blue locked door in front of the exit |
-| 3 | `level03` | Server Annex | `tech` | Phase 7 placeholder: a guard (shut in a room), a brute and a runner |
-| 4 | `level04` | Motor Pool | `bunker` | **Stub** |
-| 5 | `level05` | Catacombs | `stone` | **Stub** |
-| 6 | `level06` | Relay Station | `tech` | **Stub** |
-| 7 | `level07` | Blackout Barracks | `bunker` | **Stub** |
-| 8 | `level08` | Reactor Spine | `tech` | **Stub** |
-| 9 | `level09` | Sunken Archive | `stone` | **Stub** |
-| 10 | `level10` | Wolf's Den | `classic` | **Stub** |
+| # | Id | Name | Theme | Enemies G/B/R | Keys | New idea |
+|---|---|---|---|---|---|---|
+| 1 | [`level01`](levels/level01.md) | Outpost Gate | `bunker` | 2/0/0 | – | Tutorial: move, pick up, shoot, open a door (`E`), use the exit switch |
+| 2 | [`level02`](levels/level02.md) | Old Cellars | `stone` | 4/0/0 | blue | Key cards: meet the locked door first, then fetch its key |
+| 3 | [`level03`](levels/level03.md) | Server Annex | `tech` | 6/0/0 | red | Gunfire is heard (closed doors block it); a ring corridor; the first checkpoint |
+| 4 | [`level04`](levels/level04.md) | Motor Pool | `bunker` | 6/1/0 | gold | The brute, first seen across an open garage |
+| 5 | [`level05`](levels/level05.md) | Catacombs | `stone` | 6/1/4 | red, blue | Runners; two keys in sequence; a branching route; a dim crypt |
+| 6 | [`level06`](levels/level06.md) | Relay Station | `tech` | 8/2/4 | blue, gold | Ambush rooms behind closed doors; an optional duct loop |
+| 7 | [`level07`](levels/level07.md) | Blackout Barracks | `bunker` | 8/2/6 | red, gold (either order) | Dark wings; two keys in parallel |
+| 8 | [`level08`](levels/level08.md) | Reactor Spine | `tech` | 10/3/6 | blue → red → gold | Three keys in a chain; mixed squads along a spine |
+| 9 | [`level09`](levels/level09.md) | Sunken Archive | `stone` | 12/4/8 | red, blue (either order), gold | A non-linear hub with three wings; an optional sealed vault |
+| 10 | [`level10`](levels/level10.md) | Wolf's Den | `classic` | 12/5/8 | red → blue → gold | Finale: a gauntlet of the earlier ideas, a supply room with a checkpoint, a throne-room arena |
 
 ## States and transitions
 
