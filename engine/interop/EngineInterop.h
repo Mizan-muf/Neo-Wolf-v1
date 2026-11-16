@@ -1,6 +1,10 @@
 #pragma once
 
-#include <stdint.h>
+// The in-process C API (nw_engine_*): drives an Engine through an opaque handle. Every function
+// accepts a null handle and then returns its failure value. Reference: docs/C_API.md. These
+// signatures are the API: do not change them.
+
+#include <stdint.h>  // not <cstdint>: C programs include this header too
 
 #ifdef __cplusplus
 #include "engine/interop/CommandBridge.h"
