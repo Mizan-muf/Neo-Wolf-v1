@@ -1,8 +1,28 @@
-; level06 - STUB (Roadmap Phase 8): a tiny room with the player and an exit switch, so the
-; 10-level campaign validates and the bot completes it. Builder B replaces it:
-; see docs/levels/BUILD_NOTES.md and docs/levels/README.md.
-########
-#......#
-#......X
-#......#
-########
+; level06 - Relay Station (tech)
+; Ambush rooms behind closed doors (a pair and health before each), an optional duct loop; blue -> gold.
+######################AAAAAAAA
+##################.#..A......A
+#########.............D......A
+##########.###.#####..A......A
+##############D#######A......A
+########.............#A......A
+##...................#A.A..A.A
+##.#####...A.....A...#A......A
+##.#####...A.....A...#A......A
+##.#####.............#A......A
+##.....#.............#A......A
+######.#######..######AAAAAAAA
+#....#.#######..###...B......B
+#.....................DT.....B
+#.....................B......B
+#....####.###D########B......B
+#######AAAAAA.AAAAAA##B......B
+#######A...........A##B......B
+#######A...........A##B......B
+#######A...........A##B......B
+#######A..A.....A..A##B......B
+#######A...........A##B......B
+#######A...........A##B......B
+#######A...........A##B......B
+#######AAAAAAAAAAAAA##B#B.B##B
+######################BBBXBBBB

@@ -1,8 +1,16 @@
-; level02 - PLACEHOLDER for Roadmap Phase 8 (progression, plus a blue key and a blue locked door)
-############
-#....A...A.#
-#....A...A.#
-#....D...D.X
-#....B...B.#
-#....B...B.#
-############
+; level02 - Old Cellars (stone)
+; Key cards: meet the blue door first (NEED BLUE KEY), fetch the key from the cellar behind D2, come back.
+########################
+#A....AAAA.......#######
+#A............A..#######
+#A....AAAA.......#######
+#AAAAAA######D###BBBBBBB
+#########........B.....B
+#....####...A....B.....B
+#....####........B.....B
+#................D.....B
+#....####...A....B.....B
+#....####........B.....B
+#################B.....X
+#################B.....B
+#################BBBBBBB

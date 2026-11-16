@@ -1,6 +1,38 @@
 {
   "level": "level05",
   "entities": [
-    { "type": "player", "x": 1.5, "y": 2.5, "angle": 0 }
+    { "type": "player", "x": 13.5, "y": 1.5, "angle": 90 },
+    { "type": "door", "x": 13.5, "y": 9.5, "mapX": 13, "mapY": 9, "lock": "red" },
+    { "type": "door", "x": 14.5, "y": 16.5, "mapX": 14, "mapY": 16, "lock": "blue" },
+    { "type": "enemy", "x": 5.5, "y": 7.5, "variant": "guard" },
+    { "type": "enemy", "x": 19.5, "y": 11.5, "variant": "guard" },
+    { "type": "enemy", "x": 1.5, "y": 12.5, "variant": "runner" },
+    { "type": "enemy", "x": 9.5, "y": 13.5, "variant": "runner" },
+    { "type": "enemy", "x": 23.5, "y": 14.5, "variant": "guard" },
+    { "type": "enemy", "x": 10.5, "y": 15.5, "variant": "guard" },
+    { "type": "enemy", "x": 4.5, "y": 16.5, "variant": "guard" },
+    { "type": "enemy", "x": 6.5, "y": 17.5, "variant": "runner" },
+    { "type": "enemy", "x": 1.5, "y": 18.5, "variant": "runner" },
+    { "type": "enemy", "x": 24.5, "y": 19.5, "variant": "brute" },
+    { "type": "enemy", "x": 9.5, "y": 21.5, "variant": "guard" },
+    { "type": "pickup", "x": 13.5, "y": 5.5, "kind": "ammo" },
+    { "type": "pickup", "x": 20.5, "y": 9.5, "kind": "health" },
+    { "type": "pickup", "x": 1.5, "y": 11.5, "kind": "ammo" },
+    { "type": "pickup", "x": 1.5, "y": 19.5, "kind": "ammo" },
+    { "type": "pickup", "x": 2.5, "y": 20.5, "kind": "health" },
+    { "type": "pickup", "x": 20.5, "y": 20.5, "kind": "health" },
+    { "type": "pickup", "x": 25.5, "y": 11.5, "kind": "key", "key": "blue" },
+    { "type": "pickup", "x": 2.5, "y": 22.5, "kind": "key", "key": "red" },
+    { "type": "decoration", "x": 12.5, "y": 8.5 },
+    { "type": "decoration", "x": 14.5, "y": 8.5 },
+    { "type": "decoration", "x": 19.3, "y": 10.3 },
+    { "type": "decoration", "x": 21.7, "y": 10.3 },
+    { "type": "decoration", "x": 15.5, "y": 21.5 },
+    { "type": "decoration", "x": 16.5, "y": 21.5 },
+    { "type": "decoration", "x": 17.5, "y": 21.5 }
+  ],
+  "lights": [
+    { "x": 12, "y": 10, "w": 14, "h": 6, "level": 0.5 },
+    { "x": 20, "y": 9, "w": 1, "h": 1, "level": 0.35 }
   ]
 }

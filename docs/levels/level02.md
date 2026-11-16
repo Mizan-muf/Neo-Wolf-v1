@@ -1,0 +1,137 @@
+# level02: Old Cellars
+
+| Id | Name | Theme | Size | Difficulty | New mechanic |
+|---|---|---|---|---|---|
+| `level02` | Old Cellars | `stone` | 24 × 14 | 2 of 10 | Key cards and locked doors: meet the blue door first (`NEED BLUE KEY`), then fetch the key from a side room |
+
+![Start view of level02](../images/levels/level02.png)
+
+*Start view: the entry corridor C1 with the blue door Db and its vase pair straight ahead at the far end of the hall.*
+
+## Idea
+
+Teach keys by showing the lock first. From the spawn the player looks straight down C1, across the vaulted hall, at the blue door Db framed by a vase pair. Walking up and pressing `E` gives `NEED BLUE KEY`; turning round, the unlocked door D2 in the hall's north wall is in view. Behind it a long cellar narrows into a 1-wide passage (ammo on the way) and ends at a small mossy (`A`) key cellar with the blue key and one guard. The player comes back through the hall and opens Db into the exit vault.
+
+## Map
+
+`game/maps/level02.map` as shipped:
+
+```text
+; level02 - Old Cellars (stone)
+; Key cards: meet the blue door first (NEED BLUE KEY), fetch the key from the cellar behind D2, come back.
+########################
+#A....AAAA.......#######
+#A............A..#######
+#A....AAAA.......#######
+#AAAAAA######D###BBBBBBB
+#########........B.....B
+#....####...A....B.....B
+#....####........B.....B
+#................D.....B
+#....####...A....B.....B
+#....####........B.....B
+#################B.....X
+#################B.....B
+#################BBBBBBB
+```
+
+The same grid with the entities of `game/defs/level02.entities.json` drawn in:
+
+```text
+########################
+#A....AAAA.......#######
+#Aug...a......A..#######
+#A....AAAA.......#######
+#AAAAAA######d###BBBBBBB
+#########......g.B...g.B
+#....####...A....B.....B
+#....####.......vB.....B
+#.p..............2.....B
+#....####...A...vB.....B
+#....####......g.B..h..B
+#################B.....X
+#################B.vvv.B
+#################BBBBBBB
+```
+
+Legend of the annotated grid (documentation only: lower case and digits are not valid map tiles; the shipped `.map` above has `.` or `D`/`T` there): `p` player start, `g` guard, `b` brute, `n` runner, `h` health, `a` ammo, `r` / `u` / `y` red / blue / gold key card, `d` unlocked door, `1` / `2` / `3` red / blue / gold locked door, `t` checkpoint trigger, `v` decoration (vase); `#` wall, `A` / `B` wall variants, `X` exit switch.
+
+Coordinates below are cells `(x, y)`: column, row from the top-left; entities stand at cell centres.
+
+## Areas
+
+| Area | Cells | What is there |
+|---|---|---|
+| R1 entry cellar | (1, 6)–(4, 10) | player start facing east (angle 0) |
+| C1 | (5, 8)–(8, 8), 1 wide | leads straight at Db |
+| R2 vaulted hall | (9, 5)–(16, 10) | two `A` pillars (12, 6), (12, 9); two guards in the far corners; D2 north, Db east |
+| R3 key cellar | (10, 1)–(16, 3) room, (6, 2)–(9, 2) passage, (2, 1)–(5, 3) key cellar (`A` walls) | ammo in the passage, guard and blue key at the far west end; an `A` pillar at (14, 2) |
+| R4 exit vault | (18, 5)–(22, 12), `B` walls | one guard, the health, the vase line, the exit switch |
+
+## Enemies
+
+| Type | Cell | Where and why |
+|---|---|---|
+| guard | (3, 2) | key cellar, next to the key: seen straight down the 1-wide passage from 6 cells; 10 cells from D2 |
+| guard | (15, 5) | hall, north-east corner: 6.3 cells from the hall entrance, hidden from the spawn and from the entrance by the pillar (12, 6) |
+| guard | (21, 5) | exit vault, north end: 4.2 cells from Db's far side (18, 8) |
+| guard | (15, 10) | hall, south-east corner: as above, behind the pillar (12, 9) |
+
+Total: 4 guards, 0 brutes, 0 runners (threat T = 8 shots).
+
+## Pickups
+
+| Kind | Cell | On the critical path? |
+|---|---|---|
+| ammo (+12 ammo) | (7, 2) | yes: in the 1-wide passage to the key |
+| health (+25 HP) | (20, 10) | side/after the fight: in the exit vault between Db and the exit |
+
+Total: 1 health (25 HP), 1 ammo (12 rounds); all at the default values.
+
+## Keys, doors and triggers
+
+| Thing | Cell | Notes |
+|---|---|---|
+| door (unlocked) | (13, 4) | D2, hall's north wall, visible from Db (rule 10: 5 cells from Db) |
+| door locked blue | (17, 8) | Db, hall's east wall, straight ahead of the hall entrance, vase pair |
+| blue key card | (2, 2) | far end of the key cellar; reachable without passing Db |
+| exit switch `X` | (23, 11), east outer wall | framed by `B`; the vault is `B`-walled; the vase line along the south wall leads to it |
+
+Order: Db is met first (from the spawn it is straight ahead), then D2 → blue key → back through the hall → Db → exit. `inspect-map` keys: `blue`.
+
+## Landmarks (decorations)
+
+Pair: (16.5, 7.5) and (16.5, 9.5) flanking Db. Line: (19.5, 12.5), (20.5, 12.5), (21.5, 12.5) along the exit vault's south wall, pointing at the exit. (5 vases in total.)
+
+## Light zones
+
+None (every cell at 1.0).
+
+## Walkthrough (critical path)
+
+C1 → hall (both corner guards come out from behind the pillars and are shot in the open) → D2 → east part of the cellar → the 1-wide passage over the ammo (the key-cellar guard is seen straight down it) → blue key → back to the hall → Db → the vault guard → exit switch at (23, 11). The bot goes for the key directly (it never tries Db first); a person meets Db first because it is straight ahead.
+
+## Bot results
+
+Measured 2026-11-16 on macOS with the existing `build/macos/neo_wolf_autoplay` (runs are deterministic per build).
+
+**Fresh start** (`neo_wolf_autoplay --level 2`, 100 HP and 24 ammo):
+
+| Time s | Damage | HP at exit | Ammo at exit | Kills | Pickups | Keys | Shots | Doors opened |
+|---|---|---|---|---|---|---|---|---|
+| 22.62 | 0 | 100 | 28 | 4/4 | 3/3 | blue | 8 | 2 |
+
+| Target (README) | Value | Met |
+|---|---|---|
+| Damage taken 0–20 | 0 | yes |
+| HP at exit ≥ 80 | 100 | yes |
+| Kills ≥ 2 of 4 | 4 | yes |
+| Bot time ≤ 60 s | 22.62 | yes |
+
+**Campaign** (`neo_wolf_autoplay --all`, health and ammo carried over; result `PASS (10 of 10 level(s) completed, campaign complete)`, `Carry-over: OK`):
+
+| Start HP / ammo | Time s | Damage | HP at exit | Ammo at exit | Kills | Target HP ≥ | Target ammo ≥ | Met |
+|---|---|---|---|---|---|---|---|---|
+| 100 / 32 | 22.62 | 0 | 100 | 36 | 4/4 | 70 | 12 | yes |
+
+Within every target. 0 damage: all four guards are met across open ground or down a straight passage, which the design table allows for level 2 (0–20).

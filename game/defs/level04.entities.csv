@@ -1,2 +1,21 @@
 # type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
-player,1.5,2.5,,,,,0
+player,12.5,18.5,,,,,270
+door,6.5,4.5,6,4
+door,19.5,4.5,19,4,,,,,,gold
+enemy,12.5,1.5,,,,,,brute
+enemy,2.5,2.5,,,,,,guard
+enemy,23.5,2.5,,,,,,guard
+enemy,2.5,5.5,,,,,,guard
+enemy,24.5,6.5,,,,,,guard
+enemy,15.5,11.5,,,,,,guard
+enemy,16.5,12.5,,,,,,guard
+pickup,5.5,1.5,,,ammo
+pickup,6.5,7.5,,,health
+pickup,23.5,10.5,,,health
+pickup,8.5,13.5,,,ammo
+pickup,1.5,1.5,,,key,,,,gold
+decoration,18.5,3.5
+decoration,18.5,5.5
+decoration,19.5,15.5
+decoration,21.5,15.5
+decoration,23.5,15.5

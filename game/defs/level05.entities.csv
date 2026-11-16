@@ -1,2 +1,31 @@
 # type,x,y,mapX,mapY,kind,value,angle,variant,key,lock
-player,1.5,2.5,,,,,0
+# lights: 2 light zone(s) in the JSON are not exported (the CSV cannot hold them)
+player,13.5,1.5,,,,,90
+door,13.5,9.5,13,9,,,,,,red
+door,14.5,16.5,14,16,,,,,,blue
+enemy,5.5,7.5,,,,,,guard
+enemy,19.5,11.5,,,,,,guard
+enemy,1.5,12.5,,,,,,runner
+enemy,9.5,13.5,,,,,,runner
+enemy,23.5,14.5,,,,,,guard
+enemy,10.5,15.5,,,,,,guard
+enemy,4.5,16.5,,,,,,guard
+enemy,6.5,17.5,,,,,,runner
+enemy,1.5,18.5,,,,,,runner
+enemy,24.5,19.5,,,,,,brute
+enemy,9.5,21.5,,,,,,guard
+pickup,13.5,5.5,,,ammo
+pickup,20.5,9.5,,,health
+pickup,1.5,11.5,,,ammo
+pickup,1.5,19.5,,,ammo
+pickup,2.5,20.5,,,health
+pickup,20.5,20.5,,,health
+pickup,25.5,11.5,,,key,,,,blue
+pickup,2.5,22.5,,,key,,,,red
+decoration,12.5,8.5
+decoration,14.5,8.5
+decoration,19.3,10.3
+decoration,21.7,10.3
+decoration,15.5,21.5
+decoration,16.5,21.5
+decoration,17.5,21.5

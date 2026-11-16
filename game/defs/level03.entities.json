@@ -1,14 +1,25 @@
 {
   "level": "level03",
   "entities": [
-    { "type": "player", "x": 1.5, "y": 1.5, "angle": 90 },
-    { "type": "door", "x": 7.5, "y": 4.5, "mapX": 7, "mapY": 4 },
-    { "type": "enemy", "x": 4.5, "y": 3.5, "variant": "guard" },
-    { "type": "pickup", "x": 3.5, "y": 4.5, "kind": "ammo" },
-    { "type": "pickup", "x": 1.5, "y": 6.5, "kind": "health" },
-    { "type": "trigger", "x": 7.5, "y": 6.5, "mapX": 7, "mapY": 6 },
-    { "type": "decoration", "x": 8.5, "y": 1.5 },
-    { "type": "enemy", "x": 8.5, "y": 4.5, "variant": "brute" },
-    { "type": "enemy", "x": 7.5, "y": 1.5, "variant": "runner" }
+    { "type": "player", "x": 1.5, "y": 13.5, "angle": 0 },
+    { "type": "door", "x": 20.5, "y": 2.5, "mapX": 20, "mapY": 2, "lock": "red" },
+    { "type": "door", "x": 11.5, "y": 12.5, "mapX": 11, "mapY": 12 },
+    { "type": "trigger", "x": 21.5, "y": 2.5, "mapX": 21, "mapY": 2 },
+    { "type": "enemy", "x": 15.5, "y": 2.5, "variant": "guard" },
+    { "type": "enemy", "x": 21.5, "y": 5.5, "variant": "guard" },
+    { "type": "enemy", "x": 23.5, "y": 6.5, "variant": "guard" },
+    { "type": "enemy", "x": 9.5, "y": 10.5, "variant": "guard" },
+    { "type": "enemy", "x": 13.5, "y": 10.5, "variant": "guard" },
+    { "type": "enemy", "x": 22.5, "y": 10.5, "variant": "guard" },
+    { "type": "pickup", "x": 12.5, "y": 1.5, "kind": "health" },
+    { "type": "pickup", "x": 8.5, "y": 6.5, "kind": "ammo" },
+    { "type": "pickup", "x": 23.5, "y": 12.5, "kind": "health" },
+    { "type": "pickup", "x": 11.5, "y": 13.5, "kind": "ammo" },
+    { "type": "pickup", "x": 11.5, "y": 5.5, "kind": "key", "key": "red" },
+    { "type": "decoration", "x": 21.5, "y": 12.5 },
+    { "type": "decoration", "x": 10.5, "y": 13.5 },
+    { "type": "decoration", "x": 12.5, "y": 13.5 },
+    { "type": "decoration", "x": 21.5, "y": 13.5 },
+    { "type": "decoration", "x": 21.5, "y": 14.5 }
   ]
 }

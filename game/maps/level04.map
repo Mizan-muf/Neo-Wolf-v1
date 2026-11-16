@@ -1,8 +1,22 @@
-; level04 - STUB (Roadmap Phase 8): a tiny room with the player and an exit switch, so the
-; 10-level campaign validates and the bot completes it. Builder A replaces it:
-; see docs/levels/BUILD_NOTES.md and docs/levels/README.md.
-########
-#......#
-#......X
-#......#
-########
+; level04 - Motor Pool (bunker)
+; The brute: first seen across an open garage (4 shots while it lumbers in), then the gold key and door.
+##########################
+#.....A............####.##
+#.....A.........A..####.##
+#.....A..A.........####.##
+#.....D............D.....#
+#.....A............#####.#
+#.....A..A.........#####.#
+#AAAAA..........A..####..#
+#######............####..#
+############..#########..#
+############..#########..#
+#######..........######..#
+#######..........BBBBBB..#
+#######A.AAAAAAAAB.......B
+#######..........B.......B
+###########...###X.......B
+#########.......#B.......B
+#########.......#B.......B
+#########.......#BBBBBBBBB
+##########################
