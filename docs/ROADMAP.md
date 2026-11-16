@@ -3,6 +3,8 @@
 **Goal:** Neo-Wolf builds and runs on **macOS and Windows** and ships a **10-level campaign**, with documentation that matches the code.
 
 This roadmap replaces the "complete through Phase 26" claim in [Checklist.md](Checklist.md). An audit on 2026-11-15 found that several items ticked there are not implemented; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+The next versions (1.5.0 *Covenant of the Asylum*, then 2.0 with procedural generation and new game modes) are planned in [ROADMAP_NEXT.md](ROADMAP_NEXT.md).
+
 Each phase has a **Done when** gate. Only tick an item after it has been verified, by a test, a CI run, or a recorded manual check.
 
 ## Decisions
