@@ -1,0 +1,9 @@
+---
+# Tests inherit the root config. Each test function walks one feature through many
+# assertions, so its length and branching are not a design smell here, and the assertion
+# macros expand to boolean expressions clang-tidy would "simplify".
+InheritParentConfig: true
+Checks: >
+  -readability-function-cognitive-complexity,
+  -readability-simplify-boolean-expr,
+  -readability-function-size

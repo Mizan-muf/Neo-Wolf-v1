@@ -1,0 +1,49 @@
+---
+# Static analysis for Neo-Wolf C++ (see docs/CODING_STANDARDS.md, "Automated checks").
+# Run: python3 tools/ci/lint.py --tidy   (CI runs it on Linux; every diagnostic is an error).
+#
+# Disabled checks and why:
+#   *-magic-numbers                 pixel layouts and tuning tables read better as literals;
+#                                   named constants are a review rule instead
+#   modernize-use-trailing-return-type, readability-uppercase-literal-suffix,
+#   readability-identifier-length, readability-math-missing-parentheses,
+#   readability-trailing-comma      style preferences this code base does not use
+#   misc-include-cleaner            no IWYU mapping for SDL or the standard library here
+#   cppcoreguidelines-pro-bounds-*  the renderer indexes framebuffers by design;
+#                                   bounds are checked at the call sites
+#   cppcoreguidelines-pro-type-vararg  SDL_Log / snprintf
+#   cppcoreguidelines-avoid-do-while   the test assertion macros
+#   bugprone-easily-swappable-parameters  (x, y) and (width, height) pairs everywhere
+#   misc-non-private-member-variables-in-classes  plain data structs
+#   modernize-use-nodiscard, modernize-raw-string-literal, performance-enum-size,
+#   readability-use-concise-preprocessor-directives  low value, high churn
+Checks: >
+  -*,
+  bugprone-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-*,
+  -cppcoreguidelines-pro-type-vararg,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-raw-string-literal,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  -performance-enum-size,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -readability-trailing-comma,
+  -readability-uppercase-literal-suffix,
+  -readability-use-concise-preprocessor-directives
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(engine|src|tests)/.*'
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 25
+  readability-function-cognitive-complexity.IgnoreMacros: true
