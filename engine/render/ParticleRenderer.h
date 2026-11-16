@@ -1,5 +1,8 @@
 #pragma once
 
+// Particles drawn as small shaded squares, projected like sprites and clipped against the
+// wall depth buffer.
+
 #include <vector>
 
 #include "engine/particles/Particle.h"

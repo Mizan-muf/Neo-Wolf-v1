@@ -3,24 +3,21 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 #include "engine/core/MathUtils.h"
 #include "engine/render/Framebuffer.h"
+#include "engine/render/RenderMath.h"
 #include "engine/world/Map.h"
 #include "engine/world/Player.h"
 
 namespace {
-std::uint32_t ShadeParticle(std::uint32_t color, float factor) {
-    factor = Clamp(factor, 0.0f, 1.0f);
-    const std::uint8_t a = static_cast<std::uint8_t>((color >> 24) & 0xFFu);
-    const std::uint8_t r = static_cast<std::uint8_t>((color >> 16) & 0xFFu);
-    const std::uint8_t g = static_cast<std::uint8_t>((color >> 8) & 0xFFu);
-    const std::uint8_t b = static_cast<std::uint8_t>(color & 0xFFu);
-    return (static_cast<std::uint32_t>(a) << 24) |
-           (static_cast<std::uint32_t>(static_cast<std::uint8_t>(r * factor)) << 16) |
-           (static_cast<std::uint32_t>(static_cast<std::uint8_t>(g * factor)) << 8) |
-           static_cast<std::uint32_t>(static_cast<std::uint8_t>(b * factor));
-}
+// Particle shading: distance falloff per unit, never below kParticleMinDistanceShade; then the
+// light level and the fraction of the lifetime left (a particle fades out).
+constexpr float kParticleFalloff = 0.17f;
+constexpr float kParticleMinDistanceShade = 0.4f;
+// Particles with a lifetime this short (or unset) are skipped: their fade would divide by ~0.
+constexpr float kMinParticleLifetime = 0.0001f;
 }  // namespace
 
 void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer& framebuffer,
@@ -35,48 +32,37 @@ void ParticleRenderer::Render(const Map& map, const Player& player, Framebuffer&
         return;
     }
 
-    const Vec2 forward{std::cos(player.directionAngleRadians), std::sin(player.directionAngleRadians)};
-    const float halfFov = fieldOfViewRadians * 0.5f;
-    const float planeScale = std::tan(halfFov);
-    const Vec2 cameraPlane{-forward.y * planeScale, forward.x * planeScale};
-    const float det = (cameraPlane.x * forward.y) - (forward.x * cameraPlane.y);
-    if (std::fabs(det) < 1e-6f) {
+    const std::optional<BillboardProjection> projection =
+        MakeBillboardProjection(player.position, MakeCameraBasis(player.directionAngleRadians, fieldOfViewRadians));
+    if (!projection) {
         return;
     }
-    const float invDet = 1.0f / det;
 
     for (const Particle& p : particles) {
-        if (!p.active || p.lifetimeTotal <= 0.0001f) {
+        if (!p.active || p.lifetimeTotal <= kMinParticleLifetime) {
             continue;
         }
 
-        const float relX = p.position.x - player.position.x;
-        const float relY = p.position.y - player.position.y;
-        const float transformX = invDet * ((forward.y * relX) - (forward.x * relY));
-        const float transformY = invDet * ((-cameraPlane.y * relX) + (cameraPlane.x * relY));
-        if (transformY <= 0.001f) {
+        const ViewPoint view = ToViewSpace(*projection, p.position);
+        if (view.depth <= kBillboardNearPlane) {
             continue;
         }
 
-        const int screenX =
-            static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
-        const int sizePx = std::max(1, static_cast<int>((p.size * static_cast<float>(screenHeight)) / transformY));
-        const int x0 = screenX - (sizePx / 2);
-        const int y0 = (screenHeight / 2) - (sizePx / 2);
-
+        const int screenX = ScreenColumn(view, screenWidth);
         if (screenX < 0 || screenX >= screenWidth) {
             continue;
         }
-        if (transformY >= wallDepthBuffer[static_cast<std::size_t>(screenX)]) {
+        if (view.depth >= wallDepthBuffer[static_cast<std::size_t>(screenX)]) {
             continue;
         }
 
+        // A square of p.size world units, centred on the horizon.
+        const int sizePx = std::max(1, static_cast<int>((p.size * static_cast<float>(screenHeight)) / view.depth));
+        const int x0 = screenX - (sizePx / 2);
+        const int y0 = (screenHeight / 2) - (sizePx / 2);
         const float life = Clamp(p.lifetimeRemaining / p.lifetimeTotal, 0.0f, 1.0f);
-        const int cellX = static_cast<int>(std::floor(p.position.x));
-        const int cellY = static_cast<int>(std::floor(p.position.y));
-        const float mapLight = map.GetLightLevel(cellX, cellY);
-        const float distanceShade = Clamp(1.0f / (1.0f + transformY * 0.17f), 0.4f, 1.0f);
-        const std::uint32_t shaded = ShadeParticle(p.color, mapLight * distanceShade * life);
-        framebuffer.DrawRect(x0, y0, sizePx, sizePx, shaded);
+        const float mapLight = LightAt(map, p.position.x, p.position.y);
+        const float distanceShade = DistanceShade(view.depth, kParticleFalloff, kParticleMinDistanceShade);
+        framebuffer.DrawRect(x0, y0, sizePx, sizePx, ScaleRgb(p.color, mapLight * distanceShade * life));
     }
 }

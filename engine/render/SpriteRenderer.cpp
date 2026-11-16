@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "engine/assets/Texture.h"
 #include "engine/core/MathUtils.h"
 #include "engine/render/Framebuffer.h"
+#include "engine/render/RenderMath.h"
 #include "engine/world/Map.h"
 #include "engine/world/Player.h"
 
@@ -27,6 +29,13 @@ const Texture* ResolveTexture(const SpriteTextureSet& textures, const SpriteEnti
     return textures.missing;
 }
 
+// Sprite shading: distance falloff per unit times the light level, never below kSpriteMinShade.
+constexpr float kSpriteFalloff = 0.12f;
+constexpr float kSpriteMinShade = 0.35f;
+// Sprite textures use magenta as the colour key for transparent pixels (alpha is ignored).
+constexpr std::uint32_t kSpriteColorKey = 0x00FF00FFu;
+constexpr std::uint32_t kRgbMask = 0x00FFFFFFu;
+
 std::uint8_t ShadeChannel(std::uint8_t value, float shade, bool flash) {
     float result = static_cast<float>(value) * shade;
     if (flash) {
@@ -35,9 +44,61 @@ std::uint8_t ShadeChannel(std::uint8_t value, float shade, bool flash) {
     return static_cast<std::uint8_t>(std::min(255.0f, result));
 }
 
+std::uint32_t ShadeSpritePixel(std::uint32_t argb, float shade, bool flash) {
+    const ColorRGBA color = UnpackARGB32(argb);
+    return PackARGB32(MakeColor(ShadeChannel(color.r, shade, flash), ShadeChannel(color.g, shade, flash),
+                                ShadeChannel(color.b, shade, flash), color.a));
+}
+
 bool IsSpritePixelTransparent(std::uint32_t argb) {
-    // Color-key magenta for simple sprite masks.
-    return (argb & 0x00FFFFFFu) == 0x00FF00FFu;
+    return (argb & kRgbMask) == kSpriteColorKey;
+}
+
+// Where a sprite lands on the screen: a square of `size` pixels centred on column centerX and
+// on the horizon. topY is the unclamped top edge: texture rows are measured from it, so a
+// sprite taller than the screen is cropped at the top and bottom, not squeezed to fit.
+struct SpriteScreenRect {
+    int leftX = 0;
+    int size = 0;
+    int topY = 0;
+    int rows = 0;
+    int drawStartX = 0;
+    int drawEndX = 0;
+    int drawStartY = 0;
+    int drawEndY = 0;
+};
+
+SpriteScreenRect ComputeSpriteScreenRect(int centerX, float depth, int screenWidth, int screenHeight) {
+    SpriteScreenRect rect{};
+    rect.size = std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / depth)));
+    rect.leftX = (-rect.size / 2) + centerX;
+    rect.topY = (-rect.size / 2) + (screenHeight / 2);
+    const int bottomY = (rect.size / 2) + (screenHeight / 2);
+    rect.rows = bottomY - rect.topY + 1;
+    rect.drawStartY = std::max(0, rect.topY);
+    rect.drawEndY = std::min(screenHeight - 1, bottomY);
+    rect.drawStartX = std::max(0, rect.leftX);
+    rect.drawEndX = std::min(screenWidth - 1, (rect.size / 2) + centerX);
+    return rect;
+}
+
+// Draws the sprite's columns that are in front of the walls (wallDepthBuffer).
+void DrawSpriteColumns(Framebuffer& framebuffer, const std::vector<float>& wallDepthBuffer, const Texture& texture,
+                       const SpriteScreenRect& rect, float depth, float shade, bool flash) {
+    for (int stripe = rect.drawStartX; stripe <= rect.drawEndX; ++stripe) {
+        if (depth >= wallDepthBuffer[static_cast<std::size_t>(stripe)]) {
+            continue;
+        }
+
+        const float texU = static_cast<float>(stripe - rect.leftX) / static_cast<float>(rect.size);
+        for (int y = rect.drawStartY; y <= rect.drawEndY; ++y) {
+            const float texV = static_cast<float>(y - rect.topY) / static_cast<float>(rect.rows);
+            const std::uint32_t color = texture.SampleNearest(texU, texV);
+            if (!IsSpritePixelTransparent(color)) {
+                framebuffer.PutPixel(stripe, y, ShadeSpritePixel(color, shade, flash));
+            }
+        }
+    }
 }
 }  // namespace
 
@@ -82,80 +143,28 @@ void SpriteRenderer::Render(const Map& map, const Player& player, Framebuffer& f
 
     const std::vector<std::size_t> sortedIndices = BuildSortedSpriteIndices(player, sprites);
 
-    const Vec2 forward{std::cos(player.directionAngleRadians), std::sin(player.directionAngleRadians)};
-    const float halfFov = fieldOfViewRadians * 0.5f;
-    const float planeScale = std::tan(halfFov);
-    const Vec2 cameraPlane{-forward.y * planeScale, forward.x * planeScale};
-    const float det = (cameraPlane.x * forward.y) - (forward.x * cameraPlane.y);
-    if (std::fabs(det) < 1e-6f) {
+    const std::optional<BillboardProjection> projection =
+        MakeBillboardProjection(player.position, MakeCameraBasis(player.directionAngleRadians, fieldOfViewRadians));
+    if (!projection) {
         return;
     }
-    const float invDet = 1.0f / det;
 
-    for (std::size_t spriteIndex : sortedIndices) {
+    for (const std::size_t spriteIndex : sortedIndices) {
         const SpriteEntity& sprite = sprites[spriteIndex];
         const Texture* texture = ResolveTexture(textures, sprite);
-        if (texture == nullptr || texture->Width() <= 0 || texture->Height() <= 0) {
+        if (!IsDrawable(texture)) {
             continue;
         }
 
-        const float relX = sprite.position.x - player.position.x;
-        const float relY = sprite.position.y - player.position.y;
-
-        const float transformX = invDet * ((forward.y * relX) - (forward.x * relY));
-        const float transformY = invDet * ((-cameraPlane.y * relX) + (cameraPlane.x * relY));
-        if (transformY <= 0.001f) {
+        const ViewPoint view = ToViewSpace(*projection, sprite.position);
+        if (view.depth <= kBillboardNearPlane) {
             continue;
         }
 
-        const int spriteScreenX =
-            static_cast<int>((static_cast<float>(screenWidth) * 0.5f) * (1.0f + transformX / transformY));
-        const int spriteHeight =
-            std::max(1, static_cast<int>(std::fabs(static_cast<float>(screenHeight) / transformY)));
-        const int spriteWidth = spriteHeight;
-
-        // The unclamped top edge: texture rows are measured from it, so a sprite taller than the
-        // screen is cropped at the top and bottom, not squeezed to fit.
-        const int spriteTopY = (-spriteHeight / 2) + (screenHeight / 2);
-        const int spriteBottomY = (spriteHeight / 2) + (screenHeight / 2);
-        const int spriteRows = spriteBottomY - spriteTopY + 1;
-        const int drawStartY = std::max(0, spriteTopY);
-        const int drawEndY = std::min(screenHeight - 1, spriteBottomY);
-        const int drawStartX = std::max(0, (-spriteWidth / 2) + spriteScreenX);
-        const int drawEndX = std::min(screenWidth - 1, (spriteWidth / 2) + spriteScreenX);
-
-        for (int stripe = drawStartX; stripe <= drawEndX; ++stripe) {
-            if (transformY >= wallDepthBuffer[static_cast<std::size_t>(stripe)]) {
-                continue;
-            }
-
-            const float texU =
-                static_cast<float>(stripe - ((-spriteWidth / 2) + spriteScreenX)) / static_cast<float>(spriteWidth);
-            if (texU < 0.0f || texU > 1.0f) {
-                continue;
-            }
-
-            for (int y = drawStartY; y <= drawEndY; ++y) {
-                const float texV = static_cast<float>(y - spriteTopY) / static_cast<float>(spriteRows);
-                const std::uint32_t color = texture->SampleNearest(texU, texV);
-                if (IsSpritePixelTransparent(color)) {
-                    continue;
-                }
-
-                const int cellX = static_cast<int>(std::floor(sprite.position.x));
-                const int cellY = static_cast<int>(std::floor(sprite.position.y));
-                const float mapLight = map.GetLightLevel(cellX, cellY);
-                const float shade = Clamp((1.0f / (1.0f + transformY * 0.12f)) * mapLight, 0.35f, 1.0f);
-                const std::uint8_t a = static_cast<std::uint8_t>((color >> 24) & 0xFFu);
-                const std::uint8_t r = static_cast<std::uint8_t>((color >> 16) & 0xFFu);
-                const std::uint8_t g = static_cast<std::uint8_t>((color >> 8) & 0xFFu);
-                const std::uint8_t b = static_cast<std::uint8_t>(color & 0xFFu);
-                const std::uint32_t shaded = (static_cast<std::uint32_t>(a) << 24) |
-                                             (static_cast<std::uint32_t>(ShadeChannel(r, shade, sprite.flash)) << 16) |
-                                             (static_cast<std::uint32_t>(ShadeChannel(g, shade, sprite.flash)) << 8) |
-                                             static_cast<std::uint32_t>(ShadeChannel(b, shade, sprite.flash));
-                framebuffer.PutPixel(stripe, y, shaded);
-            }
-        }
+        const SpriteScreenRect rect =
+            ComputeSpriteScreenRect(ScreenColumn(view, screenWidth), view.depth, screenWidth, screenHeight);
+        const float mapLight = LightAt(map, sprite.position.x, sprite.position.y);
+        const float shade = Clamp((1.0f / (1.0f + view.depth * kSpriteFalloff)) * mapLight, kSpriteMinShade, 1.0f);
+        DrawSpriteColumns(framebuffer, wallDepthBuffer, *texture, rect, view.depth, shade, sprite.flash);
     }
 }

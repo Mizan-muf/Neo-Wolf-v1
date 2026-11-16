@@ -2,7 +2,8 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <utility>
+
+#include "engine/render/RenderMath.h"
 
 Framebuffer::Framebuffer(int width, int height) {
     Resize(width, height);
@@ -54,22 +55,6 @@ void Framebuffer::PutPixel(int x, int y, std::uint32_t color) {
     pixels_[static_cast<std::size_t>(y) * static_cast<std::size_t>(width_) + static_cast<std::size_t>(x)] = color;
 }
 
-void Framebuffer::DrawVerticalLine(int x, int yStart, int yEnd, std::uint32_t color) {
-    if (x < 0 || x >= width_ || height_ <= 0) {
-        return;
-    }
-
-    if (yStart > yEnd) {
-        std::swap(yStart, yEnd);
-    }
-
-    yStart = std::max(0, yStart);
-    yEnd = std::min(height_ - 1, yEnd);
-    for (int y = yStart; y <= yEnd; ++y) {
-        PutPixel(x, y, color);
-    }
-}
-
 void Framebuffer::DrawRect(int x, int y, int width, int height, std::uint32_t color) {
     if (width <= 0 || height <= 0) {
         return;
@@ -91,8 +76,8 @@ void Framebuffer::DrawRect(int x, int y, int width, int height, std::uint32_t co
 
     const int xStart = std::max(0, x);
     const int yStart = std::max(0, y);
-    const int xEnd = std::min(width_ - 1, x + width - 1);
-    const int yEnd = std::min(height_ - 1, y + height - 1);
+    const int xEnd = std::min(width_ - 1, right);
+    const int yEnd = std::min(height_ - 1, bottom);
 
     for (int py = yStart; py <= yEnd; ++py) {
         const std::size_t rowOffset = static_cast<std::size_t>(py) * static_cast<std::size_t>(width_);
@@ -103,11 +88,10 @@ void Framebuffer::DrawRect(int x, int y, int width, int height, std::uint32_t co
 }
 
 void Framebuffer::Darken(int keepPercent) {
-    const std::uint32_t keep = static_cast<std::uint32_t>(std::clamp(keepPercent, 0, 100));
+    const auto keep = static_cast<std::uint32_t>(std::clamp(keepPercent, 0, 100));
+    const auto scale = [keep](std::uint8_t channel) { return static_cast<std::uint8_t>(channel * keep / 100u); };
     for (std::uint32_t& pixel : pixels_) {
-        const std::uint32_t r = ((pixel >> 16) & 0xFFu) * keep / 100u;
-        const std::uint32_t g = ((pixel >> 8) & 0xFFu) * keep / 100u;
-        const std::uint32_t b = (pixel & 0xFFu) * keep / 100u;
-        pixel = (pixel & 0xFF000000u) | (r << 16) | (g << 8) | b;
+        const ColorRGBA color = UnpackARGB32(pixel);
+        pixel = PackARGB32(MakeColor(scale(color.r), scale(color.g), scale(color.b), color.a));
     }
 }

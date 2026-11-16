@@ -1,5 +1,9 @@
 #pragma once
 
+// DDA raycaster: CastRay walks one ray through the map grid to the first solid cell (also
+// used for line of sight and shots); RenderWalls draws the textured floor, ceiling and walls
+// and returns the per-column hits, whose distances are the depth buffer for sprites.
+
 #include <array>
 #include <cstdint>
 #include <vector>

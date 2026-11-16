@@ -1,7 +1,12 @@
 #pragma once
 
+// The software framebuffer every renderer and the UI draw into: width x height ARGB pixels
+// (0xAARRGGBB, row by row from the top left), uploaded to the window by the platform layer.
+
 #include <cstdint>
 #include <vector>
+
+#include "engine/core/Color.h"
 
 // The union of every DrawRect request since the last ResetDrawBounds(), and how many requests
 // reached outside the framebuffer (and were clipped). The UI layout tests use it to prove
@@ -31,7 +36,6 @@ public:
 
     void Clear(std::uint32_t color);
     void PutPixel(int x, int y, std::uint32_t color);
-    void DrawVerticalLine(int x, int yStart, int yEnd, std::uint32_t color);
     void DrawRect(int x, int y, int width, int height, std::uint32_t color);
     // Scales every pixel's colour by keepPercent/100 (0-100): dims the world behind overlays.
     void Darken(int keepPercent);
@@ -40,13 +44,12 @@ public:
     const DrawBounds& GetDrawBounds() const { return drawBounds_; }
 
     static constexpr std::uint32_t PackRGBA(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255) {
-        return (static_cast<std::uint32_t>(a) << 24) | (static_cast<std::uint32_t>(r) << 16) |
-               (static_cast<std::uint32_t>(g) << 8) | static_cast<std::uint32_t>(b);
+        return PackARGB32(MakeColor(r, g, b, a));
     }
 
 private:
     int width_ = 0;
     int height_ = 0;
-    std::vector<std::uint32_t> pixels_{};
+    std::vector<std::uint32_t> pixels_;
     DrawBounds drawBounds_{};
 };

@@ -1,5 +1,8 @@
 #pragma once
 
+// Billboard sprites (enemies, corpses, pickups, keys, decorations): sorted far to near and
+// clipped per column against the wall depth buffer; magenta pixels are transparent.
+
 #include <array>
 #include <cstddef>
 #include <vector>
