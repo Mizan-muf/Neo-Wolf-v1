@@ -446,7 +446,7 @@ Add lightweight particles for impact and atmosphere.
   - [x] position
   - [x] velocity
   - [x] lifetime
-  - [x] sprite/frame — **partial**: `Particle::spriteFrame` is set but nothing draws by it
+  - [x] sprite/frame — **partial**: nothing drew by `Particle::spriteFrame`; the unused field was removed in Phase 12
   - [x] size
 - [x] Create particle manager
 - [x] Add spawn function
