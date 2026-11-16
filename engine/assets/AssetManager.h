@@ -1,5 +1,7 @@
 #pragma once
 
+// Textures by id (theme slots, sprite keys, "__missing"), loaded from PPM files.
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,5 +18,5 @@ public:
     const Texture* GetTexture(const std::string& id) const;
 
 private:
-    std::unordered_map<std::string, Texture> textures_{};
+    std::unordered_map<std::string, Texture> textures_;
 };

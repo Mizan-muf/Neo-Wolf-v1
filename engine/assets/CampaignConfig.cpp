@@ -1,8 +1,10 @@
 #include "engine/assets/CampaignConfig.h"
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "engine/assets/ContentConfig.h"
@@ -48,19 +50,92 @@ void WarnLongName(const std::string& name, const std::string& label, std::vector
                            " characters and is shortened on screen");
     }
 }
+
+// "id": a content id, not used by an earlier level. `label` gets the id appended once it is read.
+void ReadLevelId(const json& entry, std::string& label, std::set<std::string>& seenIds, CampaignLevel& level,
+                 std::vector<std::string>& errors) {
+    if (!ReadString(entry, "id", label, level.id, errors)) {
+        return;
+    }
+    label += " (" + level.id + ")";
+    if (!IsValidContentId(level.id)) {
+        errors.push_back(label + ": id must use only a-z, 0-9, '_' and '-'");
+    } else if (!seenIds.insert(level.id).second) {
+        errors.push_back(label + ": id \"" + level.id + "\" is used by an earlier level (ids must be unique)");
+    }
+}
+
+// "theme": a content id whose theme file exists.
+void ReadLevelTheme(const json& entry, const std::string& label, const std::filesystem::path& contentRoot,
+                    CampaignLevel& level, std::vector<std::string>& errors) {
+    if (!ReadString(entry, "theme", label, level.theme, errors)) {
+        return;
+    }
+    if (!IsValidContentId(level.theme)) {
+        errors.push_back(label + ": theme must use only a-z, 0-9, '_' and '-', got \"" + level.theme + "\"");
+    } else if (!ContentFileExists(contentRoot, ThemeConfigPath(level.theme))) {
+        errors.push_back(label + ": theme \"" + level.theme + "\" not found (" + ThemeConfigPath(level.theme) + ")");
+    }
+}
+
+// One entry of "levels"; `label` names it ("file: levels[2]").
+CampaignLevel ReadLevel(const json& entry, std::string label, const std::filesystem::path& contentRoot,
+                        std::set<std::string>& seenIds, std::vector<std::string>& errors,
+                        std::vector<std::string>& warnings) {
+    CampaignLevel level{};
+    ReadLevelId(entry, label, seenIds, level, errors);
+    if (ReadString(entry, "name", label, level.name, errors)) {
+        WarnLongName(level.name, label + ": name", warnings);
+    }
+    if (ReadString(entry, "map", label, level.map, errors) && !ContentFileExists(contentRoot, level.map)) {
+        errors.push_back(label + ": map file not found: " + level.map);
+    }
+    if (ReadString(entry, "entities", label, level.entities, errors) &&
+        !ContentFileExists(contentRoot, level.entities)) {
+        errors.push_back(label + ": entities file not found: " + level.entities);
+    }
+    ReadLevelTheme(entry, label, contentRoot, level, errors);
+    WarnUnknownKeys(entry, {"id", "name", "map", "entities", "theme"}, label, warnings);
+    return level;
+}
+
+// "levels": a non-empty array of level objects.
+void ReadLevels(const json& document, const std::string& sourceName, const std::filesystem::path& contentRoot,
+                std::vector<CampaignLevel>& outLevels, std::vector<std::string>& errors,
+                std::vector<std::string>& warnings) {
+    const auto levelsIt = document.find("levels");
+    if (levelsIt == document.end()) {
+        errors.push_back(sourceName + ": field \"levels\" is required (an array with at least one level)");
+        return;
+    }
+    if (!levelsIt->is_array()) {
+        errors.push_back(sourceName + ": field \"levels\" must be an array, got " + DescribeJsonValue(*levelsIt));
+        return;
+    }
+    if (levelsIt->empty()) {
+        errors.push_back(sourceName + ": \"levels\" is empty; the campaign needs at least one level");
+        return;
+    }
+    std::set<std::string> seenIds;
+    for (std::size_t i = 0; i < levelsIt->size(); ++i) {
+        const json& entry = (*levelsIt)[i];
+        const std::string label = sourceName + ": levels[" + std::to_string(i) + "]";
+        if (!entry.is_object()) {
+            errors.push_back(label + " must be an object, got " + DescribeJsonValue(entry));
+            continue;
+        }
+        outLevels.push_back(ReadLevel(entry, label, contentRoot, seenIds, errors, warnings));
+    }
+}
 }  // namespace
 
 bool IsValidContentId(const std::string& id) {
     if (id.empty()) {
         return false;
     }
-    for (const char c : id) {
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
-        if (!ok) {
-            return false;
-        }
-    }
-    return true;
+    return std::all_of(id.begin(), id.end(), [](const char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    });
 }
 
 bool ParseCampaign(const std::string& jsonText, const std::string& sourceName, const std::filesystem::path& contentRoot,
@@ -83,60 +158,12 @@ bool ParseCampaign(const std::string& jsonText, const std::string& sourceName, c
     }
     WarnUnknownKeys(document, {"title", "levels"}, sourceName, warnings);
 
-    const auto levelsIt = document.find("levels");
-    if (levelsIt == document.end()) {
-        errors.push_back(sourceName + ": field \"levels\" is required (an array with at least one level)");
-    } else if (!levelsIt->is_array()) {
-        errors.push_back(sourceName + ": field \"levels\" must be an array, got " + DescribeJsonValue(*levelsIt));
-    } else if (levelsIt->empty()) {
-        errors.push_back(sourceName + ": \"levels\" is empty; the campaign needs at least one level");
-    } else {
-        std::set<std::string> seenIds;
-        for (std::size_t i = 0; i < levelsIt->size(); ++i) {
-            const json& entry = (*levelsIt)[i];
-            std::string label = sourceName + ": levels[" + std::to_string(i) + "]";
-            if (!entry.is_object()) {
-                errors.push_back(label + " must be an object, got " + DescribeJsonValue(entry));
-                continue;
-            }
-            CampaignLevel level{};
-            if (ReadString(entry, "id", label, level.id, errors)) {
-                label += " (" + level.id + ")";
-                if (!IsValidContentId(level.id)) {
-                    errors.push_back(label + ": id must use only a-z, 0-9, '_' and '-'");
-                } else if (!seenIds.insert(level.id).second) {
-                    errors.push_back(label + ": id \"" + level.id +
-                                     "\" is used by an earlier level (ids must be unique)");
-                }
-            }
-            if (ReadString(entry, "name", label, level.name, errors)) {
-                WarnLongName(level.name, label + ": name", warnings);
-            }
-            if (ReadString(entry, "map", label, level.map, errors) && !ContentFileExists(contentRoot, level.map)) {
-                errors.push_back(label + ": map file not found: " + level.map);
-            }
-            if (ReadString(entry, "entities", label, level.entities, errors) &&
-                !ContentFileExists(contentRoot, level.entities)) {
-                errors.push_back(label + ": entities file not found: " + level.entities);
-            }
-            if (ReadString(entry, "theme", label, level.theme, errors)) {
-                if (!IsValidContentId(level.theme)) {
-                    errors.push_back(label + ": theme must use only a-z, 0-9, '_' and '-', got \"" + level.theme +
-                                     "\"");
-                } else if (!ContentFileExists(contentRoot, ThemeConfigPath(level.theme))) {
-                    errors.push_back(label + ": theme \"" + level.theme + "\" not found (" +
-                                     ThemeConfigPath(level.theme) + ")");
-                }
-            }
-            WarnUnknownKeys(entry, {"id", "name", "map", "entities", "theme"}, label, warnings);
-            campaign.levels.push_back(level);
-        }
-    }
+    ReadLevels(document, sourceName, contentRoot, campaign.levels, errors, warnings);
 
     if (errors.size() != errorsBefore) {
         return false;
     }
-    outCampaign = campaign;
+    outCampaign = std::move(campaign);
     return true;
 }
 

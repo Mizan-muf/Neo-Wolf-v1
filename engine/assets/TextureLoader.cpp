@@ -1,5 +1,6 @@
 #include "engine/assets/TextureLoader.h"
 
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -19,6 +20,16 @@ bool NextToken(std::istream& stream, std::string& outToken) {
         return true;
     }
     return false;
+}
+
+// A PPM sample clamped to [0, maxValue] and scaled to 0-255.
+std::uint8_t NormalizeChannel(int value, int maxValue) {
+    if (value < 0) {
+        value = 0;
+    } else if (value > maxValue) {
+        value = maxValue;
+    }
+    return static_cast<std::uint8_t>((static_cast<float>(value) / static_cast<float>(maxValue)) * 255.0f);
 }
 
 bool ParseIntToken(std::istream& stream, int& outValue) {
@@ -66,17 +77,9 @@ bool TextureLoader::LoadPPM(const std::string& filePath, Texture& outTexture) {
             if (!ParseIntToken(file, r) || !ParseIntToken(file, g) || !ParseIntToken(file, b)) {
                 return false;
             }
-
-            const auto normalize = [maxValue](int v) -> std::uint8_t {
-                if (v < 0) {
-                    v = 0;
-                } else if (v > maxValue) {
-                    v = maxValue;
-                }
-                return static_cast<std::uint8_t>((static_cast<float>(v) / static_cast<float>(maxValue)) * 255.0f);
-            };
-
-            outTexture.SetPixel(x, y, PackARGB32(MakeColor(normalize(r), normalize(g), normalize(b))));
+            outTexture.SetPixel(x, y,
+                                PackARGB32(MakeColor(NormalizeChannel(r, maxValue), NormalizeChannel(g, maxValue),
+                                                     NormalizeChannel(b, maxValue))));
         }
     }
 
@@ -88,15 +91,16 @@ void TextureLoader::BuildFallbackChecker(Texture& outTexture, int width, int hei
         return;
     }
 
-    constexpr int tileSize = 8;
-    const std::uint32_t a = PackARGB32(MakeColor(255, 0, 255));
-    const std::uint32_t b = PackARGB32(MakeColor(0, 0, 0));
+    // Magenta and black 8x8 squares: impossible to mistake for real art.
+    constexpr int kTileSize = 8;
+    const std::uint32_t magenta = PackARGB32(MakeColor(255, 0, 255));
+    const std::uint32_t black = PackARGB32(MakeColor(0, 0, 0));
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            const int cx = x / tileSize;
-            const int cy = y / tileSize;
-            outTexture.SetPixel(x, y, ((cx + cy) % 2 == 0) ? a : b);
+            const int cx = x / kTileSize;
+            const int cy = y / kTileSize;
+            outTexture.SetPixel(x, y, ((cx + cy) % 2 == 0) ? magenta : black);
         }
     }
 }

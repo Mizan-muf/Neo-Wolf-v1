@@ -1,8 +1,12 @@
 #pragma once
 
+// The key=value .cfg content files: texture themes, sprites.cfg (here) and audio.cfg
+// (AudioConfig.h), and the reader they share.
+
 #include <array>
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "engine/world/Sprite.h"
@@ -26,7 +30,7 @@ struct ThemeTextureAssignments {
 std::string ThemeConfigPath(const std::string& themeId);
 
 // sprites.cfg keys, in SpriteTextureId order (all required).
-inline constexpr const char* kSpriteTextureKeys[kSpriteTextureCount] = {
+inline constexpr std::array<const char*, kSpriteTextureCount> kSpriteTextureKeys = {
     "guard",      "health",      "decoration", "brute",   "runner",   "guard_dead",
     "brute_dead", "runner_dead", "ammo",       "key_red", "key_blue", "key_gold"};
 
@@ -44,3 +48,14 @@ bool LoadThemeTextureAssignments(const std::string& filePath, ThemeTextureAssign
 
 bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefinitions& outDefinitions,
                                   std::vector<std::string>& errors);
+
+// Reads a .cfg file: one `key = value` per line, blank lines and lines starting with '#'
+// skipped, a CRLF file accepted. A line without '=' or with an empty key or value is an error
+// (with file and line number); the other lines are still read. Returns false when the file
+// cannot be opened or `errors` is not empty afterwards.
+bool LoadKeyValueConfig(const std::string& filePath, std::unordered_map<std::string, std::string>& outValues,
+                        std::vector<std::string>& errors);
+
+// Copies the value of a required key into outValue; a missing key is an error.
+bool RequireConfigKey(const std::unordered_map<std::string, std::string>& values, const std::string& key,
+                      std::string& outValue, const std::string& filePath, std::vector<std::string>& errors);

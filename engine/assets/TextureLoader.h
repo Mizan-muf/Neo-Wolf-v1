@@ -1,5 +1,7 @@
 #pragma once
 
+// Reading plain-text PPM (P3) textures, and the checkerboard used when one is missing.
+
 #include <string>
 
 #include "engine/assets/Texture.h"

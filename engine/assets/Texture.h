@@ -1,5 +1,7 @@
 #pragma once
 
+// A 32-bit ARGB image in memory, sampled by the renderer with wrapping texture coordinates.
+
 #include <cstdint>
 #include <vector>
 
@@ -22,5 +24,5 @@ public:
 private:
     int width_ = 0;
     int height_ = 0;
-    std::vector<std::uint32_t> pixels_{};
+    std::vector<std::uint32_t> pixels_;
 };

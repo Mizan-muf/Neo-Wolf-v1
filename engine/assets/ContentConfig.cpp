@@ -14,17 +14,18 @@
 namespace {
 std::string Trim(const std::string& value) {
     std::size_t start = 0;
-    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
         ++start;
     }
 
     std::size_t end = value.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
         --end;
     }
 
     return value.substr(start, end - start);
 }
+}  // namespace
 
 bool LoadKeyValueConfig(const std::string& filePath, std::unordered_map<std::string, std::string>& outValues,
                         std::vector<std::string>& errors) {
@@ -66,8 +67,8 @@ bool LoadKeyValueConfig(const std::string& filePath, std::unordered_map<std::str
     return errors.empty();
 }
 
-bool RequireKey(const std::unordered_map<std::string, std::string>& values, const std::string& key,
-                std::string& outValue, const std::string& filePath, std::vector<std::string>& errors) {
+bool RequireConfigKey(const std::unordered_map<std::string, std::string>& values, const std::string& key,
+                      std::string& outValue, const std::string& filePath, std::vector<std::string>& errors) {
     const auto it = values.find(key);
     if (it == values.end()) {
         errors.push_back(filePath + " missing required key: " + key);
@@ -76,7 +77,6 @@ bool RequireKey(const std::unordered_map<std::string, std::string>& values, cons
     outValue = it->second;
     return true;
 }
-}  // namespace
 
 std::string ThemeConfigPath(const std::string& themeId) {
     return "game/defs/themes/" + themeId + ".cfg";
@@ -90,16 +90,16 @@ bool LoadThemeTextureAssignments(const std::string& filePath, ThemeTextureAssign
     }
 
     bool ok = true;
-    ok = RequireKey(values, "wall", outAssignments.wall, filePath, errors) && ok;
-    ok = RequireKey(values, "wall_alt_a", outAssignments.wallAltA, filePath, errors) && ok;
-    ok = RequireKey(values, "wall_alt_b", outAssignments.wallAltB, filePath, errors) && ok;
-    ok = RequireKey(values, "door", outAssignments.door, filePath, errors) && ok;
-    ok = RequireKey(values, "door_red", outAssignments.doorRed, filePath, errors) && ok;
-    ok = RequireKey(values, "door_blue", outAssignments.doorBlue, filePath, errors) && ok;
-    ok = RequireKey(values, "door_gold", outAssignments.doorGold, filePath, errors) && ok;
-    ok = RequireKey(values, "floor", outAssignments.floor, filePath, errors) && ok;
-    ok = RequireKey(values, "ceiling", outAssignments.ceiling, filePath, errors) && ok;
-    ok = RequireKey(values, "exit", outAssignments.exit, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "wall", outAssignments.wall, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "wall_alt_a", outAssignments.wallAltA, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "wall_alt_b", outAssignments.wallAltB, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "door", outAssignments.door, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "door_red", outAssignments.doorRed, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "door_blue", outAssignments.doorBlue, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "door_gold", outAssignments.doorGold, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "floor", outAssignments.floor, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "ceiling", outAssignments.ceiling, filePath, errors) && ok;
+    ok = RequireConfigKey(values, "exit", outAssignments.exit, filePath, errors) && ok;
     return ok;
 }
 
@@ -112,8 +112,8 @@ bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefi
 
     bool ok = true;
     for (int i = 0; i < kSpriteTextureCount; ++i) {
-        ok = RequireKey(values, kSpriteTextureKeys[i], outDefinitions.paths[static_cast<std::size_t>(i)], filePath,
-                        errors) &&
+        ok = RequireConfigKey(values, kSpriteTextureKeys[i], outDefinitions.paths[static_cast<std::size_t>(i)],
+                              filePath, errors) &&
              ok;
     }
     // Phase 6 renamed two keys; say so instead of only reporting them as missing.

@@ -1,11 +1,14 @@
 #include "engine/assets/GameplayConfig.h"
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <initializer_list>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/core/JsonDocument.h"
@@ -37,6 +40,9 @@ constexpr FloatRange kPlayerRadius{0.0, 0.5, true, true};  // must fit through a
 constexpr FloatRange kCooldown{0.0, 60.0, false, false};
 constexpr FloatRange kPositiveCooldown{0.0, 60.0, true, false};
 
+// Room for the longest part of DescribeGameplayDefinitions (one snprintf each).
+constexpr std::size_t kDescribeBufferSize = 512;
+
 std::string FormatNumber(double value) {
     std::ostringstream out;
     out << value;
@@ -55,11 +61,11 @@ std::string Join(const std::string& path, const std::string& key) {
 // Reads typed, range-checked values from one JSON object and records every problem.
 class GameplayReader {
 public:
-    GameplayReader(const std::string& source, std::vector<std::string>& errors, std::vector<std::string>& warnings)
-        : source_(source), errors_(errors), warnings_(warnings) {}
+    GameplayReader(std::string source, std::vector<std::string>& errors, std::vector<std::string>& warnings)
+        : source_(std::move(source)), errors_(&errors), warnings_(&warnings) {}
 
-    void Error(const std::string& message) { errors_.push_back(source_ + ": " + message); }
-    void Warning(const std::string& message) { warnings_.push_back(source_ + ": " + message); }
+    void Error(const std::string& message) { errors_->push_back(source_ + ": " + message); }
+    void Warning(const std::string& message) { warnings_->push_back(source_ + ": " + message); }
 
     // The object stored under `key`, or nullptr if the key is absent (or, after an error, not
     // an object).
@@ -143,19 +149,19 @@ public:
 
 private:
     // Keys of the pre-Phase 4 layout, which moved.
-    static std::string Hint(const std::string& name) {
+    static const char* Hint(const std::string& name) {
         if (name == "pickups.health.maxPlayerHealth") {
             return " (moved to player.maxHealth)";
         }
         if (name == "pickups.ammo.maxPlayerAmmo") {
             return " (moved to weapon.maxAmmo)";
         }
-        return {};
+        return "";
     }
 
-    const std::string& source_;
-    std::vector<std::string>& errors_;
-    std::vector<std::string>& warnings_;
+    std::string source_;                // starts every message
+    std::vector<std::string>* errors_;  // borrowed: the caller's lists
+    std::vector<std::string>* warnings_;
 };
 
 void ReadPlayer(GameplayReader& reader, const json& section, PlayerDefinition& player) {
@@ -212,8 +218,8 @@ void ReadEnemies(GameplayReader& reader, const json& document, EnemyDefinitions&
     if (archetypes == nullptr) {
         return;
     }
-    EnemyDefinition* const targets[kEnemyVariantCount] = {&enemies.guard, &enemies.brute, &enemies.runner};
-    for (int i = 0; i < kEnemyVariantCount; ++i) {
+    const std::array<EnemyDefinition*, kEnemyVariantCount> targets = {&enemies.guard, &enemies.brute, &enemies.runner};
+    for (std::size_t i = 0; i < targets.size(); ++i) {
         const char* name = EnemyVariantName(kEnemyVariants[i]);
         if (const json* section = reader.Section(*archetypes, "enemies", name)) {
             ReadEnemy(reader, *section, std::string("enemies.") + name, *targets[i]);
@@ -295,26 +301,26 @@ bool LoadGameplayDefinitions(const std::string& filePath, GameplayDefinitions& o
 std::string DescribeGameplayDefinitions(const GameplayDefinitions& definitions) {
     const PlayerDefinition& player = definitions.player;
     const WeaponDefinition& weapon = definitions.weapon;
-    char buffer[512] = {};
-    std::snprintf(buffer, sizeof(buffer),
+    std::array<char, kDescribeBufferSize> buffer{};
+    std::snprintf(buffer.data(), buffer.size(),
                   "player health %d/%d, move %.2f, turn %.2f, radius %.2f; "
                   "weapon damage %d, fire interval %.2f s, range %.1f, ammo %d/%d, noise %.1f; ",
                   player.initialHealth, player.maxHealth, static_cast<double>(player.moveSpeed),
                   static_cast<double>(player.turnSpeed), static_cast<double>(player.collisionRadius), weapon.damage,
                   static_cast<double>(weapon.fireRate), static_cast<double>(weapon.range), weapon.initialAmmo,
                   weapon.maxAmmo, static_cast<double>(weapon.noiseRadius));
-    std::string text = buffer;
+    std::string text = buffer.data();
     for (const EnemyVariant variant : kEnemyVariants) {
         const EnemyDefinition& enemy = definitions.enemies.For(variant);
-        std::snprintf(buffer, sizeof(buffer),
+        std::snprintf(buffer.data(), buffer.size(),
                       "%s health %d, damage %d, move %.2f, alert %.1f, attack %.1f every %.2f s, reaction %.2f s, "
                       "score %d; ",
                       EnemyVariantName(variant), enemy.health, enemy.damage, static_cast<double>(enemy.moveSpeed),
                       static_cast<double>(enemy.alertRadius), static_cast<double>(enemy.attackRadius),
                       static_cast<double>(enemy.attackRate), static_cast<double>(enemy.reactionTime), enemy.score);
-        text += buffer;
+        text += buffer.data();
     }
-    std::snprintf(buffer, sizeof(buffer), "pickups health +%d, ammo +%d", definitions.pickups.health.value,
+    std::snprintf(buffer.data(), buffer.size(), "pickups health +%d, ammo +%d", definitions.pickups.health.value,
                   definitions.pickups.ammo.value);
-    return text + buffer;
+    return text + buffer.data();
 }
