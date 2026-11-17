@@ -115,6 +115,7 @@ The owner's play test on macOS (2026-11-16) found sound and mechanics working. E
 - [ ] Controls screen and tutorial hints
 - [ ] Mouse support in every menu
 - [ ] Minimap: on by default, a setting, the new style
+- [ ] Heartbeat health monitor in the HUD: an ECG-style trace in place of the health number, coloured by the current health, beating faster as alerted enemies get closer; the same threat level drives a heartbeat sound (needs the audio mixer)
 
 ### Presentation and release
 
@@ -155,6 +156,11 @@ The owner's play test on macOS (2026-11-16) found sound and mechanics working. E
 - [ ] Separate saves per mode
 - [ ] Versioned save format with migration from 1.x saves (the save format changes, which is why this is version 2.0; see [RELEASE.md](RELEASE.md))
 - [ ] Event and trigger scripting: doors, lights, spawns, messages and objectives driven from level data
+
+### Game: inventory
+
+- [ ] Inventory system: the items the player carries (weapons, ammunition, keys, healing items, rare finds), shown on an inventory screen, with healing items usable from it
+- [ ] Decide the design before building it: a simple item list or a grid with limited space, and whether the inventory carries over between levels (which changes the save format)
 
 ### Game: roguelike mode
 
