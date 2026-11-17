@@ -16,6 +16,23 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 The showcase release: Neo-Wolf presented as an engine, with the v1.0 campaign as its demo.
 
+### Upgrading content from 1.0
+
+The engine no longer has built-in enemy types (see Changed). Content written for 1.0 loads
+unchanged when its `gameplay.json` defines every enemy type it places under `enemies` and every
+enemy placement names its `"variant"`, as the shipped demo does. Otherwise:
+
+- a `gameplay.json` without `enemies` (1.0 used built-in guard, brute and runner values): copy
+  the three sections from the demo's `game/defs/gameplay.json`;
+- enemy placements without `"variant"`: add `"defaultEnemy": "guard"` (or the type they should
+  be) to `gameplay.json`;
+- the pre-Phase 6 `enemy` section: move its values to `enemies.<type>`.
+
+`docs/RELEASE.md` asks for a major version for content-format breaks. This one is released as
+1.1.0 by the owner's decision: no content outside this repository exists, the shipped demo is
+unaffected (the autoplay bot's report is identical), and 2.0 stays reserved for the planned
+save-format change.
+
 ### Added
 
 - **The Test Chamber** ([docs/levels/testchamber.md](docs/levels/testchamber.md)): a development

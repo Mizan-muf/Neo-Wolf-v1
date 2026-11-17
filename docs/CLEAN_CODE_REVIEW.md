@@ -127,7 +127,11 @@ devkit. Then:
 
 ## Verification of the merged tree
 
-VERIFY_PLACEHOLDER
+The merged tree passed the full verification of Phase 11 again (recorded in
+[ROADMAP.md](ROADMAP.md), Phase 12): CI run 43879209370 with all seven jobs green; locally
+`build.sh`, `ctest --preset ci-macos`, `package.sh --expect-version 1.0.0` and
+`package_smoke.py`; and the autoplay bot's report identical to the pre-review one apart from
+the version.
 
 ## Engine core
 

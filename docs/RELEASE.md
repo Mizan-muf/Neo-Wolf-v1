@@ -22,9 +22,10 @@ Each run also writes or updates `SHA256SUMS` next to the archives.
   (`cmake/Packaging.cmake`, which also writes `build/<preset>/neowolf-package.json` for the
   DevKit).
 - **Scheme:** `MAJOR.MINOR.PATCH`. Development was `0.9.0` until the v1 release; Roadmap Phase 12
-  set `1.0.0` and tagged `v1.0.0`; `1.1.0` (the showcase release) added engine features. After
-  that: patch for fixes, minor for new content or
-  features, major for save or content-format breaks.
+  set `1.0.0` and tagged `v1.0.0`. The rule since then: patch for fixes, minor for new content or
+  features, major for save or content-format breaks. `1.1.0` (the showcase release) added engine
+  features and, as a recorded exception, a small content-format break: enemy types are no
+  longer built in (CHANGELOG, "Upgrading content from 1.0").
 - **Why a literal and not a cache variable** (decision of Phase 9): a CMake cache variable
   keeps its first value in an existing build folder, so a later edit of the default would not
   reach it, and a tag built from source would still say whatever the builder's cache said. The
