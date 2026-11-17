@@ -20,7 +20,7 @@ This is the master checklist for 1.5.0. Every item requested after the v1.0 play
 - [x] Audio mixer (known issue C23): yes, needed for music and ambience
 - [x] Mouse: for menus and the UI only, no mouse look
 - [x] 2.0 scope: procedural generation, game-mode framework, roguelike, endless survival, full story campaign (see Version 2.0)
-- [ ] Music direction: compare the licence-checked free tracks with procedurally generated ones per role (title, two ambiences, combat, boss, stingers), then choose
+- [x] Music direction: compare the licence-checked free tracks with procedurally generated ones per role (title, two ambiences, combat, boss, stingers), then choose. Chosen after two listening rounds: generated music for every role (title, wards, chapel, combat, the boss style, a racing-heartbeat alert stinger and a music-box relief), so no third-party music needs crediting
 
 ### Feedback from the v1.0 play test
 
