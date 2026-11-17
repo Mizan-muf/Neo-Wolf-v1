@@ -2,11 +2,15 @@
 
 [![CI](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml/badge.svg?branch=completion%2Fv1)](https://github.com/Mizan-muf/Neo-Wolf-v1/actions/workflows/ci.yml)
 
-A first-person shooter in the style of early-1990s raycasting games, with a 10-level
-campaign. The engine is written in C++17 on SDL2 and draws every frame in software into a
-640×360 image by default (`--render-size` sets another size). Levels, enemies and gameplay values are plain files you can edit without
-recompiling. It builds on macOS and Windows (Linux best effort), and a headless bot proves in CI
-that every level can be finished.
+Neo-Wolf is a **game engine** for first-person games in the style of early-1990s raycasters,
+written in C++17 on SDL2. It draws every frame in software (640×360 by default; `--render-size`
+sets another size) and reads everything a game is made of from plain files: maps, entity
+placements, enemy types, gameplay values and the level list, so content changes need no
+recompiling. A Python DevKit checks content with the engine's own rules. It builds on macOS and
+Windows (Linux best effort).
+
+The engine ships with a **demo**: a 10-level campaign that shows what it can do. The engine's
+tests run on it, and a headless bot proves in CI that every level can be finished.
 
 | Level 1, "Outpost Gate" | Level 5, "Catacombs" |
 |---|---|
@@ -14,27 +18,36 @@ that every level can be finished.
 
 ## Features
 
-- **Campaign:** 10 levels in four texture themes, a main menu (New Game, Continue, Level
-  Select, Test Chamber, Quit), health and ammo carried between levels, restart from the level start on death,
-  saved progress and unlocked levels ([GAMEPLAY.md](docs/GAMEPLAY.md)).
-- **Combat and AI:** a hitscan weapon with limited ammo; three enemy types (guard, brute,
-  runner) that see you only with a clear line of sight, hear your shots through open doors,
-  path-find around walls and search for you when you break contact.
-- **Keys and doors:** red, blue and gold key cards and locked doors; doors you open and close
-  with `E`; an exit switch ends each level.
+### The engine
+
 - **Software renderer:** DDA raycasting with textured walls, floor and ceiling, distance
   shading, authorable dark and dim areas, billboard sprites and simple particles; the image is
-  scaled to any window size with sharp pixels.
-- **Data-driven content:** text maps, JSON entity placements, `gameplay.json` for every stat,
-  `campaign.json` for the level list; invalid files are rejected with a message naming the
-  file and field ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md)).
+  scaled to any window size with sharp pixels, at a render size you choose.
+- **Data-driven content:** text maps, JSON entity placements, `gameplay.json` for every stat
+  and for the game's own enemy types and their sprites, `campaign.json` for the level list;
+  invalid files are rejected with a message naming the file and field
+  ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md)).
+- **Enemy AI:** enemies see you only with a clear line of sight, hear your shots through open
+  doors, path-find around walls and search for you when you break contact.
+- **Game systems:** a hitscan weapon with limited ammo, pickups, red, blue and gold key cards and
+  locked doors, exit switches, a campaign with saved progress, menus, a HUD and a minimap.
 - **Tooling:** a Python DevKit that validates levels with the engine's rules (including "the
   exit is reachable and keys come before their doors"), inspects maps, creates level stubs and
   builds packages; a deterministic autoplay bot (`neo_wolf_autoplay`) that plays every level
-  through simulated input ([DEVKIT_GUIDE.md](docs/DEVKIT_GUIDE.md),
-  [TESTING.md](docs/TESTING.md#autoplay-bot)).
-- **Sound effects** for doors, pickups, shots and enemy alerts (no music). The game also runs
-  without an audio device.
+  through simulated input; a development level (the Test Chamber) with an area per feature
+  ([DEVKIT_GUIDE.md](docs/DEVKIT_GUIDE.md), [TESTING.md](docs/TESTING.md#autoplay-bot)).
+- **Embedding:** a C API and a command bridge to drive the engine from other code
+  ([C_API.md](docs/C_API.md)).
+- **Sound effects** for doors, pickups, shots and enemy alerts (no music yet). The engine also
+  runs without an audio device.
+
+### The demo campaign
+
+- 10 levels in four texture themes, a main menu (New Game, Continue, Level Select, Test
+  Chamber, Quit), health and ammo carried between levels, restart from the level start on death,
+  saved progress and unlocked levels ([GAMEPLAY.md](docs/GAMEPLAY.md)).
+- Three enemy types defined in its `gameplay.json` (guard, brute, runner), each with its own
+  generated sprite and corpse.
 
 ## Download & play
 
@@ -76,10 +89,10 @@ configure needs internet access.
 ./build/macos/neo_wolf      # play; works from any directory
 ```
 
-During the 1.5 development the game starts in the **Test Chamber**, a development level with
-one signposted area per thing to test (enemies, pickups, keys and locks, props, a weapon range,
-a dark room); it never touches your saved progress. To play the campaign: `Esc`, `Q`, then
-**New Game** on the main menu; `--level N` starts campaign level N directly
+The main menu also has a **Test Chamber**: a development level with one signposted area per
+thing to test (enemies, pickups, keys and locks, props, a weapon range, a dark room); it never
+touches your saved progress. With `"bootIntoTestLevel": true` in `campaign.json` the game starts
+straight in it; `--level N` starts campaign level N directly
 ([GAMEPLAY.md](docs/GAMEPLAY.md#the-test-chamber), [the Test Chamber's map](docs/levels/testchamber.md)).
 
 **Windows** (Visual Studio 2022 or newer with *Desktop development with C++*, Python 3;
@@ -129,7 +142,7 @@ level's map and walkthrough: [docs/levels/README.md](docs/levels/README.md).
 | [GAMEPLAY.md](docs/GAMEPLAY.md) | How the game plays: states, rules, enemies, keys, saves |
 | [CONTROLS.md](docs/CONTROLS.md) | Every key, per screen |
 | [levels/README.md](docs/levels/README.md) | The campaign design, with one page per level |
-| [levels/testchamber.md](docs/levels/testchamber.md) | The Test Chamber: the development level the game starts in during 1.5 |
+| [levels/testchamber.md](docs/levels/testchamber.md) | The Test Chamber: the engine's development level (main menu, or `"bootIntoTestLevel"`) |
 | [levels/BUILD_NOTES.md](docs/levels/BUILD_NOTES.md) | History: the level builders' briefs |
 | [BUILD_MACOS.md](docs/BUILD_MACOS.md) | Building and running on macOS |
 | [BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) | Building and running on Windows |

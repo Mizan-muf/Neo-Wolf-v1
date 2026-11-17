@@ -15,7 +15,7 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 ### Added
 
 - **The Test Chamber** ([docs/levels/testchamber.md](docs/levels/testchamber.md)): a development
-  level outside the campaign that the game opens straight into during 1.5 development. A hub
+  level outside the campaign, on the main menu, that the game can open straight into. A hub
   with signposted areas: an enemy gallery (a cell per enemy type behind its own door, and a
   mixed group), a pickups row (health, ammo, the three key cards), a lock test (red, blue and
   gold doors in a row; the gold room holds the exit switch), a props row (seven vases), an
@@ -63,8 +63,14 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ### Changed
 
-- **Enemy types are defined by the game, not the engine** (engine/game boundary, Roadmap
-  1.5.0). `gameplay.json` `enemies` may define any types (ids of lower case letters, digits and
+- **Neo-Wolf is presented as an engine with a demo.** The README and docs describe the engine
+  first and the 10-level campaign as its demo; [docs/ROADMAP_NEXT.md](docs/ROADMAP_NEXT.md) is
+  now the engine's own roadmap (games built on the engine keep their plans in their own
+  repositories). The demo starts on the main menu again (`"bootIntoTestLevel": false`); the
+  Test Chamber stays on the main menu, so CTest registers 118 tests (`game_test_level_boot`
+  only runs while the flag is on).
+- **Enemy types are defined by the game, not the engine** (engine/game boundary,
+  [ROADMAP_NEXT.md](docs/ROADMAP_NEXT.md)). `gameplay.json` `enemies` may define any types (ids of lower case letters, digits and
   `_`), each with optional `sprite` and `corpseSprite` keys (default `<id>` and `<id>_dead`), and
   `defaultEnemy` names the type of a placement without `"variant"`. The engine's fixed
   `EnemyVariant` enum (guard, brute, runner) and its fixed sprite-slot enum are gone: entities
@@ -75,10 +81,10 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
   `"defaultEnemy": "guard"`; gameplay is unchanged (the autoplay bot's report is identical).
   Enemies spawned through the C API get the default type's `gameplay.json` stats. The old
   `enemy` section is now an error, and `validate` checks every placement's type and the
-  `sprites.cfg` keys the types need ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md#changed-in-150)).
+  `sprites.cfg` keys the types need ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md#changed-after-10)).
   The `--preview enemies` screen shows the default type first, then the others alphabetically.
 - The game starts in the Test Chamber while `campaign.json` sets `"bootIntoTestLevel": true`
-  (the shipped setting during 1.5 development; the release checklist turns it off). With five
+  (shipped as `false`: the demo starts on the main menu). With five
   menu items (saved progress and a test level) the main menu at 16:9 uses a tighter vertical
   spacing so that its three-line controls summary still fits (`ui_layout_bounds`).
 - **Default internal resolution 640×360** (16:9) instead of a fixed 320×240. The initial window is

@@ -79,5 +79,5 @@
     "entities": "game/defs/testchamber.entities.json",
     "theme": "bunker"
   },
-  "bootIntoTestLevel": true
+  "bootIntoTestLevel": false
 }

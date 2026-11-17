@@ -11,13 +11,14 @@ level is outside the campaign.*
 
 ## Idea
 
-During the 1.5 development the game opens straight into the Test Chamber (`"bootIntoTestLevel":
-true` in [`campaign.json`](../CONTENT_DEFINITIONS.md#test-level)), so a new feature can be tried
-the moment the game starts, without playing into the campaign first. The player starts in a
+The Test Chamber is on the main menu, and with `"bootIntoTestLevel": true` in
+[`campaign.json`](../CONTENT_DEFINITIONS.md#test-level) the game opens straight into it, so a new
+feature can be tried the moment the game starts, without playing into the campaign first (the
+shipped demo starts on the main menu). The player starts in a
 central hub; every area hangs off it and tests one thing. Walking into an area's entrance shows
 its name on the HUD (a trigger with a `"message"`; once per start of the level, like any
 trigger), so it is always clear what an area is for.
-The level grows with 1.5: new enemies, weapons and breakable props each get an area here
+The level grows with the engine: new enemies, weapons and breakable props each get an area here
 ([Extending it](#extending-it)).
 
 How it behaves (details in [GAMEPLAY.md](../GAMEPLAY.md#the-test-chamber)):
@@ -204,7 +205,7 @@ Every other cell is at 1.0.
 
 ## Extending it
 
-The Test Chamber is meant to grow with 1.5. To add an area (say, for a new weapon):
+The Test Chamber is meant to grow with the engine. To add an area (say, for a new weapon):
 
 1. Pick free space: the solid blocks north-east of the lock test (columns 31–42, rows 1–9) and
    south-east of it (columns 31–42, rows 18–28) are kept free for new areas; the map can also

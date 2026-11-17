@@ -69,8 +69,8 @@ its window loses focus.
 
 ### In the Test Chamber
 
-During the 1.5 development the game starts in the Test Chamber, a development level outside the
-campaign ([GAMEPLAY.md](GAMEPLAY.md#the-test-chamber)). Every other key works as in any level.
+The Test Chamber (main menu, or at start-up with `"bootIntoTestLevel": true`) is a development
+level outside the campaign ([GAMEPLAY.md](GAMEPLAY.md#the-test-chamber)). Every other key works as in any level.
 
 | Keys | Effect |
 |---|---|

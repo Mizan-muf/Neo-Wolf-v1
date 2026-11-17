@@ -13,7 +13,7 @@ builder B levels 6–10, from the per-level briefs now kept as history in
 [BUILD_NOTES.md](BUILD_NOTES.md).
 
 The [Test Chamber](testchamber.md) has a page here too, but it is not part of the campaign: it
-is the development level the game starts in during 1.5, and none of the rules and targets below
+is the engine's development level, and none of the rules and targets below
 apply to it.
 
 References: tiles [MAP_FORMAT.md](../MAP_FORMAT.md), entity fields

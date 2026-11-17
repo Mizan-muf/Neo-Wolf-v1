@@ -35,7 +35,7 @@ level has its own page:
 
 ## The Test Chamber
 
-During the 1.5 development the game opens straight into the **Test Chamber**
+The main menu's **TEST CHAMBER** item opens the **Test Chamber**
 ([levels/testchamber.md](levels/testchamber.md)): a development level **outside the campaign**
 with one signposted area per thing to test, reachable from a central hub (enemy gallery,
 pickups row, lock test, props row, weapon range, dark room). Walking into an area's entrance

@@ -296,7 +296,7 @@ python3 -m tools.devkit.level_docs           # check: exit 1 if a page's map dif
 ## The Test Chamber
 
 The Test Chamber ([levels/testchamber.md](levels/testchamber.md)) is not a campaign level but
-the development level the game starts in during 1.5 (`campaign.json` `"testLevel"` and
+the engine's development level (`campaign.json` `"testLevel"` and
 `"bootIntoTestLevel"`, [CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#test-level)). Every new
 enemy, weapon, pickup or prop gets an area there, so that it can be tried as soon as the game
 opens. It is built like a level, with these differences:

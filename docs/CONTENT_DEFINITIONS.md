@@ -152,7 +152,7 @@ The sample game ([GAMEPLAY.md](GAMEPLAY.md#enemy-types)) defines `guard`, `brute
 with `"defaultEnemy": "guard"`.
 
 The pre-Phase 6 `enemy` section is no longer read: it is an error that asks to move the values
-under `enemies` (1.5.0; 1.0 read it as the guard, with a warning).
+under `enemies` (since 1.0; 1.0 read it as the guard, with a warning).
 
 ---
 
@@ -340,7 +340,7 @@ trigger,13.5,8.5,13,8,,,,,,,WEAPON RANGE
 ```
 
 - Columns, in order: `type,x,y,mapX,mapY,kind,value,angle,variant,key,lock,message` (`key` and
-  `lock` were appended in Phase 6, `message` in 1.5). At least `type,x,y`; trailing columns may
+  `lock` were appended in Phase 6, `message` after 1.0). At least `type,x,y`; trailing columns may
   be left out; an empty column means "not given".
 - Lines starting with `#` (after leading spaces) and blank lines are skipped. Columns after
   the twelfth are ignored with a warning.
@@ -456,7 +456,7 @@ Those two checks were removed, and `doctor` then required `gameplay.json` and
 the whole content through `validate`: [DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#doctor--can-this-machine-build-and-run-neo-wolf)).
 The level list returned in Phase 5 as `game/defs/campaign.json` (below), which the engine reads.
 
-## Changed in 1.5.0
+## Changed after 1.0
 
 The engine/game boundary: the engine no longer knows the sample game's enemy types.
 
@@ -536,7 +536,7 @@ Every campaign level must contain at least one exit switch (`X`) that the player
 
 ## Test level
 
-A development level **outside the campaign**: during 1.5 development it is the
+A development level **outside the campaign**: in the demo it is the
 [Test Chamber](levels/testchamber.md), a hub with one signposted area per thing to test (enemy
 gallery, pickups, locks, props, weapon range, dark room). It is declared next to the levels in
 `campaign.json`:
