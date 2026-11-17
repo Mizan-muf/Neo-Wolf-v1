@@ -39,7 +39,18 @@ MAX_GAMEPLAY_STAT = 10000  # kMaxGameplayStat
 ENTITY_TYPES = ("player", "enemy", "pickup", "door", "trigger", "decoration")
 PICKUP_KINDS = ("health", "ammo", "key")
 KEY_COLORS = ("red", "blue", "gold")
-ENEMY_VARIANTS = ("guard", "brute", "runner")
+# An enemy type id (gameplay.json "enemies" keys, an enemy placement's "variant"): the engine knows
+# no type by name (engine/assets/GameplayConfig.cpp, IsIdentifier).
+ENEMY_TYPE_ID_RE = re.compile(r"^[a-z0-9_]{1,32}$")
+# The sprites.cfg keys the engine itself needs (kSpriteRoleKeys in engine/world/Sprite.h); each
+# enemy type adds its "sprite" and "corpseSprite" keys.
+SPRITE_ROLE_KEYS = ("health", "ammo", "decoration", "key_red", "key_blue", "key_gold")
+
+
+def is_enemy_type_id(value: object) -> bool:
+    return isinstance(value, str) and ENEMY_TYPE_ID_RE.match(value) is not None
+
+
 ENTITY_FIELDS = {
     "player": {"type", "x", "y", "angle"},
     "enemy": {"type", "x", "y", "variant"},
@@ -278,8 +289,11 @@ def check_placement(item: dict, label: str, result: EntityParse) -> bool:
     if etype == "player" and "angle" in item and not is_number(item["angle"]):
         result.errors.append(f"{label} (player): angle must be a number (degrees), got {item['angle']!r}")
         ok = False
-    if etype == "enemy" and "variant" in item and item["variant"] not in ENEMY_VARIANTS:
-        result.errors.append(f"{label} (enemy): variant must be 'guard', 'brute' or 'runner', got {item['variant']!r}")
+    if etype == "enemy" and "variant" in item and not is_enemy_type_id(item["variant"]):
+        result.errors.append(
+            f"{label} (enemy): variant must be an enemy type id (lower case letters, digits and '_'), "
+            f"got {item['variant']!r}"
+        )
         ok = False
     if etype == "door" and "lock" in item and item["lock"] not in KEY_COLORS:
         result.errors.append(f"{label} (door): lock must be 'red', 'blue' or 'gold', got {item['lock']!r}")

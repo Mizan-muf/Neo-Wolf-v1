@@ -7,8 +7,10 @@
 // before Init, unit tests). They match the shipped gameplay.json. Each key, its range and
 // where it is applied are documented in docs/CONTENT_DEFINITIONS.md; keep the two in sync.
 
-#include <array>
-#include <cstdint>
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <vector>
 
 // Upper limit for every health, damage, ammo and pickup value in the content files.
 inline constexpr int kMaxGameplayStat = 10000;
@@ -32,29 +34,8 @@ struct WeaponDefinition {
     float noiseRadius = 10.0f;
 };
 
-// Enemy archetypes (Roadmap Phase 6). An enemy placement's "variant" selects one; a placement
-// without a variant is a guard. The values are appended to the C API's numbering, never
-// reordered.
-enum class EnemyVariant : std::uint8_t { Guard = 0, Brute, Runner };
-
-inline constexpr int kEnemyVariantCount = 3;
-inline constexpr std::array<EnemyVariant, kEnemyVariantCount> kEnemyVariants = {
-    EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner};
-
-// "guard", "brute", "runner" (the names used in gameplay.json and entity files).
-inline const char* EnemyVariantName(EnemyVariant variant) {
-    switch (variant) {
-        case EnemyVariant::Guard:
-            return "guard";
-        case EnemyVariant::Brute:
-            return "brute";
-        case EnemyVariant::Runner:
-            return "runner";
-    }
-    return "guard";
-}
-
-// One enemy archetype: gameplay.json "enemies.<variant>".
+// One enemy type's stats: gameplay.json "enemies.<id>". The defaults apply to keys missing
+// from a type's section, and to enemies created without a type (the C API before Init, tests).
 struct EnemyDefinition {
     int health = 50;
     int damage = 12;            // health removed from the player per attack
@@ -66,21 +47,43 @@ struct EnemyDefinition {
     int score = 100;            // points for a kill (logged at level end)
 };
 
-struct EnemyDefinitions {
-    EnemyDefinition guard{};
-    EnemyDefinition brute{140, 25, 1.0f, 5.5f, 1.3f, 1.6f, 0.8f, 300};  // tanky, slow, hits hard
-    EnemyDefinition runner{25, 6, 2.8f, 8.0f, 1.0f, 0.6f, 0.2f, 150};   // fast, fragile, low damage
+// An enemy type, defined by the game: gameplay.json "enemies.<id>" (Roadmap 1.5.0, engine/game
+// boundary). The engine knows no type by name; an enemy placement's "variant" selects one by id.
+struct EnemyType {
+    std::string id;            // the key under "enemies" (lower case, digits and '_')
+    EnemyDefinition stats{};   // the type's values
+    std::string sprite;        // sprites.cfg key of the living enemy ("sprite", default: the id)
+    std::string corpseSprite;  // sprites.cfg key of its corpse ("corpseSprite", default: <id>_dead)
+    int spriteSlot = -1;       // sprite slots (SpriteSlotNames): set when gameplay.json is parsed
+    int corpseSpriteSlot = -1;
+};
 
-    const EnemyDefinition& For(EnemyVariant variant) const {
-        switch (variant) {
-            case EnemyVariant::Brute:
-                return brute;
-            case EnemyVariant::Runner:
-                return runner;
-            case EnemyVariant::Guard:
-                break;
+// Every enemy type of the game, sorted by id (the order gameplay.json is read in).
+struct EnemyDefinitions {
+    std::vector<EnemyType> types;
+    // The type of an enemy placement without "variant" and of enemies spawned through the C API:
+    // gameplay.json "defaultEnemy", else the only type when there is exactly one, else -1 (such a
+    // placement is an error).
+    int defaultType = -1;
+
+    // The index of the type with this id, or -1.
+    int Find(std::string_view id) const {
+        for (std::size_t i = 0; i < types.size(); ++i) {
+            if (types[i].id == id) {
+                return static_cast<int>(i);
+            }
         }
-        return guard;
+        return -1;
+    }
+    // The type at `index`, or nullptr when there is none (an enemy without a type).
+    const EnemyType* At(int index) const {
+        return index >= 0 && static_cast<std::size_t>(index) < types.size() ? &types[static_cast<std::size_t>(index)]
+                                                                            : nullptr;
+    }
+    // The type's id, or "enemy" for an enemy without a type (logs and the autoplay trace).
+    std::string_view Name(int index) const {
+        const EnemyType* type = At(index);
+        return type != nullptr ? std::string_view(type->id) : std::string_view("enemy");
     }
 };
 
@@ -96,7 +99,7 @@ struct PickupDefinitions {
 struct GameplayDefinitions {
     PlayerDefinition player{};
     WeaponDefinition weapon{};
-    EnemyDefinitions enemies{};
+    EnemyDefinitions enemies{};  // none until gameplay.json is loaded
     PickupDefinitions pickups{};
 };
 
@@ -104,6 +107,5 @@ struct GameplayDefinitions {
 // Engine) so the literals exist only once.
 inline constexpr PlayerDefinition kDefaultPlayerDefinition{};
 inline constexpr WeaponDefinition kDefaultWeaponDefinition{};
-inline constexpr EnemyDefinition kDefaultEnemyDefinition{};  // the guard
-inline constexpr EnemyDefinitions kDefaultEnemyDefinitions{};
+inline constexpr EnemyDefinition kDefaultEnemyDefinition{};
 inline constexpr PickupDefinitions kDefaultPickupDefinitions{};

@@ -508,10 +508,10 @@ void DrawMinimapLockedDoors(const MinimapCanvas& canvas, const UiRenderer::Minim
 }
 
 KeyColor KeyColorOfSprite(const SpriteEntity& sprite) {
-    if (sprite.textureId == static_cast<int>(SpriteTextureId::KeyBlue)) {
+    if (sprite.textureId == SpriteRoleSlot(SpriteRole::KeyBlue)) {
         return KeyColor::Blue;
     }
-    if (sprite.textureId == static_cast<int>(SpriteTextureId::KeyGold)) {
+    if (sprite.textureId == SpriteRoleSlot(SpriteRole::KeyGold)) {
         return KeyColor::Gold;
     }
     return KeyColor::Red;

@@ -1,5 +1,6 @@
 #include "engine/assets/GameplayConfig.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -39,6 +40,17 @@ constexpr FloatRange kPositiveDistance{0.0, 1000.0, true, false};
 constexpr FloatRange kPlayerRadius{0.0, 0.5, true, true};  // must fit through a 1-cell corridor
 constexpr FloatRange kCooldown{0.0, 60.0, false, false};
 constexpr FloatRange kPositiveCooldown{0.0, 60.0, true, false};
+
+constexpr std::size_t kMaxIdentifierLength = 32;
+
+// An enemy type id or sprites.cfg key: 1 to 32 of a-z, 0-9 and '_'.
+bool IsIdentifier(const std::string& text) {
+    if (text.empty() || text.size() > kMaxIdentifierLength) {
+        return false;
+    }
+    return std::all_of(text.begin(), text.end(),
+                       [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
+}
 
 // Room for the longest part of DescribeGameplayDefinitions (one snprintf each).
 constexpr std::size_t kDescribeBufferSize = 512;
@@ -131,6 +143,20 @@ public:
         value = static_cast<float>(number);
     }
 
+    // A non-empty sprites.cfg key (lower case letters, digits and '_'); absent keeps `value`.
+    void SpriteKey(const json& section, const std::string& path, const char* key, std::string& value) {
+        const auto it = section.find(key);
+        if (it == section.end()) {
+            return;
+        }
+        if (!it->is_string() || !IsIdentifier(it->get<std::string>())) {
+            Error(Join(path, key) + " must be a sprites.cfg key (lower case letters, digits and '_'), got " +
+                  DescribeJsonValue(*it));
+            return;
+        }
+        value = it->get<std::string>();
+    }
+
     // Warns about keys this version does not read (typos, or keys from a newer schema).
     void WarnUnknownKeys(const json& section, const std::string& path, std::initializer_list<const char*> known) {
         for (auto it = section.begin(); it != section.end(); ++it) {
@@ -185,8 +211,9 @@ void ReadWeapon(GameplayReader& reader, const json& section, WeaponDefinition& w
     reader.WarnUnknownKeys(section, path, {"damage", "fireRate", "range", "initialAmmo", "maxAmmo", "noiseRadius"});
 }
 
-// One enemy archetype: "enemies.<variant>" (or the legacy "enemy" section).
-void ReadEnemy(GameplayReader& reader, const json& section, const std::string& path, EnemyDefinition& enemy) {
+// One enemy type: "enemies.<id>".
+void ReadEnemy(GameplayReader& reader, const json& section, const std::string& path, EnemyType& type) {
+    EnemyDefinition& enemy = type.stats;
     reader.Int(section, path, "health", kPositiveStat, enemy.health);
     reader.Int(section, path, "damage", kNonNegativeStat, enemy.damage);
     reader.Float(section, path, "moveSpeed", kNonNegativeSpeed, enemy.moveSpeed);
@@ -195,37 +222,57 @@ void ReadEnemy(GameplayReader& reader, const json& section, const std::string& p
     reader.Float(section, path, "attackRate", kPositiveCooldown, enemy.attackRate);
     reader.Float(section, path, "reactionTime", kCooldown, enemy.reactionTime);
     reader.Int(section, path, "score", kNonNegativeStat, enemy.score);
-    reader.WarnUnknownKeys(
-        section, path,
-        {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate", "reactionTime", "score"});
+    reader.SpriteKey(section, path, "sprite", type.sprite);
+    reader.SpriteKey(section, path, "corpseSprite", type.corpseSprite);
+    reader.WarnUnknownKeys(section, path,
+                           {"health", "damage", "moveSpeed", "alertRadius", "attackRadius", "attackRate",
+                            "reactionTime", "score", "sprite", "corpseSprite"});
 }
 
+// "enemies": one section per enemy type, keyed by the type's id; and "defaultEnemy".
 void ReadEnemies(GameplayReader& reader, const json& document, EnemyDefinitions& enemies) {
-    const json* legacy = reader.Section(document, "", "enemy");
-    const json* archetypes = reader.Section(document, "", "enemies");
-    if (legacy != nullptr && archetypes != nullptr) {
+    if (document.contains("enemy")) {
         reader.Error(
-            "use either \"enemies\" or the old \"enemy\" section, not both (\"enemy\" is now "
-            "\"enemies.guard\")");
-        return;
+            "the old \"enemy\" section is no longer read: define each enemy type under \"enemies\" "
+            "(docs/CONTENT_DEFINITIONS.md)");
     }
-    if (legacy != nullptr) {
-        // Before Phase 6 there was one enemy type; its section still defines the guard.
-        reader.Warning("section \"enemy\" is deprecated: it is read as \"enemies.guard\" (move it there)");
-        ReadEnemy(reader, *legacy, "enemy", enemies.guard);
-        return;
-    }
-    if (archetypes == nullptr) {
-        return;
-    }
-    const std::array<EnemyDefinition*, kEnemyVariantCount> targets = {&enemies.guard, &enemies.brute, &enemies.runner};
-    for (std::size_t i = 0; i < targets.size(); ++i) {
-        const char* name = EnemyVariantName(kEnemyVariants[i]);
-        if (const json* section = reader.Section(*archetypes, "enemies", name)) {
-            ReadEnemy(reader, *section, std::string("enemies.") + name, *targets[i]);
+    if (const json* types = reader.Section(document, "", "enemies")) {
+        if (types->size() > static_cast<std::size_t>(kMaxEnemyTypes)) {
+            reader.Error("enemies defines " + std::to_string(types->size()) + " types; at most " +
+                         std::to_string(kMaxEnemyTypes) + " are allowed");
+            return;
+        }
+        for (auto it = types->begin(); it != types->end(); ++it) {
+            const std::string path = "enemies." + it.key();
+            if (!IsIdentifier(it.key())) {
+                reader.Error(path + ": an enemy type id must be lower case letters, digits and '_' (1 to " +
+                             std::to_string(kMaxIdentifierLength) + " characters)");
+                continue;
+            }
+            if (!it->is_object()) {
+                reader.Error(path + " must be an object, got " + DescribeJsonValue(*it));
+                continue;
+            }
+            EnemyType type{};
+            type.id = it.key();
+            type.sprite = type.id;
+            type.corpseSprite = type.id + "_dead";
+            ReadEnemy(reader, *it, path, type);
+            enemies.types.push_back(std::move(type));
         }
     }
-    reader.WarnUnknownKeys(*archetypes, "enemies", {"guard", "brute", "runner"});
+
+    const auto defaultIt = document.find("defaultEnemy");
+    if (defaultIt != document.end()) {
+        const int index = defaultIt->is_string() ? enemies.Find(defaultIt->get<std::string>()) : -1;
+        if (index < 0) {
+            reader.Error("defaultEnemy must name one of the enemy types under \"enemies\", got " +
+                         DescribeJsonValue(*defaultIt));
+        }
+        enemies.defaultType = index;
+    } else if (enemies.types.size() == 1) {
+        enemies.defaultType = 0;
+    }
 }
 
 void ReadPickup(GameplayReader& reader, const json& pickups, const char* key, PickupDefinition& pickup) {
@@ -238,6 +285,29 @@ void ReadPickup(GameplayReader& reader, const json& pickups, const char* key, Pi
     reader.WarnUnknownKeys(*section, path, {"value"});
 }
 }  // namespace
+
+std::vector<std::string> SpriteSlotNames(const EnemyDefinitions& enemies) {
+    std::vector<std::string> names(kSpriteRoleKeys.begin(), kSpriteRoleKeys.end());
+    for (const EnemyType& type : enemies.types) {
+        for (const std::string* name : {&type.sprite, &type.corpseSprite}) {
+            if (std::find(names.begin(), names.end(), *name) == names.end()) {
+                names.push_back(*name);
+            }
+        }
+    }
+    return names;
+}
+
+void AssignSpriteSlots(EnemyDefinitions& enemies) {
+    const std::vector<std::string> names = SpriteSlotNames(enemies);
+    const auto slotOf = [&names](const std::string& name) {
+        return static_cast<int>(std::find(names.begin(), names.end(), name) - names.begin());
+    };
+    for (EnemyType& type : enemies.types) {
+        type.spriteSlot = slotOf(type.sprite);
+        type.corpseSpriteSlot = slotOf(type.corpseSprite);
+    }
+}
 
 bool ParseGameplayDefinitions(const std::string& jsonText, const std::string& sourceName,
                               GameplayDefinitions& outDefinitions, std::vector<std::string>& errors,
@@ -268,7 +338,7 @@ bool ParseGameplayDefinitions(const std::string& jsonText, const std::string& so
         ReadPickup(reader, *pickups, "ammo", definitions.pickups.ammo);
         reader.WarnUnknownKeys(*pickups, "pickups", {"health", "ammo"});
     }
-    reader.WarnUnknownKeys(document, "", {"player", "weapon", "enemy", "enemies", "pickups"});
+    reader.WarnUnknownKeys(document, "", {"player", "weapon", "enemy", "enemies", "defaultEnemy", "pickups"});
 
     if (errors.size() == errorsBefore) {
         // Cross-field rules, checked once every value is known.
@@ -285,7 +355,8 @@ bool ParseGameplayDefinitions(const std::string& jsonText, const std::string& so
     if (errors.size() != errorsBefore) {
         return false;
     }
-    outDefinitions = definitions;
+    AssignSpriteSlots(definitions.enemies);
+    outDefinitions = std::move(definitions);
     return true;
 }
 
@@ -310,15 +381,15 @@ std::string DescribeGameplayDefinitions(const GameplayDefinitions& definitions) 
                   static_cast<double>(weapon.fireRate), static_cast<double>(weapon.range), weapon.initialAmmo,
                   weapon.maxAmmo, static_cast<double>(weapon.noiseRadius));
     std::string text = buffer.data();
-    for (const EnemyVariant variant : kEnemyVariants) {
-        const EnemyDefinition& enemy = definitions.enemies.For(variant);
+    for (const EnemyType& type : definitions.enemies.types) {
+        const EnemyDefinition& enemy = type.stats;
         std::snprintf(buffer.data(), buffer.size(),
-                      "%s health %d, damage %d, move %.2f, alert %.1f, attack %.1f every %.2f s, reaction %.2f s, "
+                      "health %d, damage %d, move %.2f, alert %.1f, attack %.1f every %.2f s, reaction %.2f s, "
                       "score %d; ",
-                      EnemyVariantName(variant), enemy.health, enemy.damage, static_cast<double>(enemy.moveSpeed),
+                      enemy.health, enemy.damage, static_cast<double>(enemy.moveSpeed),
                       static_cast<double>(enemy.alertRadius), static_cast<double>(enemy.attackRadius),
                       static_cast<double>(enemy.attackRate), static_cast<double>(enemy.reactionTime), enemy.score);
-        text += buffer.data();
+        text += type.id + " " + buffer.data();
     }
     std::snprintf(buffer.data(), buffer.size(), "pickups health +%d, ammo +%d", definitions.pickups.health.value,
                   definitions.pickups.ammo.value);

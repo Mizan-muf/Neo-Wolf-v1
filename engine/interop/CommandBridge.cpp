@@ -90,7 +90,7 @@ void RunCommand(Engine& engine, const InteropCommand& cmd) {
             LoadLevelCommand(engine, cmd);
             break;
         case InteropCommandType::SpawnEntity:
-            engine.entityManager_.CreateEntity(static_cast<EntityType>(cmd.intArg1), {cmd.floatArg1, cmd.floatArg2});
+            engine.SpawnEntity(static_cast<EntityType>(cmd.intArg1), {cmd.floatArg1, cmd.floatArg2});
             break;
         case InteropCommandType::DestroyEntity:
             engine.entityManager_.DestroyEntity(cmd.intArg1);

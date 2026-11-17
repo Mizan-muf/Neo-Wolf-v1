@@ -111,18 +111,10 @@ bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefi
     }
 
     bool ok = true;
-    for (int i = 0; i < kSpriteTextureCount; ++i) {
-        ok = RequireConfigKey(values, kSpriteTextureKeys[i], outDefinitions.paths[static_cast<std::size_t>(i)],
-                              filePath, errors) &&
-             ok;
+    std::string ignored;
+    for (const char* key : kSpriteRoleKeys) {
+        ok = RequireConfigKey(values, key, ignored, filePath, errors) && ok;
     }
-    // Phase 6 renamed two keys; say so instead of only reporting them as missing.
-    for (const auto& renamed : {std::pair<const char*, const char*>{"enemy", "guard"}, {"pickup", "health"}}) {
-        if (values.count(renamed.first) != 0) {
-            errors.push_back(filePath + ": key '" + renamed.first + "' was renamed to '" + renamed.second +
-                             "' (Phase 6); it is ignored");
-            ok = false;
-        }
-    }
+    outDefinitions.paths = std::move(values);
     return ok;
 }

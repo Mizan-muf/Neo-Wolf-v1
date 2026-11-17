@@ -63,6 +63,20 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ### Changed
 
+- **Enemy types are defined by the game, not the engine** (engine/game boundary, Roadmap
+  1.5.0). `gameplay.json` `enemies` may define any types (ids of lower case letters, digits and
+  `_`), each with optional `sprite` and `corpseSprite` keys (default `<id>` and `<id>_dead`), and
+  `defaultEnemy` names the type of a placement without `"variant"`. The engine's fixed
+  `EnemyVariant` enum (guard, brute, runner) and its fixed sprite-slot enum are gone: entities
+  hold an index into the loaded types, and the sprite slots are the engine's six role sprites
+  (pickups, key cards, decoration) followed by the sprites the enemy types name, each loaded
+  from `sprites.cfg` (`SpriteSlotNames`). An unknown `variant` is now an error when the level
+  is built rather than when the entity file is read. The sample game's `gameplay.json` gained
+  `"defaultEnemy": "guard"`; gameplay is unchanged (the autoplay bot's report is identical).
+  Enemies spawned through the C API get the default type's `gameplay.json` stats. The old
+  `enemy` section is now an error, and `validate` checks every placement's type and the
+  `sprites.cfg` keys the types need ([CONTENT_DEFINITIONS.md](docs/CONTENT_DEFINITIONS.md#changed-in-150)).
+  The `--preview enemies` screen shows the default type first, then the others alphabetically.
 - The game starts in the Test Chamber while `campaign.json` sets `"bootIntoTestLevel": true`
   (the shipped setting during 1.5 development; the release checklist turns it off). With five
   menu items (saved progress and a test level) the main menu at 16:9 uses a tighter vertical

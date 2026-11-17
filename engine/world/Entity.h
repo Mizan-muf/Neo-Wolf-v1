@@ -52,8 +52,8 @@ struct Entity {
     bool collected = false;
 
     // Enemy AI & combat stats. Levels set them from gameplay.json (BuildLevelFromPlacements);
-    // these fallback defaults (the guard) only reach entities created another way (C API, tests).
-    EnemyVariant variant = EnemyVariant::Guard;
+    // these fallback defaults only reach entities created another way (C API, tests).
+    int enemyType = -1;  // index into GameplayDefinitions::enemies.types; -1 = no type
     int health = kDefaultEnemyDefinition.health;
     int maxHealth = kDefaultEnemyDefinition.health;
     int damage = kDefaultEnemyDefinition.damage;

@@ -60,6 +60,7 @@ sections (`damage`, `moveSpeed`, `health`) gives two independent values.
 {
   "player":  { "initialHealth": 100, "maxHealth": 100, "moveSpeed": 3.0, "turnSpeed": 1.8, "collisionRadius": 0.22 },
   "weapon":  { "damage": 35, "fireRate": 0.25, "range": 12.0, "initialAmmo": 24, "maxAmmo": 99, "noiseRadius": 10.0 },
+  "defaultEnemy": "guard",
   "enemies": {
     "guard":  { "health": 50,  "damage": 12, "moveSpeed": 1.6, "alertRadius": 6.5, "attackRadius": 1.1, "attackRate": 1.0, "reactionTime": 0.5, "score": 100 },
     "brute":  { "health": 140, "damage": 25, "moveSpeed": 1.0, "alertRadius": 5.5, "attackRadius": 1.3, "attackRate": 1.6, "reactionTime": 0.8, "score": 300 },
@@ -92,14 +93,17 @@ cells (one cell = one map character), turn speed in radians per second, times in
 | `weapon.initialAmmo` | integer | 0–10000, ≤ `weapon.maxAmmo` | 24 | Ammo for New Game, Continue, Level Select and `--level` (later levels inherit the previous level's ammo), and for levels loaded by path |
 | `weapon.maxAmmo` | integer | 0–10000 | 99 | Cap for ammo pickups, the command bridge's `AddAmmo` and the ammo carried to the next level |
 | `weapon.noiseRadius` | number | 0–1000 (cells) | 10.0 | Enemies hear a shot when the path from the shooter to them through open cells is at most this long; closed doors block sound ([GAMEPLAY.md](GAMEPLAY.md#enemy-ai)) |
-| `enemies.<type>.health` | integer | 1–10000 | guard 50, brute 140, runner 25 | Health (and maximum health) of every enemy of that type (`ApplyEnemyArchetype`) |
-| `enemies.<type>.damage` | integer | 0–10000 | 12, 25, 6 | Health removed from the player per attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
-| `enemies.<type>.moveSpeed` | number | 0–20 (cells/s) | 1.6, 1.0, 2.8 | Chase and search speed (0 = the enemy never moves) |
-| `enemies.<type>.alertRadius` | number | 0–1000 (cells) | 6.5, 5.5, 8.0 | An idle enemy notices the player within this distance **with line of sight**; once alerted it sees up to twice as far |
-| `enemies.<type>.attackRadius` | number | 0–1000 (cells) | 1.1, 1.3, 1.0 | The enemy attacks when the player is this close and in sight |
-| `enemies.<type>.attackRate` | number | > 0, ≤ 60 (s) | 1.0, 1.6, 0.6 | **Seconds between two attacks** of one enemy |
-| `enemies.<type>.reactionTime` | number | 0–60 (s) | 0.5, 0.8, 0.2 | Time between noticing the player (Alert) and chasing; the alert sound plays at the end |
-| `enemies.<type>.score` | integer | 0–10000 | 100, 300, 150 | Points for a kill; the level's total is logged when the exit switch is used (not shown on screen yet) |
+| `defaultEnemy` | string | an id under `enemies` | the only type, if there is exactly one | The type of an enemy placement without `"variant"`, and of enemies spawned through the C API |
+| `enemies.<type>.health` | integer | 1–10000 | 50 (the sample game: guard 50, brute 140, runner 25) | Health (and maximum health) of every enemy of that type (`ApplyEnemyArchetype`) |
+| `enemies.<type>.damage` | integer | 0–10000 | 12 (12, 25, 6) | Health removed from the player per attack (`UpdateEnemyAi`); shown in "UNDER ATTACK! (-N HP)" |
+| `enemies.<type>.moveSpeed` | number | 0–20 (cells/s) | 1.6 (1.6, 1.0, 2.8) | Chase and search speed (0 = the enemy never moves) |
+| `enemies.<type>.alertRadius` | number | 0–1000 (cells) | 6.5 (6.5, 5.5, 8.0) | An idle enemy notices the player within this distance **with line of sight**; once alerted it sees up to twice as far |
+| `enemies.<type>.attackRadius` | number | 0–1000 (cells) | 1.1 (1.1, 1.3, 1.0) | The enemy attacks when the player is this close and in sight |
+| `enemies.<type>.attackRate` | number | > 0, ≤ 60 (s) | 1.0 (1.0, 1.6, 0.6) | **Seconds between two attacks** of one enemy |
+| `enemies.<type>.reactionTime` | number | 0–60 (s) | 0.5 (0.5, 0.8, 0.2) | Time between noticing the player (Alert) and chasing; the alert sound plays at the end |
+| `enemies.<type>.score` | integer | 0–10000 | 100 (100, 300, 150) | Points for a kill; the level's total is logged when the exit switch is used (not shown on screen yet) |
+| `enemies.<type>.sprite` | string | a `sprites.cfg` key | `<type>` | The sprite of a living enemy of the type ([sprites.cfg](#spritescfg)) |
+| `enemies.<type>.corpseSprite` | string | a `sprites.cfg` key | `<type>_dead` | The sprite of its corpse |
 | `pickups.health.value` | integer | 1–10000 | 25 | Health added by a `health` pickup that has no `value` of its own; shown in "HEALTH RESTORED (+N HP)" |
 | `pickups.ammo.value` | integer | 1–10000 | 12 | Ammo added by an `ammo` pickup that has no `value` of its own; shown in "AMMO REPLENISHED (+N AMMO)" |
 
@@ -133,18 +137,22 @@ log lists all of them; the error box shows the first three.
 ignored, and the game starts. Check the log after editing: for a misspelt key the default is
 used.
 
-### Enemy types (`enemies`) and the old `enemy` section
+### Enemy types (`enemies`)
 
-`enemies` has one section per enemy type: `guard`, `brute`, `runner`
-([GAMEPLAY.md](GAMEPLAY.md#enemy-types)); each takes the keys above, and every key and section
-is optional (missing ones keep the defaults). Another name under `enemies` is an unknown key
-(warning). An enemy placement chooses its type with `"variant"`; without one it is a guard.
+The engine knows no enemy type by name: the game defines its types. `enemies` has one section per
+type, keyed by the type's id (1 to 32 lower case letters, digits and `_`; at most 64 types). Each
+takes the keys above; every key is optional (a missing one keeps the default in the table). The
+types are read in alphabetical order of their ids. An enemy placement chooses its type with
+`"variant"`; a placement without one gets `defaultEnemy` (or the only type when there is exactly
+one). A `variant` that `enemies` does not define, or a placement without a variant when there is
+no default, is an error when the level is loaded. A file without `enemies` defines no type, so a
+level with enemies does not load.
 
-**Backward compatibility.** Before Phase 6 the file had a single `enemy` section. It is still
-read, as `enemies.guard`, with a warning asking to move it (`section "enemy" is deprecated: it
-is read as "enemies.guard"`). Having both `enemy` and `enemies` is an error. The shipped file
-was migrated to `enemies`. The C++ field `GameplayDefinitions::enemy` became
-`GameplayDefinitions::enemies` (with `guard`, `brute`, `runner`).
+The sample game ([GAMEPLAY.md](GAMEPLAY.md#enemy-types)) defines `guard`, `brute` and `runner`,
+with `"defaultEnemy": "guard"`.
+
+The pre-Phase 6 `enemy` section is no longer read: it is an error that asks to move the values
+under `enemies` (1.5.0; 1.0 read it as the guard, with a warning).
 
 ---
 
@@ -203,7 +211,7 @@ centre of cell `(cx, cy)` is `(cx + 0.5, cy + 0.5)`, x grows to the right and y 
 | `value` | integer 1–10000 | `pickup` (health, ammo) | no | Amount restored; default `pickups.<kind>.value` from `gameplay.json`. Ignored (warning) on a key |
 | `key` | `"red"`, `"blue"` or `"gold"` | `pickup` of kind `key` | **yes**, for key pickups | Which key card it is |
 | `lock` | `"red"`, `"blue"` or `"gold"` | `door` | no (default: unlocked) | The key needed to open the door ([GAMEPLAY.md](GAMEPLAY.md#keys-and-locked-doors)) |
-| `variant` | `"guard"`, `"brute"` or `"runner"` | `enemy` | no (default `"guard"`) | The enemy type: its stats come from `gameplay.json` `enemies.<variant>`. Any other value is an **error** (the level does not load) |
+| `variant` | an enemy type id (lower case letters, digits and `_`) | `enemy` | no (default: `gameplay.json` `defaultEnemy`) | The enemy type: its stats and sprites come from `gameplay.json` `enemies.<variant>` ([Enemy types](#enemy-types-enemies)). An id that `enemies` does not define is an **error** (the level does not load) |
 | `message` | string, 1–40 characters (bytes of UTF-8; in a CSV, bytes that are not UTF-8 are an error), no comma, no control character, no space at either end | `trigger` | no (default: `CHECKPOINT REACHED`) | The HUD message the trigger shows (in capitals; shortened with `..` if the screen is too narrow). A sign naming an area, as in the [Test Chamber](levels/testchamber.md). The limits keep the CSV export exact: it has no quoting (a comma would split the cell, a line break the row) and trims every cell. Anything else is an **error** |
 
 A field that does not apply to the entity's type (e.g. `kind` on an enemy), and an unknown
@@ -234,9 +242,10 @@ The level load **fails**, and the current level (if any) stays as it was, when:
 - the JSON is invalid, a key repeats in one object, or `entities` is missing or not an array;
 - an entity is not an object, has no or an unknown `type`, lacks `x`/`y` or has a non-number
   there, is a pickup without a valid `kind` (or a key pickup without a valid `key`), is a
-  door/trigger without `mapX`/`mapY`, has a `lock` or `variant` that is not one of the listed
-  values, or has a value of the wrong type or range;
-- there is not exactly one player, or a position or a door/trigger cell lies outside the map;
+  door/trigger without `mapX`/`mapY`, has a `lock` that is not one of the listed values or a
+  `variant` that is not a well-formed id, or has a value of the wrong type or range;
+- there is not exactly one player, an enemy has no type that `gameplay.json` defines, or a
+  position or a door/trigger cell lies outside the map;
 - `lights` is not an array, or a light zone is invalid or not fully inside the map
   ([Light zones](#light-zones-lights)).
 
@@ -249,7 +258,7 @@ Every message names the file, the entity and the field, for example:
 .../level01.entities.json: entities[4] (pickup): field "kind" is required ("health", "ammo" or "key")
 .../level01.entities.json: entities[1] (door): map cell (20, 6) is outside the 20x13 map
 .../level01.entities.csv:5 (entity 3) (door): fields "mapX" and "mapY" are required (...)
-.../level03.entities.json: entities[7] (enemy): field "variant" must be "guard", "brute" or "runner", got "ninja"
+.../level03.entities.json: entities[7] (enemy): unknown enemy type "ninja" (gameplay.json "enemies" defines brute, guard, runner)
 .../level02.entities.json: entities[6] (pickup): field "key" must be "red", "blue" or "gold", got "green"
 .../testchamber.entities.json: entities[2] (trigger): field "message" must be a non-empty string of at most 40 characters without a comma, a control character or a space at either end, got "LEFT, RIGHT"
 ```
@@ -383,15 +392,22 @@ locked with that key, Phase 6), `floor`, `ceiling` and `exit` (`X` exit switches
 
 ### `sprites.cfg`
 
-The mapping from the engine's sprite slots to files. Twelve required keys (Phase 6):
+The mapping from sprite names to files. Two kinds of key:
+
+- six keys the engine itself needs, for its pickups, key cards and decorations (required);
+- each enemy type's `sprite` and `corpseSprite` from `gameplay.json` (by default `<type>` and
+  `<type>_dead`, [Enemy types](#enemy-types-enemies)). Two types may share a sprite.
+
+The engine loads one texture per name it needs; other keys are not read (`validate` warns
+about them). The sample game's keys:
 
 | Key | Drawn for | File (generated by `tools/devkit/gen_sprites.py`) |
 |---|---|---|
-| `guard`, `brute`, `runner` | living enemies of that type | `game/assets/sprites/<key>.ppm` |
+| `guard`, `brute`, `runner` | living enemies of the sample game's types | `game/assets/sprites/<key>.ppm` |
 | `guard_dead`, `brute_dead`, `runner_dead` | their corpses | `game/assets/sprites/<key>.ppm` |
-| `health`, `ammo` | pickups | `game/assets/sprites/<key>.ppm` |
-| `key_red`, `key_blue`, `key_gold` | key cards | `game/assets/sprites/<key>.ppm` |
-| `decoration` | decorations | `game/assets/sprites/decoration.ppm` (the blue vase) |
+| `health`, `ammo` (engine) | pickups | `game/assets/sprites/<key>.ppm` |
+| `key_red`, `key_blue`, `key_gold` (engine) | key cards | `game/assets/sprites/<key>.ppm` |
+| `decoration` (engine) | decorations | `game/assets/sprites/decoration.ppm` (the blue vase) |
 
 ```ini
 guard=game/assets/sprites/guard.ppm
@@ -408,9 +424,8 @@ key_gold=game/assets/sprites/key_gold.ppm
 decoration=game/assets/sprites/decoration.ppm
 ```
 
-A missing key or file draws that sprite as the checkerboard (warning). The pre-Phase 6 keys
-`enemy` and `pickup` were renamed to `guard` and `health`; the engine ignores them with a
-warning that names the new key, and `validate` reports them as errors. Transparency and sizes:
+A missing key or file draws that sprite as the checkerboard (warning); `validate` reports a
+missing key as an error. Transparency and sizes:
 [ASSET_GUIDE.md](ASSET_GUIDE.md#5-sprites).
 
 ### `audio.cfg`
@@ -440,6 +455,21 @@ Those two checks were removed, and `doctor` then required `gameplay.json` and
 `level01.entities.json` instead (since Phase 7 it checks `campaign.json`, `gameplay.json` and
 the whole content through `validate`: [DEVKIT_GUIDE.md](DEVKIT_GUIDE.md#doctor--can-this-machine-build-and-run-neo-wolf)).
 The level list returned in Phase 5 as `game/defs/campaign.json` (below), which the engine reads.
+
+## Changed in 1.5.0
+
+The engine/game boundary: the engine no longer knows the sample game's enemy types.
+
+- `gameplay.json`: `enemies` may define any types (it used to read only `guard`, `brute` and
+  `runner`; another name was an unknown key). New keys `defaultEnemy`, `enemies.<type>.sprite`
+  and `enemies.<type>.corpseSprite`. Without `enemies` there are no enemy types (the engine used
+  to fall back to built-in guard, brute and runner values). The old `enemy` section is an error.
+- Entity placements: `variant` accepts any well-formed type id; an id `gameplay.json` does not
+  define is an error when the level is loaded. A placement without a variant gets `defaultEnemy`
+  (it used to be the guard).
+- `sprites.cfg`: the enemy keys follow from `gameplay.json`; the engine requires only its six
+  role keys from the file itself. The Phase 6 rename warnings for `enemy` and `pickup` were
+  dropped.
 
 ## Changed in Phase 6
 

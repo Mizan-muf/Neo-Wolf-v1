@@ -2,7 +2,9 @@
 
 #include "engine/core/Engine.h"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,16 +58,26 @@ constexpr Vec2 kShowcasePlayerStart{2.5f, 7.5f};  // looking east along the hall
 constexpr Vec2i kShowcaseDoorCell{8, 7};
 constexpr Vec2i kShowcaseTriggerCell{13, 8};
 
-// The enemies preview: one enemy of each type, and a guard whose corpse lies on the floor (the
-// last entry).
-struct ShowcaseEnemy {
-    EnemyVariant variant = EnemyVariant::Guard;
-    Vec2 position;
-};
-constexpr std::array<ShowcaseEnemy, 4> kShowcaseEnemies = {{{EnemyVariant::Guard, {6.0f, 6.0f}},
-                                                            {EnemyVariant::Runner, {5.5f, 6.95f}},
-                                                            {EnemyVariant::Brute, {5.8f, 8.9f}},
-                                                            {EnemyVariant::Guard, {4.6f, 8.0f}}}};
+// The enemies preview: up to three enemies (the default type first, then the other types in
+// order), and a corpse of the default type on the floor (the last spot).
+constexpr std::array<Vec2, 3> kShowcaseEnemySpots = {{{6.0f, 6.0f}, {5.5f, 6.95f}, {5.8f, 8.9f}}};
+constexpr Vec2 kShowcaseCorpseSpot{4.6f, 8.0f};
+
+// The enemy types shown, in spot order: the default type (or the first), then the others.
+std::vector<int> ShowcaseEnemyTypes(const EnemyDefinitions& enemies) {
+    std::vector<int> types;
+    if (enemies.types.empty()) {
+        return types;
+    }
+    const int first = std::max(enemies.defaultType, 0);
+    types.push_back(first);
+    for (int i = 0; i < static_cast<int>(enemies.types.size()) && types.size() < kShowcaseEnemySpots.size(); ++i) {
+        if (i != first) {
+            types.push_back(i);
+        }
+    }
+    return types;
+}
 
 // The items preview: health, ammo and the three key cards.
 struct ShowcaseItem {
@@ -210,8 +222,9 @@ void Engine::RefreshTexturePointers() {
     floorTexture_ = assets_.GetTexture("floor");
     ceilingTexture_ = assets_.GetTexture("ceiling");
     exitTexture_ = assets_.GetTexture("exit");
-    for (int i = 0; i < kSpriteTextureCount; ++i) {
-        spriteTextures_[static_cast<std::size_t>(i)] = assets_.GetTexture(kSpriteTextureKeys[i]);
+    spriteTextures_.assign(spriteSlotNames_.size(), nullptr);
+    for (std::size_t i = 0; i < spriteSlotNames_.size(); ++i) {
+        spriteTextures_[i] = assets_.GetTexture(SpriteAssetId(spriteSlotNames_[i]));
     }
 }
 
@@ -476,11 +489,13 @@ bool Engine::SetupShowcase(bool enemies) {
     playerAmmo_ = kShowcaseStats.ammo;
 
     if (enemies) {
-        for (const ShowcaseEnemy& placement : kShowcaseEnemies) {
-            Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, placement.position);
-            ApplyEnemyArchetype(enemy, placement.variant, gameplay_.enemies);
+        const std::vector<int> types = ShowcaseEnemyTypes(gameplay_.enemies);
+        for (std::size_t i = 0; i < types.size(); ++i) {
+            Entity& enemy = entityManager_.CreateEntity(EntityType::Enemy, kShowcaseEnemySpots[i]);
+            ApplyEnemyArchetype(enemy, types[i], gameplay_.enemies);
         }
-        Entity& corpse = entityManager_.Entities().back();
+        Entity& corpse = entityManager_.CreateEntity(EntityType::Enemy, kShowcaseCorpseSpot);
+        ApplyEnemyArchetype(corpse, types.empty() ? -1 : types.front(), gameplay_.enemies);
         corpse.enemyState = EnemyState::Dead;
         corpse.active = false;
         ShowMessage("NEED BLUE KEY", kPreviewMessageSeconds);
@@ -499,6 +514,6 @@ bool Engine::SetupShowcase(bool enemies) {
         minimapVisible_ = true;
         ShowMessage("GOLD KEY CARD", kPreviewMessageSeconds);
     }
-    SyncSpritesWithEntities(entityManager_, sprites_);
+    SyncSpritesWithEntities(entityManager_, gameplay_.enemies, sprites_);
     return true;
 }

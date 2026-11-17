@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from fixture_builder import GOOD_LEVELS, write_campaign, write_content_root, write_entities
 
-from tools.devkit import cli
+from tools.devkit import cli, validator
 from tools.devkit.validator import validate_gameplay, validate_project
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -371,18 +371,48 @@ class TestGameplaySchema(CampaignRuleTest):
         self.assertTrue(contains(report.errors, "player must be an object, got an array"))
         report, _ = self.check('{ "enemies": { "guard": { "health": 0 }, "dragon": {} }, "extra": 1 }')
         self.assertTrue(contains(report.errors, "enemies.guard.health must be an integer from 1 to 10000, got 0"))
-        self.assertTrue(contains(report.warnings, "unknown key enemies.dragon ignored"))
+        self.assertFalse(contains(report.warnings, "dragon"))  # a new enemy type, not an unknown key
         self.assertTrue(contains(report.warnings, "unknown key extra ignored"))
         report, _ = self.check('{ "pickups": { "health": { "value": 10, "maxPlayerHealth": 200 } } }')
         self.assertTrue(contains(report.warnings, "pickups.health.maxPlayerHealth ignored (moved to player.maxHealth)"))
 
     def test_enemies_section_and_the_old_enemy_section(self) -> None:
-        report, values = self.check('{ "enemy": { "health": 70 } }')
+        # Any id is an enemy type; sprites default to <id> and <id>_dead.
+        report, values = self.check(
+            '{ "enemies": { "ghoul": { "health": 70 }, "elite": { "sprite": "ghoul" } }, "defaultEnemy": "elite" }'
+        )
         self.assertTrue(report.is_valid, report.errors)
-        self.assertTrue(contains(report.warnings, 'section "enemy" is deprecated'))
-        self.assertEqual(values["enemies"]["guard"]["health"], 70)
-        report, _ = self.check('{ "enemy": {}, "enemies": {} }')
-        self.assertTrue(contains(report.errors, 'use either "enemies" or the old "enemy" section'))
+        self.assertEqual(values["enemies"]["ghoul"]["health"], 70)
+        self.assertEqual(values["enemies"]["elite"]["sprite"], "ghoul")
+        self.assertEqual(values["enemies"]["elite"]["corpseSprite"], "elite_dead")
+        self.assertEqual(values["defaultEnemy"], "elite")
+        self.assertEqual(
+            validator.sprite_keys_for(values),
+            [*validator.SPRITE_ROLE_KEYS, "ghoul", "elite_dead", "ghoul_dead"],  # engine slot order
+        )
+        # One type is the default by itself; with several, only "defaultEnemy" sets one.
+        _, values = self.check('{ "enemies": { "ghoul": {} } }')
+        self.assertEqual(values["defaultEnemy"], "ghoul")
+        _, values = self.check('{ "enemies": { "a": {}, "b": {} } }')
+        self.assertIsNone(values["defaultEnemy"])
+        report, _ = self.check('{ "enemies": { "Bad Id": {} }, "defaultEnemy": "x" }')
+        self.assertTrue(contains(report.errors, "enemies.Bad Id: an enemy type id must be lower case"))
+        self.assertTrue(contains(report.errors, 'defaultEnemy must name one of the enemy types under "enemies"'))
+        report, _ = self.check('{ "enemies": { "a": { "corpseSprite": "" } } }')
+        self.assertTrue(contains(report.errors, "enemies.a.corpseSprite must be a sprites.cfg key"))
+        # The pre-Phase 6 "enemy" section is no longer read.
+        report, _ = self.check('{ "enemy": { "health": 70 } }')
+        self.assertTrue(contains(report.errors, 'the old "enemy" section is no longer read'))
+
+    def test_enemy_types_of_placements_and_their_sprites(self) -> None:
+        self.check('{ "enemies": { "guard": {} } }')  # the fixture levels also place brute and runner
+        errors = self.validate().errors
+        self.assertTrue(contains(errors, "unknown enemy type 'brute'", "defines guard"))
+        self.assertTrue(contains(errors, "unknown enemy type 'runner'"))
+        self.check(
+            '{ "enemies": { "guard": {}, "brute": {}, "runner": { "sprite": "sprinter" } }, "defaultEnemy": "guard" }'
+        )
+        self.assertTrue(contains(self.validate().errors, "sprites.cfg: missing key 'sprinter'"))
 
     def test_project_reports_gameplay_problems(self) -> None:
         self.check('{ "weapon": { "range": 0 } }')

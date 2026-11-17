@@ -3,7 +3,6 @@
 // The key=value .cfg content files: texture themes, sprites.cfg (here) and audio.cfg
 // (AudioConfig.h), and the reader they share.
 
-#include <array>
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -29,16 +28,17 @@ struct ThemeTextureAssignments {
 // "game/defs/themes/<themeId>.cfg" (content-relative).
 std::string ThemeConfigPath(const std::string& themeId);
 
-// sprites.cfg keys, in SpriteTextureId order (all required).
-inline constexpr std::array<const char*, kSpriteTextureCount> kSpriteTextureKeys = {
-    "guard",      "health",      "decoration", "brute",   "runner",   "guard_dead",
-    "brute_dead", "runner_dead", "ammo",       "key_red", "key_blue", "key_gold"};
-
-// Content-relative .ppm paths, indexed by SpriteTextureId.
+// sprites.cfg: every `key = path` line (content-relative .ppm paths). Which keys the game needs
+// follows from its data: the engine's role sprites and each enemy type's sprites
+// (SpriteSlotNames in engine/assets/GameplayConfig.h).
 struct SpriteTextureDefinitions {
-    std::array<std::string, kSpriteTextureCount> paths{};
+    std::unordered_map<std::string, std::string> paths;
 
-    const std::string& Path(SpriteTextureId id) const { return paths[static_cast<std::size_t>(id)]; }
+    // The path for `key`, or nullptr when sprites.cfg has no such key.
+    const std::string* Find(const std::string& key) const {
+        const auto it = paths.find(key);
+        return it != paths.end() ? &it->second : nullptr;
+    }
 };
 
 // Reads a theme file. A syntax error makes the whole file unusable (false, nothing set); a
@@ -46,6 +46,13 @@ struct SpriteTextureDefinitions {
 bool LoadThemeTextureAssignments(const std::string& filePath, ThemeTextureAssignments& outAssignments,
                                  std::vector<std::string>& errors);
 
+// The AssetManager id of a sprite texture ("sprite:<key>"), apart from the theme textures' ids.
+inline std::string SpriteAssetId(const std::string& key) {
+    return "sprite:" + key;
+}
+
+// Reads every key of sprites.cfg; the role keys (kSpriteRoleKeys) are required. Enemy sprite keys
+// are checked when the engine loads the textures (a missing one falls back to the checkerboard).
 bool LoadSpriteTextureDefinitions(const std::string& filePath, SpriteTextureDefinitions& outDefinitions,
                                   std::vector<std::string>& errors);
 

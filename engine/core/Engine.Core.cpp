@@ -1,5 +1,6 @@
 #include "engine/core/Engine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -68,6 +69,14 @@ void Engine::ResetLevel() {
     PublishStateChange();
 }
 
+Entity& Engine::SpawnEntity(EntityType type, const Vec2& position) {
+    Entity& entity = entityManager_.CreateEntity(type, position);
+    if (type == EntityType::Enemy && !gameplay_.enemies.types.empty()) {
+        ApplyEnemyArchetype(entity, std::max(gameplay_.enemies.defaultType, 0), gameplay_.enemies);
+    }
+    return entity;
+}
+
 bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::string>* outErrors) {
     const std::string resolvedPath = ResolveContentPath(relativePath);
     std::vector<std::string> errors;
@@ -86,7 +95,18 @@ bool Engine::LoadGameplay(const std::string& relativePath, std::vector<std::stri
         }
         return false;
     }
-    gameplay_ = definitions;
+    // Live enemies keep their type: their index is looked up again by id (an enemy whose type is
+    // gone has no type until the next level load, which rebuilds every entity).
+    for (Entity& entity : entityManager_.Entities()) {
+        if (entity.type == EntityType::Enemy && entity.enemyType >= 0) {
+            const EnemyType* old = gameplay_.enemies.At(entity.enemyType);
+            entity.enemyType = old != nullptr ? definitions.enemies.Find(old->id) : -1;
+        }
+    }
+    gameplay_ = std::move(definitions);
+    if (!spriteSlotNames_.empty() && SpriteSlotNames(gameplay_.enemies) != spriteSlotNames_) {
+        LoadSpriteSlots();  // new enemy types or sprites (sprite textures are loaded already)
+    }
     LogInfo("Gameplay definitions loaded from " + resolvedPath + ": " + DescribeGameplayDefinitions(gameplay_));
     return true;
 }

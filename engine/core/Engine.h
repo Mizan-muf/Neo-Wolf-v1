@@ -14,6 +14,7 @@
 
 #include "engine/assets/AssetManager.h"
 #include "engine/assets/CampaignConfig.h"
+#include "engine/assets/ContentConfig.h"
 #include "engine/audio/AudioSystem.h"
 #include "engine/core/GameFlow.h"
 #include "engine/core/GameState.h"
@@ -36,7 +37,6 @@
 class PlatformSDL;
 struct AudioEffectDefinitions;
 struct GameplayEvents;
-struct SpriteTextureDefinitions;
 
 // Startup settings (filled from the command line by App; the defaults suit the C API and tests).
 struct EngineOptions {
@@ -98,6 +98,9 @@ public:
     // Restarts the current level: a campaign level or the test level with its level-entry health
     // and ammo, a level loaded by path with the gameplay.json initial values. State becomes Gameplay.
     void ResetLevel();
+    // Creates an entity (C API, command bridge). An enemy gets gameplay.json's default enemy type,
+    // or the first type when there is no default (none before gameplay.json is loaded).
+    Entity& SpawnEntity(EntityType type, const Vec2& position);
     void SetInputInjector(InputInjector injector) { inputInjector_ = std::move(injector); }
     // Loads game/defs/campaign.json (content-relative) into campaign_ and configures the game
     // flow. On error the previous campaign stays and false is returned (errors logged).
@@ -159,9 +162,12 @@ public:
     const Texture* exitTexture_ = nullptr;
     const Texture* floorTexture_ = nullptr;
     const Texture* ceilingTexture_ = nullptr;
-    std::array<const Texture*, kSpriteTextureCount> spriteTextures_{};  // by SpriteTextureId (sprites.cfg)
-    bool minimapVisible_ = false;                                       // M / Tab (off by default, C9)
-    bool debugOverlayVisible_ = false;                                  // F3
+    // Sprite textures by slot (SpriteSlotNames(gameplay_.enemies)), loaded from sprites.cfg.
+    SpriteTextureDefinitions spriteDefinitions_{};  // sprites.cfg
+    std::vector<std::string> spriteSlotNames_;
+    std::vector<const Texture*> spriteTextures_;
+    bool minimapVisible_ = false;       // M / Tab (off by default, C9)
+    bool debugOverlayVisible_ = false;  // F3
     std::vector<RaycastHit> latestRayHits_;
     std::vector<float> latestWallDepthBuffer_;
     std::vector<SpriteEntity> sprites_;
@@ -210,7 +216,10 @@ private:
     bool InitFirstLevel(const EngineOptions& options);
     // Whether this start goes straight into the test level (EngineOptions::testLevelBoot).
     bool BootsIntoTestLevel(const EngineOptions& options) const;
-    void LoadSpriteTextures(const SpriteTextureDefinitions& definitions);
+    // Clears every texture, then loads one sprite texture per slot of the current gameplay_.
+    void LoadSpriteTextures();
+    // Loads the textures of the current gameplay_'s sprite slots (kept when already loaded).
+    void LoadSpriteSlots();
     void LoadSoundEffects(const AudioEffectDefinitions& definitions);
 
     // One frame of play (movement, interactions, AI); fills `events` for the game flow.

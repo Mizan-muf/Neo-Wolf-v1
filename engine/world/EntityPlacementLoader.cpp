@@ -84,14 +84,14 @@ bool ParsePickupKind(const std::string& value, PickupType& outKind) {
     return true;
 }
 
-bool ParseEnemyVariant(const std::string& value, EnemyVariant& outVariant) {
-    for (const EnemyVariant variant : kEnemyVariants) {
-        if (value == EnemyVariantName(variant)) {
-            outVariant = variant;
-            return true;
-        }
+// An enemy type id as gameplay.json allows it: 1 to 32 of a-z, 0-9 and '_'.
+bool IsEnemyTypeId(const std::string& text) {
+    constexpr std::size_t kMaxLength = 32;
+    if (text.empty() || text.size() > kMaxLength) {
+        return false;
     }
-    return false;
+    return std::all_of(text.begin(), text.end(),
+                       [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
 }
 
 // Reads a required or optional number. Returns false only on an error (wrong type).
@@ -368,11 +368,13 @@ bool ReadEnemyFields(const json& object, const std::string& at, EntityPlacement&
     if (variantIt == object.end()) {
         return true;
     }
-    if (!variantIt->is_string() || !ParseEnemyVariant(variantIt->get<std::string>(), out.variant)) {
-        diag.Error(at + ": field \"variant\" must be \"guard\", \"brute\" or \"runner\", got " +
+    // Which ids exist is up to gameplay.json; BuildLevelFromPlacements checks the id.
+    if (!variantIt->is_string() || !IsEnemyTypeId(variantIt->get<std::string>())) {
+        diag.Error(at + ": field \"variant\" must be an enemy type id (lower case letters, digits and '_'), got " +
                    DescribeJsonValue(*variantIt));
         return false;
     }
+    out.variant = variantIt->get<std::string>();
     return true;
 }
 

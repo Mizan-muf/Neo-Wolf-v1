@@ -134,13 +134,16 @@ exactly like the engine (`tools/devkit/engine_formats.py`):
   Positions and door/trigger cells must lie inside the map; exactly one player.
 - **Key/value files** (themes, `sprites.cfg`, `audio.cfg`): `key=value` lines, `#` comments; a
   line without `=` or with an empty key or value is an **error** (the engine then ignores the
-  whole file). Required keys: the ten theme keys, the twelve sprite keys (the pre-Phase 6
-  `enemy`/`pickup` keys are errors), `door_open`, `pickup` and `enemy_alert` in `audio.cfg`.
-  Every referenced file must exist; unknown keys are warnings.
+  whole file). Required keys: the ten theme keys; in `sprites.cfg` the engine's six sprite keys
+  (`health`, `ammo`, `decoration`, `key_red`, `key_blue`, `key_gold`) plus the `sprite` and
+  `corpseSprite` key of every enemy type in `gameplay.json`; `door_open`, `pickup` and
+  `enemy_alert` in `audio.cfg`. Every referenced file must exist; unknown or unused keys are
+  warnings.
 - **`gameplay.json`** (`GameplayConfig`): the same types, ranges and defaults as the engine
   (integers must be JSON integers: `35`, not `35.0`), duplicate keys, sections that are not
   objects, the cross-field rules (`initialHealth` ≤ `maxHealth`, `initialAmmo` ≤ `maxAmmo`), the
-  `enemies` section (and the deprecated `enemy` section: a warning; both: an error); unknown keys
+  enemy types under `enemies` (ids, values, `sprite`/`corpseSprite` keys) and `defaultEnemy`; the
+  old `enemy` section is an error; unknown keys
   are warnings, with a hint for the keys that moved in Phase 4. A missing file is an error.
 - **`campaign.json`** (`CampaignConfig`): a non-empty `title`, a non-empty `levels` array, every
   level an object with non-empty `id`, `name`, `map`, `entities`, `theme`; ids and themes use

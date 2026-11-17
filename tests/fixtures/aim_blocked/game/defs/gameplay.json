@@ -1,1 +1,14 @@
-{}
+{
+  "enemies": {
+    "runner": {
+      "health": 25,
+      "damage": 6,
+      "moveSpeed": 2.8,
+      "alertRadius": 8.0,
+      "attackRadius": 1.0,
+      "attackRate": 0.6,
+      "reactionTime": 0.2,
+      "score": 150
+    }
+  }
+}

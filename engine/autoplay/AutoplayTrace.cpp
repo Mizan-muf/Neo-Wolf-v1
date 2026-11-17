@@ -41,8 +41,8 @@ std::string TracePosition(const Vec2& position) {
     return buffer.data();
 }
 
-std::string TraceEnemy(const Entity& enemy) {
-    return std::string(EnemyVariantName(enemy.variant)) + "#" + std::to_string(enemy.id);
+std::string TraceEnemy(const EnemyDefinitions& types, const Entity& enemy) {
+    return std::string(types.Name(enemy.enemyType)) + "#" + std::to_string(enemy.id);
 }
 
 std::string HeldKeys(const KeyRing& keys) {
@@ -126,7 +126,8 @@ void TraceRecorder::TraceHitsDealt(const Engine& engine, std::uint64_t frame, co
             continue;
         }
         Line(engine, frame,
-             "hit-dealt target=" + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) +
+             "hit-dealt target=" + TraceEnemy(engine.gameplay_.enemies, entity) +
+                 " cell=" + TraceCell(CellOf(entity.position)) +
                  " damage=" + std::to_string(was->health - entity.health) + " hp=" + std::to_string(entity.health) +
                  "/" + std::to_string(entity.maxHealth) + (entity.enemyState == EnemyState::Dead ? " killed" : ""));
     }
@@ -204,8 +205,9 @@ void TraceRecorder::TraceEnemyStates(const Engine& engine, std::uint64_t frame, 
         const Snap* was = Find(entity.id);
         if (entity.type == EntityType::Enemy && was != nullptr && entity.enemyState != was->enemyState) {
             Line(engine, frame,
-                 "enemy " + TraceEnemy(entity) + " cell=" + TraceCell(CellOf(entity.position)) + " " +
-                     EnemyStateName(was->enemyState) + "->" + EnemyStateName(entity.enemyState));
+                 "enemy " + TraceEnemy(engine.gameplay_.enemies, entity) +
+                     " cell=" + TraceCell(CellOf(entity.position)) + " " + EnemyStateName(was->enemyState) + "->" +
+                     EnemyStateName(entity.enemyState));
         }
     }
 }
@@ -229,9 +231,9 @@ void TraceRecorder::TraceHitsTaken(const Engine& engine, std::uint64_t frame, co
         attributed += health - after;
         health = after;
         Line(engine, frame,
-             "hit-taken by=" + TraceEnemy(entity) + " from=" + TraceCell(CellOf(entity.position)) +
-                 " damage=" + std::to_string(entity.damage) + " hp=" + std::to_string(after) +
-                 " pos=" + TracePosition(engine.player_.position));
+             "hit-taken by=" + TraceEnemy(engine.gameplay_.enemies, entity) +
+                 " from=" + TraceCell(CellOf(entity.position)) + " damage=" + std::to_string(entity.damage) +
+                 " hp=" + std::to_string(after) + " pos=" + TracePosition(engine.player_.position));
     }
     if (lost > attributed) {
         Line(engine, frame,

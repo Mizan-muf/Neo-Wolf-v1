@@ -69,6 +69,7 @@ def symbol_for(entity: dict) -> str | None:
     if kind == "player":
         return "p"
     if kind == "enemy":
+        # The sample game's types; a placement without a variant gets its default type, the guard.
         return ENEMY_SYMBOLS.get(entity.get("variant", "guard"), "g")
     if kind == "pickup":
         pickup = entity.get("kind")

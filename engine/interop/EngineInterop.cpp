@@ -192,7 +192,7 @@ int nw_engine_spawn_entity(void* handle, int type, float x, float y) {
     if (engine == nullptr) {
         return -1;
     }
-    const Entity& ent = engine->entityManager_.CreateEntity(static_cast<EntityType>(type), {x, y});
+    const Entity& ent = engine->SpawnEntity(static_cast<EntityType>(type), {x, y});
     return ent.id;
 }
 

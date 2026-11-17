@@ -23,14 +23,15 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from tools.devkit.asset_tools import WAV_FORMAT_PCM, WAV_HEADER_BYTES, ppm_tokens, read_wav_format
 from tools.devkit.engine_formats import (
-    ENEMY_VARIANTS,
     FLOOR_TILES,
     KEY_COLORS,
     MAP_TILES,
     MAX_GAMEPLAY_STAT,
     SOLID_TILES,
+    SPRITE_ROLE_KEYS,
     WALKABLE_TILES,
     check_light_bounds,
+    is_enemy_type_id,
     is_int,
     is_number,
     load_json_strict,
@@ -79,22 +80,8 @@ THEME_KEYS = {
     "door_blue",
     "door_gold",
 }
-# sprites.cfg (engine: kSpriteTextureKeys in engine/assets/ContentConfig.h).
-SPRITE_KEYS = {
-    "guard",
-    "brute",
-    "runner",
-    "guard_dead",
-    "brute_dead",
-    "runner_dead",
-    "health",
-    "ammo",
-    "key_red",
-    "key_blue",
-    "key_gold",
-    "decoration",
-}
-RENAMED_SPRITE_KEYS = {"enemy": "guard", "pickup": "health"}  # Phase 6
+# sprites.cfg: the engine's role keys (engine: kSpriteRoleKeys in engine/world/Sprite.h), plus each
+# enemy type's "sprite" and "corpseSprite" from gameplay.json (sprite_keys_for).
 AUDIO_REQUIRED_KEYS = {"door_open", "pickup", "enemy_alert"}
 AUDIO_OPTIONAL_KEYS = {"weapon_fire", "master_volume"}
 CAMPAIGN_LEVEL_FIELDS = ("id", "name", "map", "entities", "theme")
@@ -449,29 +436,8 @@ GAMEPLAY_SCHEMA: Dict[str, List[Tuple[str, str, float, float, bool, bool, float]
     ],
     "pickup": [("value", _INT, 1, MAX_GAMEPLAY_STAT, False, False, 0)],
 }
-_ENEMY_DEFAULTS = {
-    "guard": {},
-    "brute": {
-        "health": 140,
-        "damage": 25,
-        "moveSpeed": 1.0,
-        "alertRadius": 5.5,
-        "attackRadius": 1.3,
-        "attackRate": 1.6,
-        "reactionTime": 0.8,
-        "score": 300,
-    },
-    "runner": {
-        "health": 25,
-        "damage": 6,
-        "moveSpeed": 2.8,
-        "alertRadius": 8.0,
-        "attackRadius": 1.0,
-        "attackRate": 0.6,
-        "reactionTime": 0.2,
-        "score": 150,
-    },
-}
+MAX_ENEMY_TYPES = 64  # kMaxEnemyTypes (engine/assets/GameplayConfig.h)
+ENEMY_SPRITE_FIELDS = ("sprite", "corpseSprite")
 _PICKUP_DEFAULTS = {"health": 25, "ammo": 12}
 
 
@@ -536,9 +502,8 @@ def _gameplay_defaults() -> Dict[str, Any]:
     return {
         "player": _schema_defaults(GAMEPLAY_SCHEMA["player"]),
         "weapon": _schema_defaults(GAMEPLAY_SCHEMA["weapon"]),
-        "enemies": {
-            name: {**_schema_defaults(GAMEPLAY_SCHEMA["enemy"]), **over} for name, over in _ENEMY_DEFAULTS.items()
-        },
+        "enemies": {},  # the engine defines no enemy type: the game's gameplay.json does
+        "defaultEnemy": None,
         "pickups": {name: {"value": v} for name, v in _PICKUP_DEFAULTS.items()},
     }
 
@@ -554,26 +519,69 @@ def _section(parent: dict, path: str, key: str, label: str, report: ValidationRe
 
 
 def _read_enemies(document: dict, values: Dict[str, Any], label: str, report: ValidationReport) -> None:
-    """The "enemies" section, or the deprecated "enemy" one (read as enemies.guard)."""
-    legacy = _section(document, "", "enemy", label, report)
-    enemies = _section(document, "", "enemies", label, report)
-    if legacy is not None and enemies is not None:
+    """The "enemies" section (one entry per enemy type, keyed by its id) and "defaultEnemy", as the
+    engine reads them (engine/assets/GameplayConfig.cpp, ReadEnemies)."""
+    if "enemy" in document:
         report.add_error(
-            f'{label}: use either "enemies" or the old "enemy" section, not both ("enemy" is now "enemies.guard")'
+            f'{label}: the old "enemy" section is no longer read: define each enemy type under "enemies" '
+            "(docs/CONTENT_DEFINITIONS.md)"
         )
-    elif legacy is not None:
-        report.add_warning(f'{label}: section "enemy" is deprecated: it is read as "enemies.guard" (move it there)')
-        values["enemies"]["guard"] = _read_section(legacy, "enemy", GAMEPLAY_SCHEMA["enemy"], {}, report, label)
-    elif enemies is not None:
-        for name in ENEMY_VARIANTS:
-            sec = _section(enemies, "enemies", name, label, report)
-            if sec is not None:
-                values["enemies"][name] = _read_section(
-                    sec, f"enemies.{name}", GAMEPLAY_SCHEMA["enemy"], _ENEMY_DEFAULTS[name], report, label
+    enemies = _section(document, "", "enemies", label, report)
+    if enemies is not None:
+        if len(enemies) > MAX_ENEMY_TYPES:
+            report.add_error(f"{label}: enemies defines {len(enemies)} types; at most {MAX_ENEMY_TYPES} are allowed")
+            return
+        for name in sorted(enemies):
+            path = f"enemies.{name}"
+            if not is_enemy_type_id(name):
+                report.add_error(
+                    f"{label}: {path}: an enemy type id must be lower case letters, digits and '_' (1 to 32 characters)"
                 )
-        for key in enemies:
-            if key not in ENEMY_VARIANTS:
-                report.add_warning(f"{label}: unknown key enemies.{key} ignored")
+                continue
+            sec = _section(enemies, "enemies", name, label, report)
+            if sec is None:
+                continue
+            stats = {k: v for k, v in sec.items() if k not in ENEMY_SPRITE_FIELDS}
+            enemy = _read_section(stats, path, GAMEPLAY_SCHEMA["enemy"], {}, report, label)
+            enemy["sprite"], enemy["corpseSprite"] = name, f"{name}_dead"
+            for field_name in ENEMY_SPRITE_FIELDS:
+                if field_name in sec:
+                    if is_enemy_type_id(sec[field_name]):
+                        enemy[field_name] = sec[field_name]
+                    else:
+                        report.add_error(
+                            f"{label}: {path}.{field_name} must be a sprites.cfg key (lower case letters, digits "
+                            f"and '_'), got {_describe(sec[field_name])}"
+                        )
+            values["enemies"][name] = enemy
+    if "defaultEnemy" in document:
+        default = document["defaultEnemy"]
+        if not isinstance(default, str) or default not in values["enemies"]:
+            report.add_error(
+                f'{label}: defaultEnemy must name one of the enemy types under "enemies", got {_describe(default)}'
+            )
+        else:
+            values["defaultEnemy"] = default
+    elif len(values["enemies"]) == 1:
+        values["defaultEnemy"] = next(iter(values["enemies"]))
+
+
+def sprite_keys_for(gameplay: Dict[str, Any]) -> List[str]:
+    """The sprites.cfg keys the game needs, in the engine's slot order (SpriteSlotNames): the role
+    keys, then each enemy type's sprite and corpse sprite (types sorted by id), each key once."""
+    keys = list(SPRITE_ROLE_KEYS)
+    for name in sorted(gameplay["enemies"]):
+        for field_name in ENEMY_SPRITE_FIELDS:
+            key = gameplay["enemies"][name][field_name]
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def enemy_type_of(entity: dict, gameplay: Dict[str, Any]) -> Optional[str]:
+    """The enemy type an enemy placement gets: its "variant", else the default type (None if neither)."""
+    variant = entity.get("variant") or gameplay.get("defaultEnemy")
+    return variant if variant in gameplay["enemies"] else None
 
 
 def _read_pickups(document: dict, values: Dict[str, Any], label: str, report: ValidationReport) -> None:
@@ -605,8 +613,8 @@ def _check_starting_values(values: Dict[str, Any], label: str, report: Validatio
 
 
 def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]]:
-    """gameplay.json with the engine's rules: types, ranges, duplicate keys, sections, the
-    enemies section (and the deprecated 'enemy'), cross-field rules; unknown keys are warnings.
+    """gameplay.json with the engine's rules: types, ranges, duplicate keys, sections, the enemy
+    types and the default type, cross-field rules; unknown keys are warnings.
     Returns the effective values (defaults for missing keys), e.g. values['player']['collisionRadius']."""
     report = ValidationReport()
     file_path = Path(file_path)
@@ -631,7 +639,7 @@ def validate_gameplay(file_path: Path) -> Tuple[ValidationReport, Dict[str, Any]
     _read_enemies(document, values, label, report)
     _read_pickups(document, values, label, report)
     for key in document:
-        if key not in ("player", "weapon", "enemy", "enemies", "pickups"):
+        if key not in ("player", "weapon", "enemy", "enemies", "defaultEnemy", "pickups"):
             report.add_warning(f"{label}: unknown key {key} ignored")
     if report.is_valid:
         _check_starting_values(values, label, report)
@@ -1046,10 +1054,33 @@ def _read_campaign_level(
     return CampaignLevelInfo(index, level["id"], level["map"], level["entities"], level["theme"])
 
 
+def _check_enemy_types(entities: list, label: str, gameplay: Dict[str, Any], report: ValidationReport) -> None:
+    """Every enemy placement needs a type: its variant, else gameplay.json's default (BuildLevelFromPlacements)."""
+    types = ", ".join(sorted(gameplay["enemies"])) or "no types"
+    for index, ent in enumerate(entities):
+        if ent["type"] != "enemy" or enemy_type_of(ent, gameplay) is not None:
+            continue
+        if ent.get("variant"):
+            report.add_error(
+                f"{label}: entity {index} (enemy): unknown enemy type {ent['variant']!r} "
+                f'(gameplay.json "enemies" defines {types})'
+            )
+        else:
+            report.add_error(
+                f'{label}: entity {index} (enemy): no "variant", and gameplay.json has no default enemy type '
+                f'(set "defaultEnemy", or give the placement a variant: {types})'
+            )
+
+
 def validate_level(
-    project_root: Path, level: CampaignLevelInfo, report: ValidationReport, player_radius: float = DEFAULT_PLAYER_RADIUS
+    project_root: Path,
+    level: CampaignLevelInfo,
+    report: ValidationReport,
+    player_radius: float = DEFAULT_PLAYER_RADIUS,
+    gameplay: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Everything one campaign level (or the test level) needs to load and to be completable."""
+    """Everything one campaign level (or the test level) needs to load and to be completable. With
+    `gameplay` (validate_gameplay's values), every enemy must have a type gameplay.json defines."""
     root = Path(project_root)
     label = level.label
     map_report, rows = validate_map(root / level.map)
@@ -1067,6 +1098,8 @@ def validate_level(
     entities = parsed.entities
     bounds = ValidationReport()
     _check_bounds(entities, f"{label}: {level.entities}", (len(rows[0]), len(rows)), bounds)
+    if gameplay is not None:
+        _check_enemy_types(entities, f"{label}: {level.entities}", gameplay, bounds)
     bounds.errors.extend(check_light_bounds(parsed.lights, len(rows[0]), len(rows), f"{label}: {level.entities}:"))
     if bounds.errors:
         report.errors.extend(bounds.errors)
@@ -1091,7 +1124,7 @@ def validate_level(
     for index, ent in enumerate(entities):
         if ent["type"] in ("pickup", "enemy") and cell_of(ent["x"], ent["y"]) not in progress.reached:
             what = (
-                f"{ent.get('kind', '')} pickup" if ent["type"] == "pickup" else f"{ent.get('variant', 'guard')} enemy"
+                f"{ent.get('kind', '')} pickup" if ent["type"] == "pickup" else f"{ent.get('variant', 'default')} enemy"
             )
             report.add_warning(
                 f"{label}: the {what} (entity {index}) at ({ent['x']}, {ent['y']}) cannot be reached from the spawn"
@@ -1105,20 +1138,25 @@ def validate_level(
 
 
 def validate_campaign(
-    project_root: Path, require_levels: Optional[int] = None, player_radius: Optional[float] = None
+    project_root: Path,
+    require_levels: Optional[int] = None,
+    player_radius: Optional[float] = None,
+    gameplay: Optional[Dict[str, Any]] = None,
 ) -> ValidationReport:
     """campaign.json like the engine (fields, ids, files, themes, the test level and its boot flag),
     the level count when `require_levels` is given, and the layout and progress of every level and
     of the test level (validate_level)."""
     report = ValidationReport()
     root = Path(project_root)
-    if player_radius is None:
+    if player_radius is None or gameplay is None:
         gameplay_path = root / "game" / "defs" / "gameplay.json"
-        player_radius = DEFAULT_PLAYER_RADIUS
         if gameplay_path.is_file():
             gameplay_report, values = validate_gameplay(gameplay_path)
             if gameplay_report.is_valid:
-                player_radius = values["player"]["collisionRadius"]
+                player_radius = values["player"]["collisionRadius"] if player_radius is None else player_radius
+                gameplay = values if gameplay is None else gameplay
+        if player_radius is None:
+            player_radius = DEFAULT_PLAYER_RADIUS
     campaign = read_campaign_manifest(root, report)
     if campaign is None:
         return report
@@ -1129,10 +1167,10 @@ def validate_campaign(
             f"campaign.json: the campaign has {count} level(s); {require_levels} are required (--require-levels)"
         )
     for level in levels:
-        validate_level(root, level, report, player_radius)
+        validate_level(root, level, report, player_radius, gameplay)
     report.add_info(f"Campaign: {count} level(s)")
     if campaign.test_level is not None:
-        validate_level(root, campaign.test_level, report, player_radius)
+        validate_level(root, campaign.test_level, report, player_radius, gameplay)
         boot = "; bootIntoTestLevel is on: a plain launch starts in it" if campaign.boot_into_test_level else ""
         report.add_info(f"Test level: {campaign.test_level.id}, outside the campaign{boot}")
     return report
@@ -1233,20 +1271,25 @@ def _validate_themes(defs_dir: Path, references: _ReferenceChecker, report: Vali
             references.check(f"themes/{theme_cfg.name}", key, rel_path)
 
 
-def _validate_sprites_cfg(defs_dir: Path, references: _ReferenceChecker, report: ValidationReport) -> None:
+def _validate_sprites_cfg(
+    defs_dir: Path, references: _ReferenceChecker, report: ValidationReport, gameplay: Dict[str, Any]
+) -> None:
     sprites_cfg = defs_dir / "sprites.cfg"
     if not sprites_cfg.exists():
         report.add_error(f"Missing sprites.cfg in {defs_dir}")
         return
-    cfg_rep, spr_vals = validate_cfg(sprites_cfg, SPRITE_KEYS)
+    needed = sprite_keys_for(gameplay)
+    cfg_rep, spr_vals = validate_cfg(sprites_cfg, set(SPRITE_ROLE_KEYS))
     report.merge(cfg_rep)
-    for key, rel_path in sorted(spr_vals.items()):
-        if key in RENAMED_SPRITE_KEYS:
+    for key in needed[len(SPRITE_ROLE_KEYS) :]:
+        if key not in spr_vals:
             report.add_error(
-                f"sprites.cfg: key '{key}' was renamed to '{RENAMED_SPRITE_KEYS[key]}' (Phase 6); the engine ignores it"
+                f"sprites.cfg: missing key '{key}' (an enemy type in gameplay.json uses it; the engine would draw "
+                "the checkerboard)"
             )
-        elif key not in SPRITE_KEYS:
-            report.add_warning(f"sprites.cfg: unknown key '{key}' ignored by the engine")
+    for key, rel_path in sorted(spr_vals.items()):
+        if key not in needed:
+            report.add_warning(f"sprites.cfg: key '{key}' is not used (neither an engine sprite nor an enemy type's)")
         else:
             references.check("sprites.cfg", key, rel_path)
 
@@ -1302,15 +1345,18 @@ def validate_project(project_root: Path, require_levels: Optional[int] = None) -
 
     references = _ReferenceChecker(project_root, assets_dir, report)
     _validate_themes(defs_dir, references, report)
-    _validate_sprites_cfg(defs_dir, references, report)
-    _validate_audio_cfg(defs_dir, references, report)
     gameplay_report, gameplay = validate_gameplay(defs_dir / "gameplay.json")
     report.merge(gameplay_report)
+    _validate_sprites_cfg(defs_dir, references, report, gameplay)
+    _validate_audio_cfg(defs_dir, references, report)
     _validate_entity_files(defs_dir, map_dimensions, report)
 
     report.merge(
         validate_campaign(
-            project_root, require_levels, gameplay["player"]["collisionRadius"] if gameplay_report.is_valid else None
+            project_root,
+            require_levels,
+            gameplay["player"]["collisionRadius"] if gameplay_report.is_valid else None,
+            gameplay if gameplay_report.is_valid else None,
         )
     )
     for orphan in find_orphans(project_root):

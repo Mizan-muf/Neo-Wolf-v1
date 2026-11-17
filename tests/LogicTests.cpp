@@ -470,6 +470,37 @@ void TestEntityInteractionRules() {
     TEST_ASSERT(map.GetCell(doorClosed->mapX, doorClosed->mapY) == TileType::Door);
 }
 
+// The sample game's gameplay.json (game/defs/gameplay.json), read once: its enemy types (guard,
+// brute, runner) are what the reference levels place.
+const GameplayDefinitions& SampleGameplay() {
+    static const GameplayDefinitions definitions = [] {
+        GameplayDefinitions loaded{};
+        std::vector<std::string> errors;
+        std::vector<std::string> warnings;
+        if (!LoadGameplayDefinitions(ResolveRepoPath("game/defs/gameplay.json"), loaded, errors, warnings)) {
+            FailTest(__FILE__, __LINE__, "cannot load the sample game's gameplay.json");
+        }
+        return loaded;
+    }();
+    return definitions;
+}
+
+// The stats of enemy type `id` (the sample game's types: guard, brute, runner); fails the test
+// when gameplay.json defines no such type.
+const EnemyDefinition& EnemyStats(const GameplayDefinitions& gameplay, const char* id) {
+    const EnemyType* type = gameplay.enemies.At(gameplay.enemies.Find(id));
+    if (type == nullptr) {
+        FailTest(__FILE__, __LINE__, std::string("no enemy type \"") + id + "\"");
+    }
+    return type->stats;
+}
+
+int EnemyTypeIndex(const GameplayDefinitions& gameplay, const char* id) {
+    const int index = gameplay.enemies.Find(id);
+    TEST_ASSERT(index >= 0);
+    return index;
+}
+
 void TestContentFileLoaders() {
     std::vector<std::string> errors;
     std::vector<std::string> warnings;
@@ -480,8 +511,9 @@ void TestContentFileLoaders() {
     TEST_ASSERT(LoadSpriteTextureDefinitions(ResolveRepoPath("game/defs/sprites.cfg"), sprites, errors));
     TEST_ASSERT(!wall.wall.empty());
     TEST_ASSERT(wall.exit == "game/assets/themes/classic/exit.ppm");
-    TEST_ASSERT(sprites.Path(SpriteTextureId::Guard) == "game/assets/sprites/guard.ppm");
-    TEST_ASSERT(sprites.Path(SpriteTextureId::KeyGold) == "game/assets/sprites/key_gold.ppm");
+    TEST_ASSERT(sprites.Find("guard") != nullptr && *sprites.Find("guard") == "game/assets/sprites/guard.ppm");
+    TEST_ASSERT(sprites.Find("key_gold") != nullptr && *sprites.Find("key_gold") == "game/assets/sprites/key_gold.ppm");
+    TEST_ASSERT(sprites.Find("no_such_sprite") == nullptr);
 
     Map map{};
     TEST_ASSERT(LoadMapFromFile(ReferencePath("game/maps/level01.map"), map, errors));
@@ -852,7 +884,7 @@ void TestLevelResetAndDynamicLoad() {
         TEST_ASSERT(LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors,
                                                  warnings));
         LevelContents level{};
-        TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, GameplayDefinitions{}, level, errors));
+        TEST_ASSERT(BuildLevelFromPlacements(levelMap, placements, SampleGameplay(), level, errors));
         TEST_ASSERT(level.entities.Entities().size() == ReferenceLevel1::kPlacementCount);
         TEST_ASSERT(level.sprites.size() == ReferenceLevel1::kSpriteCount);
         TEST_ASSERT(level.entities.Entities().front().id == 1);
@@ -1547,10 +1579,10 @@ void TestGameplayDefinitionsExactValues() {
 
     // The keys that collided in the old first-match parser (known issue C2).
     TEST_ASSERT(g.weapon.damage == 35);
-    TEST_ASSERT(g.enemies.guard.damage == 12);
+    TEST_ASSERT(EnemyStats(g, "guard").damage == 12);
     TEST_ASSERT_NEAR(g.player.moveSpeed, 3.0f, 1e-6f);
-    TEST_ASSERT_NEAR(g.enemies.guard.moveSpeed, 1.6f, 1e-6f);
-    TEST_ASSERT(g.enemies.guard.health == 50);
+    TEST_ASSERT_NEAR(EnemyStats(g, "guard").moveSpeed, 1.6f, 1e-6f);
+    TEST_ASSERT(EnemyStats(g, "guard").health == 50);
 
     TEST_ASSERT(g.player.initialHealth == 100);
     TEST_ASSERT(g.player.maxHealth == 100);
@@ -1561,11 +1593,11 @@ void TestGameplayDefinitionsExactValues() {
     TEST_ASSERT(g.weapon.initialAmmo == 24);
     TEST_ASSERT(g.weapon.maxAmmo == 99);
     TEST_ASSERT_NEAR(g.weapon.noiseRadius, 10.0f, 1e-6f);
-    TEST_ASSERT_NEAR(g.enemies.guard.alertRadius, 6.5f, 1e-6f);
-    TEST_ASSERT_NEAR(g.enemies.guard.attackRadius, 1.1f, 1e-6f);
-    TEST_ASSERT_NEAR(g.enemies.guard.attackRate, 1.0f, 1e-6f);
-    TEST_ASSERT_NEAR(g.enemies.guard.reactionTime, 0.5f, 1e-6f);
-    TEST_ASSERT(g.enemies.guard.score == 100);
+    TEST_ASSERT_NEAR(EnemyStats(g, "guard").alertRadius, 6.5f, 1e-6f);
+    TEST_ASSERT_NEAR(EnemyStats(g, "guard").attackRadius, 1.1f, 1e-6f);
+    TEST_ASSERT_NEAR(EnemyStats(g, "guard").attackRate, 1.0f, 1e-6f);
+    TEST_ASSERT_NEAR(EnemyStats(g, "guard").reactionTime, 0.5f, 1e-6f);
+    TEST_ASSERT(EnemyStats(g, "guard").score == 100);
     TEST_ASSERT(g.pickups.health.value == 25);
     TEST_ASSERT(g.pickups.ammo.value == 12);
 
@@ -1576,30 +1608,56 @@ void TestGameplayDefinitionsExactValues() {
         "\"player\": {\"moveSpeed\": 4.5}}";
     GameplayDefinitions p{};
     TEST_ASSERT(ParseGameplayDefinitions(partial, "partial.json", p, errors, warnings));
-    TEST_ASSERT(p.enemies.guard.damage == 7);
+    TEST_ASSERT(EnemyStats(p, "guard").damage == 7);
     TEST_ASSERT(p.weapon.damage == 70);
     TEST_ASSERT_NEAR(p.player.moveSpeed, 4.5f, 1e-6f);
-    TEST_ASSERT_NEAR(p.enemies.guard.moveSpeed, 0.5f, 1e-6f);
-    TEST_ASSERT(p.enemies.guard.health == kDefaultEnemyDefinition.health);
-    TEST_ASSERT(p.enemies.brute.health == kDefaultEnemyDefinitions.brute.health);
+    TEST_ASSERT_NEAR(EnemyStats(p, "guard").moveSpeed, 0.5f, 1e-6f);
+    TEST_ASSERT(EnemyStats(p, "guard").health == kDefaultEnemyDefinition.health);
+    TEST_ASSERT(p.enemies.types.size() == 1 && p.enemies.defaultType == 0);  // only the types in the file
     TEST_ASSERT(p.player.maxHealth == kDefaultPlayerDefinition.maxHealth);
     TEST_ASSERT(p.pickups.ammo.value == kDefaultPickupDefinitions.ammo.value);
 
     GameplayDefinitions empty{};
-    empty.enemies.guard.health = 1;
+    empty.weapon.damage = 1;
     TEST_ASSERT(ParseGameplayDefinitions("{}", "empty.json", empty, errors, warnings));
-    TEST_ASSERT(empty.enemies.guard.health == kDefaultEnemyDefinition.health);
+    TEST_ASSERT(empty.weapon.damage == kDefaultWeaponDefinition.damage);
+    TEST_ASSERT(empty.enemies.types.empty() && empty.enemies.defaultType == -1);  // the engine defines no enemy
     TEST_ASSERT(errors.empty() && warnings.empty());
 
-    // Backward compatibility: the pre-Phase 6 "enemy" section is read as the guard, with a
-    // deprecation warning.
-    GameplayDefinitions legacy{};
-    TEST_ASSERT(ParseGameplayDefinitions("{\"enemy\": {\"health\": 70, \"damage\": 3}}", "legacy.json", legacy, errors,
+    // The shipped file: three types, sorted by id, the guard the default; each type's sprites
+    // default to <id> and <id>_dead, in slots after the engine's role sprites.
+    TEST_ASSERT(g.enemies.types.size() == 3);
+    TEST_ASSERT(g.enemies.types[0].id == "brute" && g.enemies.types[1].id == "guard" &&
+                g.enemies.types[2].id == "runner");
+    TEST_ASSERT(g.enemies.defaultType == 1);
+    TEST_ASSERT(g.enemies.types[1].sprite == "guard" && g.enemies.types[1].corpseSprite == "guard_dead");
+    const std::vector<std::string> slots = SpriteSlotNames(g.enemies);
+    TEST_ASSERT(slots.size() == static_cast<std::size_t>(kSpriteRoleCount) + 6);
+    TEST_ASSERT(slots[static_cast<std::size_t>(SpriteRoleSlot(SpriteRole::KeyGold))] == "key_gold");
+    for (const EnemyType& type : g.enemies.types) {
+        TEST_ASSERT(type.spriteSlot >= kSpriteRoleCount &&
+                    slots[static_cast<std::size_t>(type.spriteSlot)] == type.sprite);
+        TEST_ASSERT(slots[static_cast<std::size_t>(type.corpseSpriteSlot)] == type.corpseSprite);
+    }
+
+    // Any id is a type; "sprite" and "corpseSprite" can share textures between types.
+    GameplayDefinitions custom{};
+    TEST_ASSERT(ParseGameplayDefinitions(
+        "{\"enemies\": {\"ghoul\": {\"health\": 70}, \"ghoul_elite\": {\"sprite\": \"ghoul\", \"corpseSprite\": "
+        "\"ghoul_dead\"}}, \"defaultEnemy\": \"ghoul_elite\"}",
+        "custom.json", custom, errors, warnings));
+    TEST_ASSERT(errors.empty() && warnings.empty());
+    TEST_ASSERT(custom.enemies.types.size() == 2 && custom.enemies.defaultType == 1);
+    TEST_ASSERT(EnemyStats(custom, "ghoul").health == 70);
+    TEST_ASSERT(EnemyStats(custom, "ghoul_elite").health == kDefaultEnemyDefinition.health);
+    TEST_ASSERT(custom.enemies.types[0].spriteSlot == custom.enemies.types[1].spriteSlot);
+    TEST_ASSERT(SpriteSlotNames(custom.enemies).size() == static_cast<std::size_t>(kSpriteRoleCount) + 2);
+
+    // Two types and no "defaultEnemy": no default (a placement must name its type).
+    GameplayDefinitions noDefault{};
+    TEST_ASSERT(ParseGameplayDefinitions("{\"enemies\": {\"a\": {}, \"b\": {}}}", "nodefault.json", noDefault, errors,
                                          warnings));
-    TEST_ASSERT(legacy.enemies.guard.health == 70 && legacy.enemies.guard.damage == 3);
-    TEST_ASSERT(legacy.enemies.brute.health == kDefaultEnemyDefinitions.brute.health);
-    TEST_ASSERT(errors.empty() && warnings.size() == 1);
-    TEST_ASSERT(AnyMessageContains(warnings, {"legacy.json: section \"enemy\" is deprecated", "enemies.guard"}));
+    TEST_ASSERT(noDefault.enemies.defaultType == -1);
 }
 
 void TestGameplayDefinitionsInvalid() {
@@ -1618,8 +1676,14 @@ void TestGameplayDefinitionsInvalid() {
         {"{\"weapon\": {\"damage\": 0}}", "weapon.damage must be an integer from 1 to 10000, got 0"},
         {"{\"weapon\": {\"damage\": 99999999999999999999}}", "weapon.damage must be"},
         {"{\"weapon\": {\"range\": 0}}", "weapon.range must be a number > 0 and <= 1000, got 0"},
-        {"{\"enemy\": {\"moveSpeed\": -1}}", "enemy.moveSpeed must be a number >= 0 and <= 20, got -1"},
-        {"{\"enemy\": {\"attackRate\": 0}}", "enemy.attackRate must be a number > 0"},
+        {"{\"enemy\": {\"moveSpeed\": 1}}", "the old \"enemy\" section is no longer read"},
+        {"{\"enemies\": {\"guard\": {\"attackRate\": 0}}}", "enemies.guard.attackRate must be a number > 0"},
+        {"{\"enemies\": {\"Big Guard\": {}}}", "enemies.Big Guard: an enemy type id must be lower case letters"},
+        {"{\"enemies\": {\"guard\": {\"sprite\": \"\"}}}", "enemies.guard.sprite must be a sprites.cfg key"},
+        {"{\"enemies\": {\"guard\": {\"corpseSprite\": 3}}}", "enemies.guard.corpseSprite must be a sprites.cfg key"},
+        {"{\"enemies\": {\"guard\": {}}, \"defaultEnemy\": \"brute\"}",
+         "defaultEnemy must name one of the enemy types under \"enemies\", got \"brute\""},
+        {"{\"defaultEnemy\": 1}", "defaultEnemy must name one of the enemy types"},
         {"{\"enemies\": {\"brute\": {\"moveSpeed\": 21}}}",
          "enemies.brute.moveSpeed must be a number >= 0 and <= 20, got 21"},
         {"{\"enemies\": {\"runner\": {\"reactionTime\": -1}}}", "enemies.runner.reactionTime must be a number >= 0"},
@@ -1628,7 +1692,7 @@ void TestGameplayDefinitionsInvalid() {
         {"{\"enemies\": {\"guard\": {\"health\": 0}}}", "enemies.guard.health must be an integer from 1"},
         {"{\"enemies\": 5}", "enemies must be an object, got 5"},
         {"{\"enemies\": {\"brute\": []}}", "enemies.brute must be an object, got an array"},
-        {"{\"enemy\": {}, \"enemies\": {}}", "use either \"enemies\" or the old \"enemy\" section, not both"},
+        {"{\"enemy\": {}, \"enemies\": {}}", "the old \"enemy\" section is no longer read"},
         {"{\"weapon\": {\"noiseRadius\": -1}}", "weapon.noiseRadius must be a number >= 0"},
         {"{\"player\": {\"collisionRadius\": 0.5}}", "player.collisionRadius must be a number > 0 and < 0.5"},
         {"{\"player\": {\"turnSpeed\": null}}", "player.turnSpeed must be a number > 0 and <= 20, got null"},
@@ -1672,9 +1736,9 @@ void TestGameplayDefinitionsInvalid() {
     TEST_ASSERT(ParseGameplayDefinitions(withUnknown, "old.json", g, errors, warnings));
     TEST_ASSERT(errors.empty());
     TEST_ASSERT(g.pickups.health.value == 30);
-    TEST_ASSERT(warnings.size() == 5);
+    TEST_ASSERT(warnings.size() == 4);  // "ninja" is a new enemy type, not an unknown key
+    TEST_ASSERT(g.enemies.Find("ninja") >= 0);
     TEST_ASSERT(AnyMessageContains(warnings, {"old.json: unknown key player.speed ignored"}));
-    TEST_ASSERT(AnyMessageContains(warnings, {"unknown key enemies.ninja ignored"}));
     TEST_ASSERT(AnyMessageContains(warnings, {"unknown key enemies.guard.armour ignored"}));
     TEST_ASSERT(AnyMessageContains(warnings, {"pickups.health.maxPlayerHealth", "moved to player.maxHealth"}));
     TEST_ASSERT(AnyMessageContains(warnings, {"unknown key music ignored"}));
@@ -1707,7 +1771,7 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(fromJson[3].mapX == ReferenceLevel1::kDoorX && fromJson[3].mapY == ReferenceLevel1::kDoorY);
     TEST_ASSERT(fromJson[4].mapX == ReferenceLevel1::kTriggerX && fromJson[4].mapY == ReferenceLevel1::kTriggerY);
     TEST_ASSERT(fromJson[2].source.find("entities[2]") != std::string::npos);
-    TEST_ASSERT(fromJson[1].variant == EnemyVariant::Guard);
+    TEST_ASSERT(fromJson[1].variant == "guard");
     TEST_ASSERT(fromJson[6].pickupKind == PickupType::Ammo);
 
     // The CSV export is equivalent, field by field.
@@ -1840,7 +1904,7 @@ void TestEntityPlacementsJsonAndCsv() {
     TEST_ASSERT(AnyMessageContains(warnings, {"field \"message\" only applies to trigger"}));
     for (const std::vector<EntityPlacement>* list : {&fromJson, &fromCsv}) {
         TEST_ASSERT_NEAR((*list)[0].angleDegrees, 90.0f, 1e-6f);
-        TEST_ASSERT((*list)[1].variant == EnemyVariant::Brute);
+        TEST_ASSERT((*list)[1].variant == "brute");
         TEST_ASSERT((*list)[2].pickupKind == PickupType::Ammo);
         TEST_ASSERT((*list)[2].pickupValue == 30);
         TEST_ASSERT((*list)[3].pickupKind == PickupType::Key && (*list)[3].key == KeyColor::Gold);
@@ -1909,7 +1973,8 @@ void TestDecorationsAndSpriteSync() {
     TEST_ASSERT(
         LoadEntityPlacementsFromFile(ReferencePath("game/defs/level01.entities.json"), placements, errors, warnings));
     LevelContents level{};
-    TEST_ASSERT(BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(BuildLevelFromPlacements(map, placements, SampleGameplay(), level, errors));
+    const GameplayDefinitions& gameplay = SampleGameplay();
 
     TEST_ASSERT(CountEntities(level.entities, EntityType::Trigger) == 1);  // only the real exit
     TEST_ASSERT(CountEntities(level.entities, EntityType::Decoration) == 1);
@@ -1952,7 +2017,7 @@ void TestDecorationsAndSpriteSync() {
     TEST_ASSERT(pickupEvents.pickupCollected);
     enemy->position = {7.0f, 2.5f};
     for (int tick = 0; tick < 3; ++tick) {
-        SyncSpritesWithEntities(level.entities, level.sprites);
+        SyncSpritesWithEntities(level.entities, gameplay.enemies, level.sprites);
     }
     TEST_ASSERT(level.sprites.size() == ReferenceLevel1::kSpriteCount);
     decorationSprite = FindSpriteFor(level.sprites, decorationId);
@@ -1967,7 +2032,7 @@ void TestDecorationsAndSpriteSync() {
     const int enemyId = enemy->id;
     TEST_ASSERT(level.entities.DestroyEntity(enemyId));
     const int spawnedId = level.entities.CreateEntity(EntityType::Decoration, {3.0f, 3.0f}).id;
-    SyncSpritesWithEntities(level.entities, level.sprites);
+    SyncSpritesWithEntities(level.entities, gameplay.enemies, level.sprites);
     TEST_ASSERT(FindSpriteFor(level.sprites, enemyId) == nullptr);
     const SpriteEntity* spawnedSprite = FindSpriteFor(level.sprites, spawnedId);
     TEST_ASSERT(spawnedSprite != nullptr && spawnedSprite->type == SpriteType::Decoration);
@@ -2111,16 +2176,21 @@ void TestEditedDataChangesGame() {
     TEST_ASSERT(FindFirstEntity(engine.entityManager_, EntityType::Enemy)->health == 60);
 
     // Edit the file again and reload: the new value applies to the next level load.
-    WriteTextFile(root / "game" / "defs" / "gameplay.json", "{\"enemy\": {\"health\": 25}}");
+    // A new type sorts before the guard, so the guard's index changes: live enemies keep their type.
+    WriteTextFile(root / "game" / "defs" / "gameplay.json",
+                  "{\"enemies\": {\"aaa\": {}, \"guard\": {\"health\": 25}}, \"defaultEnemy\": \"guard\"}");
     TEST_ASSERT(engine.LoadGameplay("game/defs/gameplay.json"));
+    const Entity* liveEnemy = FindFirstEntity(engine.entityManager_, EntityType::Enemy);
+    TEST_ASSERT(liveEnemy != nullptr && engine.gameplay_.enemies.Name(liveEnemy->enemyType) == "guard");
+    TEST_ASSERT(liveEnemy->enemyType == 1);
     engine.ResetLevel();
     TEST_ASSERT(FindFirstEntity(engine.entityManager_, EntityType::Enemy)->health == 25);
     TEST_ASSERT(engine.playerHealth_ == kDefaultPlayerDefinition.initialHealth);
 
     // A broken file is rejected and the previous values stay.
-    WriteTextFile(root / "game" / "defs" / "gameplay.json", "{\"enemy\": {\"health\": \"lots\"}}");
+    WriteTextFile(root / "game" / "defs" / "gameplay.json", "{\"enemies\": {\"guard\": {\"health\": \"lots\"}}}");
     TEST_ASSERT(!engine.LoadGameplay("game/defs/gameplay.json"));
-    TEST_ASSERT(engine.gameplay_.enemies.guard.health == 25);
+    TEST_ASSERT(EnemyStats(engine.gameplay_, "guard").health == 25);
 
     engine.running_ = false;
 }
@@ -2179,7 +2249,7 @@ void TestLevelLoadFailures() {
                                              errors, warnings));
     LevelContents level{};
     const Map before = map;
-    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, SampleGameplay(), level, errors));
     TEST_ASSERT(AnyMessageContains(
         errors, {"badcell.entities.json: entities[1] (door): map cell (16, 7) is outside the 16x12 map"}));
     TEST_ASSERT(map.GetCell(ReferenceLevel1::kDoorX, ReferenceLevel1::kDoorY) ==
@@ -2187,7 +2257,7 @@ void TestLevelLoadFailures() {
     errors.clear();
     TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(root / "game" / "defs" / "noplayer.entities.json"), placements,
                                              errors, warnings));
-    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(!BuildLevelFromPlacements(map, placements, SampleGameplay(), level, errors));
     TEST_ASSERT(AnyMessageContains(errors, {"no player placement"}));
 }
 
@@ -3818,8 +3888,9 @@ void TestEnemyHearing() {
     const Entity* guard = nullptr;
     const Entity* brute = nullptr;
     for (const Entity& entity : engine.entityManager_.Entities()) {
-        guard = entity.type == EntityType::Enemy && entity.variant == EnemyVariant::Guard ? &entity : guard;
-        brute = entity.type == EntityType::Enemy && entity.variant == EnemyVariant::Brute ? &entity : brute;
+        const std::string_view type = engine.gameplay_.enemies.Name(entity.enemyType);
+        guard = entity.type == EntityType::Enemy && type == "guard" ? &entity : guard;
+        brute = entity.type == EntityType::Enemy && type == "brute" ? &entity : brute;
     }
     TEST_ASSERT(guard != nullptr && brute != nullptr);
     const int guardId = guard->id;
@@ -3920,9 +3991,9 @@ void TestEnemyArchetypesFromData() {
     GameplayDefinitions gameplay{};
     TEST_ASSERT(LoadGameplayDefinitions(ResolveRepoPath("game/defs/gameplay.json"), gameplay, errors, warnings));
     TEST_ASSERT(errors.empty() && warnings.empty());
-    const EnemyDefinition& guard = gameplay.enemies.guard;
-    const EnemyDefinition& brute = gameplay.enemies.brute;
-    const EnemyDefinition& runner = gameplay.enemies.runner;
+    const EnemyDefinition& guard = EnemyStats(gameplay, "guard");
+    const EnemyDefinition& brute = EnemyStats(gameplay, "brute");
+    const EnemyDefinition& runner = EnemyStats(gameplay, "runner");
     // The shipped values (game/defs/gameplay.json).
     TEST_ASSERT(brute.health == 140 && brute.damage == 25 && brute.score == 300);
     TEST_ASSERT_NEAR(brute.moveSpeed, 1.0f, 1e-6f);
@@ -3943,8 +4014,9 @@ void TestEnemyArchetypesFromData() {
     std::vector<EntityPlacement> placements(5);
     placements[0].type = PlacementType::Player;
     placements[0].position = {1.5f, 1.5f};
-    const std::array<EnemyVariant, 4> variants = {EnemyVariant::Guard, EnemyVariant::Brute, EnemyVariant::Runner,
-                                                  EnemyVariant::Guard};
+    // The last placement has no variant: it gets the default type, the guard.
+    const std::array<const char*, 4> variants = {"guard", "brute", "runner", ""};
+    const std::array<const char*, 4> types = {"guard", "brute", "runner", "guard"};
     for (std::size_t i = 0; i < variants.size(); ++i) {
         placements[i + 1].type = PlacementType::Enemy;
         placements[i + 1].position = {2.5f + static_cast<float>(i), 4.5f};
@@ -3952,15 +4024,14 @@ void TestEnemyArchetypesFromData() {
     }
     LevelContents level{};
     TEST_ASSERT(BuildLevelFromPlacements(map, placements, gameplay, level, errors));
-    const std::array<SpriteTextureId, 4> textures = {SpriteTextureId::Guard, SpriteTextureId::Brute,
-                                                     SpriteTextureId::Runner, SpriteTextureId::Guard};
+    const std::vector<std::string> slotNames = SpriteSlotNames(gameplay.enemies);
     std::size_t index = 0;
     for (const Entity& entity : level.entities.Entities()) {
         if (entity.type != EntityType::Enemy) {
             continue;
         }
-        const EnemyDefinition& expected = gameplay.enemies.For(variants[index]);
-        TEST_ASSERT(entity.variant == variants[index]);
+        const EnemyDefinition& expected = EnemyStats(gameplay, types[index]);
+        TEST_ASSERT(entity.enemyType == EnemyTypeIndex(gameplay, types[index]));
         TEST_ASSERT(entity.health == expected.health && entity.maxHealth == expected.health);
         TEST_ASSERT(entity.damage == expected.damage && entity.score == expected.score);
         TEST_ASSERT_NEAR(entity.moveSpeed, expected.moveSpeed, 1e-6f);
@@ -3970,7 +4041,7 @@ void TestEnemyArchetypesFromData() {
         TEST_ASSERT_NEAR(entity.reactionTime, expected.reactionTime, 1e-6f);
         const SpriteEntity* sprite = FindSpriteFor(level.sprites, entity.id);
         TEST_ASSERT(sprite != nullptr && sprite->type == SpriteType::Enemy);
-        TEST_ASSERT(sprite->textureId == static_cast<int>(textures[index]));
+        TEST_ASSERT(slotNames[static_cast<std::size_t>(sprite->textureId)] == types[index]);
         ++index;
     }
     TEST_ASSERT(index == 4);
@@ -3980,28 +4051,52 @@ void TestEnemyArchetypesFromData() {
     TEST_ASSERT(ParseGameplayDefinitions("{\"enemies\": {\"brute\": {\"health\": 400, \"moveSpeed\": 0.5}}}",
                                          "edit.json", edited, errors, warnings));
     Entity entity{};
-    ApplyEnemyArchetype(entity, EnemyVariant::Brute, edited.enemies);
-    TEST_ASSERT(entity.health == 400 && entity.variant == EnemyVariant::Brute);
+    ApplyEnemyArchetype(entity, EnemyTypeIndex(edited, "brute"), edited.enemies);
+    TEST_ASSERT(entity.health == 400 && entity.enemyType == EnemyTypeIndex(edited, "brute"));
     TEST_ASSERT_NEAR(entity.moveSpeed, 0.5f, 1e-6f);
-    TEST_ASSERT(entity.damage == kDefaultEnemyDefinitions.brute.damage);  // not in the file: the default
+    TEST_ASSERT(entity.damage == kDefaultEnemyDefinition.damage);  // not in the file: the default
+
+    // An unknown variant, or none without a default type, is an error naming the placement.
+    std::vector<EntityPlacement> unknown(2);
+    unknown[0].type = PlacementType::Player;
+    unknown[0].position = {1.5f, 1.5f};
+    unknown[1].type = PlacementType::Enemy;
+    unknown[1].position = {3.5f, 3.5f};
+    unknown[1].variant = "ninja";
+    unknown[1].source = "test.json entities[1]";
+    errors.clear();
+    TEST_ASSERT(!BuildLevelFromPlacements(map, unknown, gameplay, level, errors));
+    TEST_ASSERT(AnyMessageContains(
+        errors, {"test.json entities[1] (enemy)", "unknown enemy type \"ninja\"", "brute, guard, runner"}));
+    GameplayDefinitions twoTypes{};
+    TEST_ASSERT(
+        ParseGameplayDefinitions("{\"enemies\": {\"a\": {}, \"b\": {}}}", "two.json", twoTypes, errors, warnings));
+    unknown[1].variant.clear();
+    errors.clear();
+    TEST_ASSERT(!BuildLevelFromPlacements(map, unknown, twoTypes, level, errors));
+    TEST_ASSERT(AnyMessageContains(errors, {"no \"variant\"", "no default enemy type", "a, b"}));
 
     // The reference campaign: level 3 has one enemy of each type, each with its own texture loaded.
     const ScratchDir referenceContent("archetypes-reference");
     Engine engine;
     const EngineOptions options = ReferenceEngineOptions(referenceContent, 3);
     TEST_ASSERT(engine.Init(options));
-    std::array<int, kEnemyVariantCount> counts{};
+    std::array<int, 3> counts{};
+    TEST_ASSERT(engine.gameplay_.enemies.types.size() == counts.size());
     for (const Entity& e : engine.entityManager_.Entities()) {
         if (e.type == EntityType::Enemy) {
-            ++counts[static_cast<std::size_t>(e.variant)];
+            TEST_ASSERT(e.enemyType >= 0 && e.enemyType < 3);
+            ++counts[static_cast<std::size_t>(e.enemyType)];
         }
     }
     TEST_ASSERT(counts[0] == 1 && counts[1] == 1 && counts[2] == 1);
-    for (int i = 0; i < kSpriteTextureCount; ++i) {
-        const Texture* texture = engine.spriteTextures_[static_cast<std::size_t>(i)];
+    TEST_ASSERT(engine.spriteSlotNames_ == SpriteSlotNames(engine.gameplay_.enemies));
+    TEST_ASSERT(engine.spriteTextures_.size() == engine.spriteSlotNames_.size());
+    for (std::size_t i = 0; i < engine.spriteTextures_.size(); ++i) {
+        const Texture* texture = engine.spriteTextures_[i];
         TEST_ASSERT(texture != nullptr && texture->Width() > 0 && texture->Width() != engine.missingTexture_.Width());
-        for (int j = 0; j < i; ++j) {
-            TEST_ASSERT(texture != engine.spriteTextures_[static_cast<std::size_t>(j)]);
+        for (std::size_t j = 0; j < i; ++j) {
+            TEST_ASSERT(texture != engine.spriteTextures_[j]);
         }
     }
 }
@@ -4023,8 +4118,9 @@ void TestEntityVariantValidation() {
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"health\", \"key\": \"red\"},"
         "{\"type\": \"pickup\", \"x\": 2, \"y\": 2, \"kind\": \"key\", \"key\": \"red\", \"value\": 5}]}";
     TEST_ASSERT(!ParseEntityPlacementsJson(bad, "v.entities.json", placements, errors, warnings));
-    TEST_ASSERT(AnyMessageContains(errors, {"v.entities.json: entities[1] (enemy): field \"variant\" must be "
-                                            "\"guard\", \"brute\" or \"runner\", got \"ninja\""}));
+    // Any well-formed id is accepted here; whether gameplay.json defines it is checked when the
+    // level is built (TestEnemyArchetypesFromData).
+    TEST_ASSERT(!AnyMessageContains(errors, {"entities[1]"}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[2] (enemy): field \"variant\" must be", "got 3"}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[3] (enemy): field \"variant\" must be", "\"Guard\""}));
     TEST_ASSERT(AnyMessageContains(
@@ -4032,16 +4128,17 @@ void TestEntityVariantValidation() {
     TEST_ASSERT(AnyMessageContains(
         errors, {"entities[5] (pickup): field \"key\" must be \"red\", \"blue\" or \"gold\", got \"green\""}));
     TEST_ASSERT(AnyMessageContains(errors, {"entities[6] (door): field \"lock\" must be", "\"purple\""}));
-    TEST_ASSERT(errors.size() == 6);
+    TEST_ASSERT(errors.size() == 5);
     TEST_ASSERT(AnyMessageContains(warnings, {"entities[7] (enemy): field \"lock\" only applies to door"}));
     TEST_ASSERT(AnyMessageContains(warnings, {"entities[8] (pickup): field \"key\" only applies to pickups of kind"}));
     TEST_ASSERT(
         AnyMessageContains(warnings, {"entities[9] (pickup): field \"value\" only applies to health and ammo"}));
-    TEST_ASSERT(placements.size() == 4);  // the player, the runner and the two pickups with warnings only
+    TEST_ASSERT(placements.size() == 5);  // the player, "ninja", the runner and the two pickups with warnings only
+    TEST_ASSERT(placements[1].variant == "ninja");
 
     // The CSV export uses the same rules.
     errors.clear();
-    TEST_ASSERT(!ParseEntityPlacementsCsv("player,1.5,1.5\nenemy,2,2,,,,,,ninja\npickup,2,2,,,key,,,,teal\n", "v.csv",
+    TEST_ASSERT(!ParseEntityPlacementsCsv("player,1.5,1.5\nenemy,2,2,,,,,,Ninja\npickup,2,2,,,key,,,,teal\n", "v.csv",
                                           placements, errors, warnings));
     TEST_ASSERT(AnyMessageContains(errors, {"v.csv:2 (entity 1) (enemy): field \"variant\" must be"}));
     TEST_ASSERT(AnyMessageContains(errors, {"v.csv:3 (entity 2) (pickup): field \"key\" must be", "\"teal\""}));
@@ -4233,10 +4330,14 @@ void TestCorpseAndHitFlash() {
     Player player{};
     player.position = {2.5f, 2.5f};
     player.directionAngleRadians = 0.0f;
+    const GameplayDefinitions& gameplay = SampleGameplay();
+    const int guardType = EnemyTypeIndex(gameplay, "guard");
     const int frontId = manager.CreateEntity(EntityType::Enemy, Vec2{5.5f, 2.5f}).id;
     const int backId = manager.CreateEntity(EntityType::Enemy, Vec2{8.5f, 2.5f}).id;
     manager.GetEntityById(frontId)->health = 30;
-    SyncSpritesWithEntities(manager, sprites);
+    manager.GetEntityById(frontId)->enemyType = guardType;
+    manager.GetEntityById(backId)->enemyType = guardType;
+    SyncSpritesWithEntities(manager, gameplay.enemies, sprites);
 
     // A hit: the enemy flashes for a moment and starts chasing.
     int ammo = 10;
@@ -4244,7 +4345,7 @@ void TestCorpseAndHitFlash() {
     PerformPlayerAttack(manager, map, player, ammo, 20, 12.0f, hit);
     TEST_ASSERT(hit.enemyDamaged && hit.damagedEnemyId == frontId && hit.enemyAlerted);
     TEST_ASSERT(manager.GetEntityById(frontId)->hitFlashTimer > 0.0f);
-    SyncSpritesWithEntities(manager, sprites);
+    SyncSpritesWithEntities(manager, gameplay.enemies, sprites);
     TEST_ASSERT(FindSpriteFor(sprites, frontId)->flash && !FindSpriteFor(sprites, backId)->flash);
 
     // The flash brightens the sprite on screen.
@@ -4255,7 +4356,7 @@ void TestCorpseAndHitFlash() {
         }
     }
     SpriteTextureSet set{};
-    set.slots.fill(&plain);
+    set.slots.assign(static_cast<std::size_t>(kSpriteRoleCount), &plain);
     set.missing = &plain;
     const auto centrePixel = [&](bool flash) {
         Framebuffer framebuffer(64, 48);
@@ -4273,7 +4374,7 @@ void TestCorpseAndHitFlash() {
     int health = 100;
     GameplayEvents events{};
     UpdateEnemyAi(manager, map, player, health, kEnemyHitFlashSeconds + 0.01f, events);
-    SyncSpritesWithEntities(manager, sprites);
+    SyncSpritesWithEntities(manager, gameplay.enemies, sprites);
     TEST_ASSERT(!FindSpriteFor(sprites, frontId)->flash);
 
     // Killed: a corpse that stays visible with its corpse texture, inactive for the game.
@@ -4283,11 +4384,12 @@ void TestCorpseAndHitFlash() {
     TEST_ASSERT(kill.enemyDied && kill.deadEnemyId == frontId);
     const Entity* corpse = manager.GetEntityById(frontId);
     TEST_ASSERT(IsEnemyCorpse(*corpse) && !IsEnemyAlive(*corpse) && !corpse->active && corpse->visible);
-    SyncSpritesWithEntities(manager, sprites);
+    SyncSpritesWithEntities(manager, gameplay.enemies, sprites);
     const SpriteEntity* corpseSprite = FindSpriteFor(sprites, frontId);
     TEST_ASSERT(corpseSprite != nullptr && corpseSprite->visible && corpseSprite->active);
     TEST_ASSERT(corpseSprite->type == SpriteType::Corpse);
-    TEST_ASSERT(corpseSprite->textureId == static_cast<int>(SpriteTextureId::GuardDead));
+    TEST_ASSERT(corpseSprite->textureId ==
+                gameplay.enemies.types[static_cast<std::size_t>(guardType)].corpseSpriteSlot);
     TEST_ASSERT(!SpriteRenderer::BuildSortedSpriteIndices(player, sprites).empty());
 
     // The corpse blocks nothing: the next shot along the same line hits the enemy behind it, a
@@ -4306,16 +4408,22 @@ void TestCorpseAndHitFlash() {
     // Every enemy type has its own corpse texture.
     EntityManager single{};
     Entity& runner = single.CreateEntity(EntityType::Enemy, Vec2{3.0f, 3.0f});
-    runner.variant = EnemyVariant::Runner;
+    runner.enemyType = EnemyTypeIndex(gameplay, "runner");
     runner.enemyState = EnemyState::Dead;
     runner.active = false;
+    const std::vector<std::string> slotNames = SpriteSlotNames(gameplay.enemies);
     std::vector<SpriteEntity> runnerSprites;
-    SyncSpritesWithEntities(single, runnerSprites);
+    SyncSpritesWithEntities(single, gameplay.enemies, runnerSprites);
     TEST_ASSERT(runnerSprites.size() == 1 &&
-                runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::RunnerDead));
-    single.Entities()[0].variant = EnemyVariant::Brute;
-    SyncSpritesWithEntities(single, runnerSprites);
-    TEST_ASSERT(runnerSprites[0].textureId == static_cast<int>(SpriteTextureId::BruteDead));
+                slotNames[static_cast<std::size_t>(runnerSprites[0].textureId)] == "runner_dead");
+    single.Entities()[0].enemyType = EnemyTypeIndex(gameplay, "brute");
+    SyncSpritesWithEntities(single, gameplay.enemies, runnerSprites);
+    TEST_ASSERT(slotNames[static_cast<std::size_t>(runnerSprites[0].textureId)] == "brute_dead");
+
+    // An enemy without a type (C API before gameplay.json) is drawn with the missing texture.
+    single.Entities()[0].enemyType = -1;
+    SyncSpritesWithEntities(single, gameplay.enemies, runnerSprites);
+    TEST_ASSERT(runnerSprites[0].textureId == -1);
 }
 
 void TestEnemySeparation() {
@@ -4561,10 +4669,12 @@ const char* const kAutoplayFixtureEntities = R"({ "entities": [
 void TestAutoplayFixtureLevel() {
     const ScratchDir scratch("autoplay-fixture");
     const std::filesystem::path root = scratch.Path() / "content";
-    // The fixture's gameplay.json only lowers the starting health; everything else is a default.
+    // The fixture's gameplay.json defines one enemy type with the default stats and lowers the
+    // starting health; everything else is a default.
     constexpr int kStartHealth = 30;
-    WriteAutoplayFixture(root, {{"keys", kAutoplayFixtureMap, kAutoplayFixtureEntities}},
-                         R"({ "player": { "initialHealth": )" + std::to_string(kStartHealth) + " } }");
+    WriteAutoplayFixture(
+        root, {{"keys", kAutoplayFixtureMap, kAutoplayFixtureEntities}},
+        R"({ "enemies": { "guard": {} }, "player": { "initialHealth": )" + std::to_string(kStartHealth) + " } }");
     AutoplayRunOptions options{};
     options.dataDir = PathToUtf8(root);
     options.prefDir = scratch.Path() / "prefs";
@@ -4785,7 +4895,7 @@ void TestSpriteVerticalCrop() {
     texture.SetPixel(0, 2, Framebuffer::PackRGBA(0, 0, 255));
     texture.SetPixel(0, 3, Framebuffer::PackRGBA(255, 255, 255));
     SpriteTextureSet textures{};
-    textures.Set(SpriteTextureId::Decoration, &texture);
+    textures.Set(SpriteRole::Decoration, &texture);
     textures.missing = &texture;
     Map map(8, 8);
     Player player{};
@@ -4799,7 +4909,7 @@ void TestSpriteVerticalCrop() {
         framebuffer.Clear(0);
         SpriteEntity sprite{};
         sprite.position = {2.0f + distance, 4.0f};
-        sprite.textureId = static_cast<int>(SpriteTextureId::Decoration);
+        sprite.textureId = SpriteRoleSlot(SpriteRole::Decoration);
         SpriteRenderer::Render(map, player, framebuffer, depth, {sprite}, textures);
     };
     const int centreX = kWidth / 2;
@@ -4880,7 +4990,7 @@ void TestContentParityFixtures() {
         TEST_ASSERT(LoadEntityPlacementsFromFile(PathToUtf8(dir / want["entities"].get<std::string>()), placements,
                                                  lights, errors, warnings));
         LevelContents level{};
-        const bool ok = BuildLevelFromPlacements(map, placements, lights, GameplayDefinitions{}, level, errors);
+        const bool ok = BuildLevelFromPlacements(map, placements, lights, SampleGameplay(), level, errors);
         if (ok != want["ok"].get<bool>()) {
             FailTest(
                 __FILE__, __LINE__,
@@ -4926,7 +5036,7 @@ void TestLightZones() {
     Map map(8, 6);
     BuildBorderWalls(map);
     LevelContents level{};
-    TEST_ASSERT(BuildLevelFromPlacements(map, placements, lights, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(BuildLevelFromPlacements(map, placements, lights, SampleGameplay(), level, errors));
     for (int y = 0; y < map.Height(); ++y) {
         for (int x = 0; x < map.Width(); ++x) {
             float expected = 1.0f;  // not covered by any zone
@@ -4944,7 +5054,7 @@ void TestLightZones() {
     Map plain(8, 6);
     BuildBorderWalls(plain);
     TEST_ASSERT(ParseEntityPlacementsJson(text, "lights.json", placements, errors, warnings));
-    TEST_ASSERT(BuildLevelFromPlacements(plain, placements, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(BuildLevelFromPlacements(plain, placements, SampleGameplay(), level, errors));
     for (int y = 0; y < plain.Height(); ++y) {
         for (int x = 0; x < plain.Width(); ++x) {
             TEST_ASSERT_NEAR(plain.GetLightLevel(x, y), 1.0f, 1e-6f);
@@ -5002,7 +5112,7 @@ void TestLightZones() {
     TEST_ASSERT(ParseEntityPlacementsJson(outside, "out.json", placements, lights, errors, warnings));
     Map untouched(8, 6);
     BuildBorderWalls(untouched);
-    TEST_ASSERT(!BuildLevelFromPlacements(untouched, placements, lights, GameplayDefinitions{}, level, errors));
+    TEST_ASSERT(!BuildLevelFromPlacements(untouched, placements, lights, SampleGameplay(), level, errors));
     TEST_ASSERT(errors.size() == 2);
     TEST_ASSERT(
         AnyMessageContains(errors, {"out.json: lights[1]: cells (6, 1) to (8, 1) are not all inside the 8x6 map"}));
@@ -5223,7 +5333,7 @@ void TestProjectionSquarePixels() {
 
         // A sprite at the same distance is a square of the same size.
         SpriteTextureSet textures{};
-        textures.slots.fill(&red);
+        textures.slots.assign(static_cast<std::size_t>(kSpriteRoleCount), &red);
         textures.missing = &red;
         const std::vector<float> farDepth(static_cast<std::size_t>(size.width), 100.0f);
         framebuffer.Clear(kBlack);

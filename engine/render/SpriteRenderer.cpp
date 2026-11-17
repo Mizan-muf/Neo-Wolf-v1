@@ -20,7 +20,7 @@ struct SpriteRenderCandidate {
 };
 
 const Texture* ResolveTexture(const SpriteTextureSet& textures, const SpriteEntity& sprite) {
-    if (sprite.textureId >= 0 && sprite.textureId < kSpriteTextureCount) {
+    if (sprite.textureId >= 0 && static_cast<std::size_t>(sprite.textureId) < textures.slots.size()) {
         const Texture* texture = textures.slots[static_cast<std::size_t>(sprite.textureId)];
         if (texture != nullptr) {
             return texture;

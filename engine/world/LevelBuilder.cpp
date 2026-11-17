@@ -12,36 +12,32 @@
 #include "engine/world/EnemyAi.h"
 
 namespace {
-SpriteTextureId KeySpriteTexture(KeyColor color) {
+SpriteRole KeySpriteRole(KeyColor color) {
     switch (color) {
         case KeyColor::Blue:
-            return SpriteTextureId::KeyBlue;
+            return SpriteRole::KeyBlue;
         case KeyColor::Gold:
-            return SpriteTextureId::KeyGold;
+            return SpriteRole::KeyGold;
         case KeyColor::Red:
         case KeyColor::None:
             break;
     }
-    return SpriteTextureId::KeyRed;
+    return SpriteRole::KeyRed;
 }
 
-// The sprite an entity is drawn with; false for types without a sprite. Enemies change to
-// their corpse texture when they die.
-bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId& outTexture) {
+// The sprite slot an entity is drawn with; false for types without a sprite. Enemies change to
+// their type's corpse sprite when they die; an enemy without a type gets slot -1 (the missing
+// texture).
+bool SpriteForEntity(const Entity& entity, const EnemyDefinitions& enemies, SpriteType& outType, int& outSlot) {
     switch (entity.type) {
         case EntityType::Enemy: {
             const bool dead = IsEnemyCorpse(entity);
             outType = dead ? SpriteType::Corpse : SpriteType::Enemy;
-            switch (entity.variant) {
-                case EnemyVariant::Brute:
-                    outTexture = dead ? SpriteTextureId::BruteDead : SpriteTextureId::Brute;
-                    break;
-                case EnemyVariant::Runner:
-                    outTexture = dead ? SpriteTextureId::RunnerDead : SpriteTextureId::Runner;
-                    break;
-                case EnemyVariant::Guard:
-                    outTexture = dead ? SpriteTextureId::GuardDead : SpriteTextureId::Guard;
-                    break;
+            const EnemyType* type = enemies.At(entity.enemyType);
+            if (type == nullptr) {
+                outSlot = -1;
+            } else {
+                outSlot = dead ? type->corpseSpriteSlot : type->spriteSlot;
             }
             return true;
         }
@@ -49,19 +45,19 @@ bool SpriteForEntity(const Entity& entity, SpriteType& outType, SpriteTextureId&
             outType = entity.pickupType == PickupType::Key ? SpriteType::Key : SpriteType::Pickup;
             switch (entity.pickupType) {
                 case PickupType::Ammo:
-                    outTexture = SpriteTextureId::Ammo;
+                    outSlot = SpriteRoleSlot(SpriteRole::Ammo);
                     break;
                 case PickupType::Key:
-                    outTexture = KeySpriteTexture(entity.keyColor);
+                    outSlot = SpriteRoleSlot(KeySpriteRole(entity.keyColor));
                     break;
                 case PickupType::Health:
-                    outTexture = SpriteTextureId::Health;
+                    outSlot = SpriteRoleSlot(SpriteRole::Health);
                     break;
             }
             return true;
         case EntityType::Decoration:
             outType = SpriteType::Decoration;
-            outTexture = SpriteTextureId::Decoration;
+            outSlot = SpriteRoleSlot(SpriteRole::Decoration);
             return true;
         default:
             return false;
@@ -73,13 +69,12 @@ bool IsSpriteShown(const Entity& entity) {
     return entity.visible && (entity.active || IsEnemyCorpse(entity));
 }
 
-void AddSprite(const Entity& entity, std::vector<SpriteEntity>& sprites) {
+void AddSprite(const Entity& entity, const EnemyDefinitions& enemies, std::vector<SpriteEntity>& sprites) {
     SpriteType type = SpriteType::Decoration;
-    SpriteTextureId texture = SpriteTextureId::Decoration;
-    if (SpriteForEntity(entity, type, texture)) {
-        sprites.push_back(SpriteEntity{entity.position, static_cast<int>(texture), entity.id, type,
-                                       entity.active || IsEnemyCorpse(entity), IsSpriteShown(entity),
-                                       entity.hitFlashTimer > 0.0f});
+    int slot = SpriteRoleSlot(SpriteRole::Decoration);
+    if (SpriteForEntity(entity, enemies, type, slot)) {
+        sprites.push_back(SpriteEntity{entity.position, slot, entity.id, type, entity.active || IsEnemyCorpse(entity),
+                                       IsSpriteShown(entity), entity.hitFlashTimer > 0.0f});
     }
 }
 
@@ -92,7 +87,24 @@ bool IsInside(const Map& map, float x, float y) {
     return x >= 0.0f && y >= 0.0f && x < static_cast<float>(map.Width()) && y < static_cast<float>(map.Height());
 }
 
-void ValidatePlacements(const Map& map, const std::vector<EntityPlacement>& placements,
+// "guard, brute" style list of the type ids, or "no types".
+std::string DescribeEnemyTypes(const EnemyDefinitions& enemies) {
+    if (enemies.types.empty()) {
+        return "no types";
+    }
+    std::string text;
+    for (const EnemyType& type : enemies.types) {
+        text += (text.empty() ? "" : ", ") + type.id;
+    }
+    return text;
+}
+
+// The enemy type a placement selects: its "variant", else the default type; -1 if neither exists.
+int EnemyTypeFor(const EntityPlacement& placement, const EnemyDefinitions& enemies) {
+    return placement.variant.empty() ? enemies.defaultType : enemies.Find(placement.variant);
+}
+
+void ValidatePlacements(const Map& map, const std::vector<EntityPlacement>& placements, const EnemyDefinitions& enemies,
                         std::vector<std::string>& errors) {
     const std::string mapSize = std::to_string(map.Width()) + "x" + std::to_string(map.Height());
     std::vector<const EntityPlacement*> players;
@@ -103,6 +115,17 @@ void ValidatePlacements(const Map& map, const std::vector<EntityPlacement>& plac
         if (!IsInside(map, placement.position.x, placement.position.y)) {
             errors.push_back(DescribeSource(placement) + ": position (" + std::to_string(placement.position.x) + ", " +
                              std::to_string(placement.position.y) + ") is outside the " + mapSize + " map");
+        }
+        if (placement.type == PlacementType::Enemy && EnemyTypeFor(placement, enemies) < 0) {
+            if (!placement.variant.empty()) {
+                errors.push_back(DescribeSource(placement) + ": unknown enemy type \"" + placement.variant +
+                                 "\" (gameplay.json \"enemies\" defines " + DescribeEnemyTypes(enemies) + ")");
+            } else {
+                errors.push_back(DescribeSource(placement) +
+                                 ": no \"variant\", and gameplay.json has no default enemy type (set \"defaultEnemy\", "
+                                 "or give the placement a variant: " +
+                                 DescribeEnemyTypes(enemies) + ")");
+            }
         }
         const bool isCellEntity = placement.type == PlacementType::Door || placement.type == PlacementType::Trigger;
         if (isCellEntity && !map.IsInsideMap(placement.mapX, placement.mapY)) {
@@ -145,7 +168,7 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
                               const std::vector<LightZone>& lights, const GameplayDefinitions& gameplay,
                               LevelContents& out, std::vector<std::string>& errors) {
     const std::size_t errorsBefore = errors.size();
-    ValidatePlacements(map, placements, errors);
+    ValidatePlacements(map, placements, gameplay.enemies, errors);
     ValidateLightZones(map, lights, errors);
     if (errors.size() != errorsBefore) {
         return false;
@@ -167,8 +190,8 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
             }
             case PlacementType::Enemy: {
                 Entity& entity = level.entities.CreateEntity(EntityType::Enemy, placement.position);
-                ApplyEnemyArchetype(entity, placement.variant, gameplay.enemies);
-                AddSprite(entity, level.sprites);
+                ApplyEnemyArchetype(entity, EnemyTypeFor(placement, gameplay.enemies), gameplay.enemies);
+                AddSprite(entity, gameplay.enemies, level.sprites);
                 break;
             }
             case PlacementType::Pickup: {
@@ -182,7 +205,7 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
                         placement.pickupKind == PickupType::Ammo ? gameplay.pickups.ammo : gameplay.pickups.health;
                     entity.pickupValue = placement.pickupValue.value_or(definition.value);
                 }
-                AddSprite(entity, level.sprites);
+                AddSprite(entity, gameplay.enemies, level.sprites);
                 break;
             }
             case PlacementType::Door: {
@@ -203,7 +226,7 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
             }
             case PlacementType::Decoration: {
                 const Entity& entity = level.entities.CreateEntity(EntityType::Decoration, placement.position);
-                AddSprite(entity, level.sprites);
+                AddSprite(entity, gameplay.enemies, level.sprites);
                 break;
             }
         }
@@ -229,7 +252,8 @@ bool BuildLevelFromPlacements(Map& map, const std::vector<EntityPlacement>& plac
     return true;
 }
 
-void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEntity>& sprites) {
+void SyncSpritesWithEntities(const EntityManager& entities, const EnemyDefinitions& enemies,
+                             std::vector<SpriteEntity>& sprites) {
     std::unordered_map<int, const Entity*> byId;
     byId.reserve(entities.Entities().size());
     for (const Entity& entity : entities.Entities()) {
@@ -246,10 +270,10 @@ void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEn
         }
         const Entity& entity = *it->second;
         SpriteType type = sprite.type;
-        auto texture = static_cast<SpriteTextureId>(sprite.textureId);
-        if (SpriteForEntity(entity, type, texture)) {
+        int slot = sprite.textureId;
+        if (SpriteForEntity(entity, enemies, type, slot)) {
             sprite.type = type;  // e.g. an enemy that died becomes a corpse
-            sprite.textureId = static_cast<int>(texture);
+            sprite.textureId = slot;
         }
         sprite.position = entity.position;
         sprite.active = entity.active || IsEnemyCorpse(entity);
@@ -262,14 +286,15 @@ void SyncSpritesWithEntities(const EntityManager& entities, std::vector<SpriteEn
 
     for (const Entity& entity : entities.Entities()) {
         if (withSprite.count(entity.id) == 0) {
-            AddSprite(entity, sprites);
+            AddSprite(entity, enemies, sprites);
         }
     }
 }
 
-void ApplyEnemyArchetype(Entity& enemy, EnemyVariant variant, const EnemyDefinitions& enemies) {
-    const EnemyDefinition& stats = enemies.For(variant);
-    enemy.variant = variant;
+void ApplyEnemyArchetype(Entity& enemy, int typeIndex, const EnemyDefinitions& enemies) {
+    const EnemyType* type = enemies.At(typeIndex);
+    const EnemyDefinition& stats = type != nullptr ? type->stats : kDefaultEnemyDefinition;
+    enemy.enemyType = type != nullptr ? typeIndex : -1;
     enemy.health = stats.health;
     enemy.maxHealth = stats.health;
     enemy.damage = stats.damage;

@@ -126,19 +126,18 @@ class TestValidator(unittest.TestCase):
             encoding="utf-8",
         )
         report, entities = validate_entity_json(json_file, (8, 8))
-        self.assertEqual(len(report.errors), 4, report.errors)
-        self.assertTrue(
-            any("entities[2]" in e and "variant must be 'guard', 'brute' or 'runner'" in e for e in report.errors)
-        )
+        # "ninja" is a well-formed type id: whether gameplay.json defines it is a campaign check.
+        self.assertEqual(len(report.errors), 3, report.errors)
+        self.assertFalse(any("entities[2]" in e for e in report.errors))
         self.assertTrue(any("entities[4]" in e and "'green'" in e for e in report.errors))
         self.assertTrue(any("entities[5]" in e and "needs 'key'" in e for e in report.errors))
         self.assertTrue(any("entities[7]" in e and "lock must be" in e for e in report.errors))
         self.assertTrue(
             any("entities[8]" in w and "only applies to pickups of kind 'key'" in w for w in report.warnings)
         )
-        self.assertEqual(len(entities), 5)
+        self.assertEqual(len(entities), 6)
 
-    def test_sprites_cfg_renamed_keys(self) -> None:
+    def test_shipped_sprites_cfg_has_no_warnings(self) -> None:
         root = Path(__file__).resolve().parents[3]
         report = validate_project(root)
         self.assertTrue(report.is_valid, report.errors)

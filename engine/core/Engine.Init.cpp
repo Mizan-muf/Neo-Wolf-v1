@@ -1,5 +1,6 @@
 #include "engine/core/Engine.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -7,6 +8,7 @@
 
 #include "engine/assets/AudioConfig.h"
 #include "engine/assets/ContentConfig.h"
+#include "engine/assets/GameplayConfig.h"
 #include "engine/assets/TextureLoader.h"
 #include "engine/core/Log.h"
 #include "engine/core/Paths.h"
@@ -187,8 +189,8 @@ bool Engine::InitWindow(const EngineOptions& options) {
 // textures come from each level's theme.)
 void Engine::InitAssets() {
     std::vector<std::string> errors;
-    SpriteTextureDefinitions spriteDefinitions{};
-    if (LoadSpriteTextureDefinitions(ResolveContentPath("game/defs/sprites.cfg"), spriteDefinitions, errors)) {
+    spriteDefinitions_ = SpriteTextureDefinitions{};
+    if (LoadSpriteTextureDefinitions(ResolveContentPath("game/defs/sprites.cfg"), spriteDefinitions_, errors)) {
         LogInfo("Sprite definitions loaded.");
     }
     LogLoadErrors(errors);
@@ -200,29 +202,41 @@ void Engine::InitAssets() {
     }
     LogLoadErrors(errors);
 
-    LoadSpriteTextures(spriteDefinitions);
+    LoadSpriteTextures();
     if (audio_.IsAvailable()) {
         LoadSoundEffects(audioDefinitions);
     }
 }
 
 // A checkerboard stands in for any sprite texture that fails to load.
-void Engine::LoadSpriteTextures(const SpriteTextureDefinitions& definitions) {
+void Engine::LoadSpriteTextures() {
     assets_.Clear();
     currentThemeId_.clear();
     TextureLoader::BuildFallbackChecker(missingTexture_, kMissingTextureSize, kMissingTextureSize);
     assets_.SetTexture("__missing", missingTexture_);
+    spriteSlotNames_.clear();
+    LoadSpriteSlots();
+}
 
+void Engine::LoadSpriteSlots() {
+    std::vector<std::string> names = SpriteSlotNames(gameplay_.enemies);
     std::vector<std::string> errors;
-    for (int i = 0; i < kSpriteTextureCount; ++i) {
-        const std::string id = kSpriteTextureKeys[i];
-        const std::string& relativePath = definitions.paths[static_cast<std::size_t>(i)];
-        if (!assets_.LoadTextureFromPPM(id, ResolveContentPath(relativePath), errors)) {
+    for (const std::string& name : names) {
+        if (std::find(spriteSlotNames_.begin(), spriteSlotNames_.end(), name) != spriteSlotNames_.end()) {
+            continue;  // loaded before
+        }
+        const std::string id = SpriteAssetId(name);
+        const std::string* relativePath = spriteDefinitions_.Find(name);
+        if (relativePath == nullptr) {
+            LogWarning("sprites.cfg has no key '" + name + "'; using the fallback texture");
+            assets_.SetTexture(id, missingTexture_);
+        } else if (!assets_.LoadTextureFromPPM(id, ResolveContentPath(*relativePath), errors)) {
             LogLoadErrors(errors);
-            LogWarning("Using fallback texture for: " + id);
+            LogWarning("Using fallback texture for: " + name);
             assets_.SetTexture(id, missingTexture_);
         }
     }
+    spriteSlotNames_ = std::move(names);
     RefreshTexturePointers();
 }
 

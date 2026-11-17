@@ -135,7 +135,7 @@ void Engine::UpdateGameplay(float dt, FlowEvents& flowEvents) {
     }
 
     // Sprites follow their entities (positions, hidden when collected or dead).
-    SyncSpritesWithEntities(entityManager_, sprites_);
+    SyncSpritesWithEntities(entityManager_, gameplay_.enemies, sprites_);
     particleManager_.Update(dt);
     UpdateAmbientDust(dt);
 }

@@ -16,12 +16,22 @@ class Texture;
 class Map;
 struct Player;
 
-// One texture per SpriteTextureId slot (sprites.cfg); a null slot is drawn with `missing`.
+// One texture per sprite slot (SpriteRole, then the game's enemy sprites); a null or unknown
+// slot is drawn with `missing`.
 struct SpriteTextureSet {
-    std::array<const Texture*, kSpriteTextureCount> slots{};
+    std::vector<const Texture*> slots;
     const Texture* missing = nullptr;
 
-    void Set(SpriteTextureId id, const Texture* texture) { slots[static_cast<std::size_t>(id)] = texture; }
+    void Set(int slot, const Texture* texture) {
+        if (slot < 0) {
+            return;
+        }
+        if (static_cast<std::size_t>(slot) >= slots.size()) {
+            slots.resize(static_cast<std::size_t>(slot) + 1, nullptr);
+        }
+        slots[static_cast<std::size_t>(slot)] = texture;
+    }
+    void Set(SpriteRole role, const Texture* texture) { Set(SpriteRoleSlot(role), texture); }
 };
 
 // A sprite of an enemy that was just hit is drawn this much closer to white (0-1).

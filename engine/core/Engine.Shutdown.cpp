@@ -34,6 +34,8 @@ void Engine::Shutdown() {
     floorTexture_ = nullptr;
     ceilingTexture_ = nullptr;
     spriteTextures_ = {};
+    spriteSlotNames_.clear();
+    spriteDefinitions_ = {};
     missingTexture_ = {};
     minimapVisible_ = false;
     debugOverlayVisible_ = false;

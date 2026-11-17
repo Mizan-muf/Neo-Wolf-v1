@@ -104,10 +104,18 @@ def write_campaign(
     )
 
 
+# The fixture game's gameplay.json: the three enemy types the fixture levels place (default stats
+# are enough: the validator checks types, not balance) and a lower starting health.
+FIXTURE_GAMEPLAY = (
+    '{ "player": { "initialHealth": 80 }, "defaultEnemy": "guard",\n'
+    '  "enemies": { "guard": {}, "brute": { "health": 140 }, "runner": { "health": 25 } } }\n'
+)
+
+
 def write_content_root(
     root: Path,
     levels: Optional[Dict[str, Tuple[str, List[dict]]]] = None,
-    gameplay: str = '{ "player": { "initialHealth": 80 } }\n',
+    gameplay: str = FIXTURE_GAMEPLAY,
 ) -> Path:
     """A content root with the given levels (default GOOD_LEVELS) in the campaign, in order."""
     levels = GOOD_LEVELS if levels is None else levels

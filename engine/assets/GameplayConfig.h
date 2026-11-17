@@ -4,6 +4,10 @@
 #include <vector>
 
 #include "engine/world/GameplayDefinitions.h"
+#include "engine/world/Sprite.h"
+
+// At most this many enemy types in gameplay.json.
+inline constexpr int kMaxEnemyTypes = 64;
 
 // Loads game/defs/gameplay.json (schema: docs/CONTENT_DEFINITIONS.md).
 //
@@ -20,6 +24,15 @@ bool LoadGameplayDefinitions(const std::string& filePath, GameplayDefinitions& o
 bool ParseGameplayDefinitions(const std::string& jsonText, const std::string& sourceName,
                               GameplayDefinitions& outDefinitions, std::vector<std::string>& errors,
                               std::vector<std::string>& warnings);
+
+// The sprite slots the game needs, in slot order: the engine's role sprites (kSpriteRoleKeys),
+// then every enemy type's sprite and corpse sprite, each name once. The engine loads one
+// texture per slot from sprites.cfg.
+std::vector<std::string> SpriteSlotNames(const EnemyDefinitions& enemies);
+
+// Sets every type's spriteSlot and corpseSpriteSlot to its index in SpriteSlotNames(enemies).
+// ParseGameplayDefinitions does this; code that builds EnemyDefinitions by hand (tests) calls it.
+void AssignSpriteSlots(EnemyDefinitions& enemies);
 
 // One-line summary of every value, for the log.
 std::string DescribeGameplayDefinitions(const GameplayDefinitions& definitions);

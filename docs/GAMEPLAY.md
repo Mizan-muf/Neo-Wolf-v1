@@ -175,15 +175,17 @@ The values are the shipped `gameplay.json` (`player`, `weapon`;
 
 ![Enemy types and a locked door](images/screens/enemies.png)
 
-*From left: guard, runner, a guard's corpse, brute; behind them a door locked with the blue
-key (preview `--preview enemies`).*
+*From left: guard, brute, a guard's corpse, runner; behind them a door locked with the blue
+key (preview `--preview enemies`: the default enemy type first, then the other types in
+alphabetical order).*
 
 ### Enemy types
 
-Every enemy placement names an archetype with `"variant"`; a placement without one is a
-**guard**. The values below are the shipped `gameplay.json` (`enemies.<variant>`,
-[CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#1-gameplayjson)); test
-`enemy_archetypes_from_data`.
+The engine has no built-in enemy types: the game defines them in `gameplay.json`
+([CONTENT_DEFINITIONS.md](CONTENT_DEFINITIONS.md#enemy-types-enemies)). The sample game defines
+the three below. Every enemy placement names its type with `"variant"`; a placement without one
+gets the default type, the **guard** (`"defaultEnemy": "guard"`). The values are the shipped
+`gameplay.json` (`enemies.<variant>`); test `enemy_archetypes_from_data`.
 
 | Type | Looks like | Health | Damage | Speed (cells/s) | Notices within | Attacks within | Attack every | Reaction | Score | Role |
 |---|---|---|---|---|---|---|---|---|---|---|

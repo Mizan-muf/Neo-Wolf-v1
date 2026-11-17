@@ -26,9 +26,9 @@ struct EntityPlacement {
     std::optional<int> pickupValue;              // pickup: "value"; empty = gameplay.json pickups.<kind>.value
     KeyColor key = KeyColor::None;               // pickup of kind "key": "key" (required): red, blue or gold
     KeyColor lock = KeyColor::None;              // door: "lock" (optional): red, blue or gold
-    EnemyVariant variant = EnemyVariant::Guard;  // enemy: "variant" (optional): guard, brute or runner
-    std::string message;                         // trigger: "message" (optional): its HUD text; empty = the default
-    std::string source;                          // where it came from, for messages: "file: entities[3]" or "file:5"
+    std::string variant;  // enemy: "variant" (optional): an enemy type id from gameplay.json; empty = the default type
+    std::string message;  // trigger: "message" (optional): its HUD text; empty = the default
+    std::string source;   // where it came from, for messages: "file: entities[3]" or "file:5"
 };
 
 // One entry of the optional "lights" array of a level's entity JSON file: a rectangle of map
