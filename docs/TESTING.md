@@ -363,11 +363,12 @@ cmake --preset ci-macos && cmake --build --preset ci-macos && ctest --preset ci-
 
 ## Continuous integration
 
-**Status: green.** Run 43866272111 passed all six jobs below: macOS,
-Windows MSVC x64, Linux, `windows-scripts`, Package (macOS universal) and Package (Windows x64).
-On Windows 110/110 CTest tests pass, and the autoplay bot completes all 10 levels with results
-identical to macOS. Run 43864756039 was the first all-green run with the package
-jobs. Earlier: run 43861234139, run 43820751721. CI runs everything headless with SDL's dummy drivers:
+**Status: green.** The `v1.1.0` tag run 44035628263 passed all seven jobs below: macOS,
+Windows MSVC x64, Linux, Lint, `windows-scripts`, Package (macOS universal) and Package
+(Windows x64). On every OS all CTest tests pass, and the autoplay bot completes all 10 levels
+with byte-identical reports on the three systems. History: run 43864756039 was the first all-green run with the package jobs (six jobs;
+the lint job came with Phase 12), and the `v1.0.0` tag run was 43881780814. Earlier: run
+43861234139, run 43820751721. CI runs everything headless with SDL's dummy drivers:
 it proves that the game builds, passes its tests and starts on each OS, not how it plays on a
 desktop. (On the first run, 43817862544, the Windows preset job failed on MSVC C4459 and the
 macOS job did not start on the retired `macos-14` image; both were fixed in Phase 3.)
