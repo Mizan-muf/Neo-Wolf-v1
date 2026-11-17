@@ -12,6 +12,10 @@ from the audit of 2026-11-15 ([docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-17
+
+The showcase release: Neo-Wolf presented as an engine, with the v1.0 campaign as its demo.
+
 ### Added
 
 - **The Test Chamber** ([docs/levels/testchamber.md](docs/levels/testchamber.md)): a development

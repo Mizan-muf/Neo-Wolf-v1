@@ -51,8 +51,8 @@ tests run on it, and a headless bot proves in CI that every level can be finishe
 
 ## Download & play
 
-There are no published releases yet: the first GitHub release comes with the `v1.0.0` tag
-(Roadmap Phase 12). Until then, packages are built by the CI job `package` as the artifacts
+Tagged versions: `v1.0.0` and `v1.1.0` (the showcase release); no GitHub release has been
+published yet. Packages are built by the CI job `package` as the artifacts
 `neo-wolf-package-macOS` and `neo-wolf-package-Windows` of a workflow run (open a run under
 the repository's Actions tab). The job was added in Phase 9 and is green (since run 43864756039); the packages
 have not yet been opened by hand from Finder or Explorer ([known issue D5](docs/KNOWN_ISSUES.md)). You can also build a package
@@ -169,13 +169,12 @@ level's map and walkthrough: [docs/levels/README.md](docs/levels/README.md).
 
 ## Project status
 
-Work toward v1.0 follows [docs/ROADMAP.md](docs/ROADMAP.md). The build, CI, runtime fixes, data
-pipeline, campaign flow, AI, bot, all ten levels, packaging and the documentation pass with its
-accuracy audit (Phases 1–10) are done;
-they build and pass all tests on macOS and headless in Windows and Linux CI (nothing has been
-played by hand yet, known issue C13), with the remaining gaps listed
-per phase in the roadmap. Still open: a play-through by hand
-and on a real Windows PC (Phase 11), and the clean-code review and `v1.0.0` tag (Phase 12). Known defects and
+The work up to v1.0 is recorded in [docs/ROADMAP.md](docs/ROADMAP.md) (Phases 0–12, tagged
+`v1.0.0`); everything builds and passes all tests on macOS and headless in Windows and Linux CI.
+The macOS package was played by hand up to about level 7; levels 8–10 by hand and a play-through
+on a real Windows PC are still open (Phase 11). The engine's work since then (render resolution,
+the Test Chamber, data-driven enemy types) and its plans are in
+[docs/ROADMAP_NEXT.md](docs/ROADMAP_NEXT.md). Known defects and
 unverified areas are listed in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md); changes in
 [CHANGELOG.md](CHANGELOG.md).
 

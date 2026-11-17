@@ -21,7 +21,7 @@ a CI run, or a recorded manual check).
 - [x] The demo starts on the main menu again (`"bootIntoTestLevel": false`)
 - [ ] README and docs present Neo-Wolf as an engine, with the v1.0 campaign as its demo
 - [ ] A showcase build for macOS (and Windows), played through by hand
-- [ ] Owner decision: the version number of the showcase build
+- [x] Owner decision: the version number of the showcase build: 1.1.0, tagged `v1.1.0`
 
 ## Engine/game boundary (paused for the showcase)
 

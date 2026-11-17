@@ -12,7 +12,7 @@ The build calls this script (cmake/Packaging.cmake) and installs the result; the
 `package` command checks that the package contains it. Standard library only.
 
 Usage:
-    python3 tools/devkit/release_readme.py --platform macos --version 1.0.0 --out README.txt
+    python3 tools/devkit/release_readme.py --platform macos --version 1.1.0 --out README.txt
 """
 
 from __future__ import annotations

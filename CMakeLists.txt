@@ -19,8 +19,9 @@ endif()
 # Everything else is derived from it: `neo_wolf --version` and the log, the autoplay report,
 # NeoWolf.app's Info.plist, neo_wolf.exe's version resource, the package README.txt and the
 # package file names (cmake/Packaging.cmake). Change it here only, in the release commit that
-# is tagged v<version> (docs/RELEASE.md, "Versioning"); 1.0.0 is set by Roadmap Phase 12.
-project(NeoWolf VERSION 1.0.0 LANGUAGES C CXX)
+# is tagged v<version> (docs/RELEASE.md, "Versioning"); 1.0.0 was set by Roadmap Phase 12, 1.1.0
+# is the engine-and-demo showcase release.
+project(NeoWolf VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
